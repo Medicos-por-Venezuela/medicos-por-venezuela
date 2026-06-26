@@ -1,96 +1,115 @@
-import { useState } from 'react'
 import Head from 'next/head'
-import { useRouter } from 'next/router'
+import Link from 'next/link'
+import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { SPECIALTIES } from '../lib/utils'
 
-const ESPECIALIDADES = ['Médico general','Médico de familia','Psicólogo clínico','Psiquiatra','Pediatra','Traumatólogo','Cardiólogo','Ginecólogo','Neurólogo','Internista','Cirujano','Otra especialidad']
-const PAISES = ['Venezuela','Colombia','España','Chile','Argentina','Perú','Ecuador','México','Estados Unidos','Panamá','República Dominicana','Uruguay','Italia','Portugal','Otro']
-const PLATAFORMAS = [{ val: 'google_meet', label: 'Google Meet' }, { val: 'zoom', label: 'Zoom' }, { val: 'whatsapp', label: 'WhatsApp' }]
-
-const campo = { display: 'flex', flexDirection: 'column' as const, gap: '6px' }
-const lbl = { fontSize: '14px', fontWeight: 500, color: '#1a1a1a' }
+const PAISES = ['Venezuela', 'Colombia', 'España', 'Chile', 'Argentina', 'Perú', 'Ecuador', 'México', 'Estados Unidos', 'Panamá', 'República Dominicana', 'Uruguay', 'Italia', 'Portugal', 'Dinamarca', 'Otro']
 
 export default function RegistroMedico() {
-  const router = useRouter()
-  const [nombre, setNombre] = useState('')
-  const [especialidad, setEspecialidad] = useState('')
-  const [pais, setPais] = useState('')
-  const [telefono, setTelefono] = useState('')
-  const [plataforma, setPlataforma] = useState('google_meet')
+  const [fullName, setFullName] = useState('')
+  const [email, setEmail] = useState('')
+  const [specialty, setSpecialty] = useState('')
+  const [country, setCountry] = useState('')
+  const [license, setLicense] = useState('')
+  const [whatsapp, setWhatsapp] = useState('')
+  const [availability, setAvailability] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [done, setDone] = useState(false)
 
-  const handleSubmit = async () => {
+  const submit = async () => {
     setError('')
-    if (!nombre || !especialidad || !pais || !telefono) { setError('Completa todos los campos.'); return }
+    if (!fullName.trim() || !email.trim() || !specialty || !country || !whatsapp.trim()) {
+      setError('Completa nombre, email, especialidad, país y WhatsApp.')
+      return
+    }
     setLoading(true)
     try {
-      const { data: doctor, error: e } = await supabase.from('doctors').insert({
-        full_name: nombre, specialty: especialidad, country: pais,
-        phone_whatsapp: telefono, preferred_platform: plataforma, status: 'active',
-      }).select().single()
-      if (e) throw e
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('doctor_id', doctor.id)
-        localStorage.setItem('doctor_name', doctor.full_name)
-      }
-      router.push('/panel-medico')
-    } catch { setError('Error al registrarte. Intenta de nuevo.') }
-    finally { setLoading(false) }
+      const { error } = await supabase.from('doctor_applications').insert({
+        full_name: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        specialty,
+        country,
+        medical_license: license.trim() || null,
+        whatsapp_number: whatsapp.trim(),
+        availability: availability.trim() || null,
+        status: 'pending'
+      })
+      if (error) throw error
+      setDone(true)
+    } catch (e) {
+      console.error(e)
+      setError('No se pudo enviar el registro. Puede que este email ya esté registrado o haya un error de conexión.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <>
       <Head><title>Registro médico — Médicos por Venezuela</title></Head>
-      <main style={{ minHeight: '100vh', padding: '1.5rem 1rem 3rem', background: '#f9fafb' }}>
-        <div style={{ maxWidth: '560px', margin: '0 auto' }}>
-          <button onClick={() => router.push('/')} style={{ background: 'none', border: 'none', color: '#555', fontSize: '14px', padding: 0, marginBottom: '1.25rem', cursor: 'pointer' }}>← Volver</button>
-          <h1 style={{ fontSize: '22px', fontWeight: 700, marginBottom: '4px' }}>Registro de voluntario</h1>
-          <p style={{ fontSize: '14px', color: '#555', marginBottom: '1.5rem' }}>Gracias por tu solidaridad. Solo te registras una vez.</p>
+      <main className="page">
+        <div className="narrow">
+          <Link href="/" className="link-button">← Volver</Link>
+          <div className="card" style={{ marginTop: 14 }}>
+            <h1 style={{ marginTop: 0 }}>Registro de médico voluntario</h1>
+            <p style={{ color: '#64748b' }}>
+              Este formulario no crea acceso inmediato. Un administrador debe verificar el registro y crear tu usuario.
+            </p>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={campo}>
-              <span style={lbl}>Nombre completo *</span>
-              <input type="text" placeholder="Dra. María Rodríguez" value={nombre} onChange={e => setNombre(e.target.value)} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div style={campo}>
-                <span style={lbl}>Especialidad *</span>
-                <select value={especialidad} onChange={e => setEspecialidad(e.target.value)}>
-                  <option value="">Selecciona...</option>
-                  {ESPECIALIDADES.map(e => <option key={e} value={e}>{e}</option>)}
-                </select>
+            {done ? (
+              <div className="notice notice-info">
+                <strong>Registro recibido.</strong> Un administrador revisará la información. Cuando seas aprobado recibirás usuario/contraseña o un enlace de invitación.
               </div>
-              <div style={campo}>
-                <span style={lbl}>País donde resides *</span>
-                <select value={pais} onChange={e => setPais(e.target.value)}>
-                  <option value="">Selecciona...</option>
-                  {PAISES.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
+            ) : (
+              <div className="grid">
+                <div>
+                  <label className="label">Nombre completo *</label>
+                  <input value={fullName} onChange={e => setFullName(e.target.value)} />
+                </div>
+                <div>
+                  <label className="label">Email *</label>
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                </div>
+                <div className="grid grid-2">
+                  <div>
+                    <label className="label">Especialidad *</label>
+                    <select value={specialty} onChange={e => setSpecialty(e.target.value)}>
+                      <option value="">Selecciona...</option>
+                      {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">País donde ejerces/resides *</label>
+                    <select value={country} onChange={e => setCountry(e.target.value)}>
+                      <option value="">Selecciona...</option>
+                      {PAISES.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-2">
+                  <div>
+                    <label className="label">Número de colegiatura/licencia</label>
+                    <input value={license} onChange={e => setLicense(e.target.value)} placeholder="Opcional, pero recomendado" />
+                  </div>
+                  <div>
+                    <label className="label">WhatsApp *</label>
+                    <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="Ej. 584121234567" />
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Disponibilidad</label>
+                  <textarea rows={3} value={availability} onChange={e => setAvailability(e.target.value)} placeholder="Ej. 2 horas por la noche, pediatría, solo WhatsApp" />
+                </div>
+                {error && <div className="notice notice-danger">{error}</div>}
+                <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>{loading ? 'Enviando...' : 'Enviar registro'}</button>
               </div>
-            </div>
-            <div style={campo}>
-              <span style={lbl}>Teléfono WhatsApp *</span>
-              <input type="tel" placeholder="+34 600 000 000" value={telefono} onChange={e => setTelefono(e.target.value)} />
-            </div>
-            <div style={campo}>
-              <span style={lbl}>Plataforma preferida para videollamada</span>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {PLATAFORMAS.map(p => (
-                  <button key={p.val} type="button" onClick={() => setPlataforma(p.val)}
-                    style={{ flex: 1, padding: '10px 8px', border: `2px solid ${plataforma === p.val ? '#0f6e56' : '#e5e7eb'}`, borderRadius: '10px', background: plataforma === p.val ? '#e1f5ee' : 'white', fontSize: '13px', fontWeight: 600, color: plataforma === p.val ? '#0f6e56' : '#555', cursor: 'pointer' }}>
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div style={{ background: '#e1f5ee', border: '1px solid #5dcaa5', borderRadius: '10px', padding: '12px 14px', fontSize: '13px', color: '#085041', lineHeight: 1.5 }}>
-              Este servicio es de orientación médica voluntaria en contexto de emergencia.
-            </div>
-            {error && <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#b91c1c' }}>{error}</div>}
-            <button className="btn-primary" onClick={handleSubmit} disabled={loading}>
-              {loading ? 'Registrando...' : 'Registrarme y entrar al panel →'}
-            </button>
+            )}
+
+            <p style={{ marginTop: 18, color: '#64748b' }}>
+              ¿Ya tienes acceso? <Link href="/login-medico" style={{ color: '#0f6e56', fontWeight: 800 }}>Entrar al panel médico</Link>
+            </p>
           </div>
         </div>
       </main>

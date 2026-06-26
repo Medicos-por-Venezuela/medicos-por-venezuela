@@ -1,98 +1,151 @@
-import { useState } from 'react'
 import Head from 'next/head'
+import Link from 'next/link'
 import { useRouter } from 'next/router'
+import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-const ZONAS = ['Caracas - Centro','Caracas - Este','Caracas - Oeste','Caracas - Sur','Miranda','La Guaira','Aragua','Carabobo','Otro']
-const NECESIDADES = ['Apoyo emocional','Consulta médica general','Crisis de ansiedad','Lesión física','Pérdida de familiar','Primeros auxilios','Duelo','Atención psicológica','Medicamentos / receta']
-
-const campo = { display: 'flex', flexDirection: 'column' as const, gap: '6px' }
-const label = { fontSize: '14px', fontWeight: 500, color: '#1a1a1a' }
-const hint = { fontSize: '12px', color: '#888', fontWeight: 400 }
+const ZONAS = ['Caracas - Centro', 'Caracas - Este', 'Caracas - Oeste', 'Caracas - Sur', 'Miranda', 'La Guaira', 'Aragua', 'Carabobo', 'Otro']
+const NECESIDADES = ['Medicina general', 'Lesión física', 'Primeros auxilios', 'Apoyo emocional', 'Crisis de ansiedad', 'Niño / pediatría', 'Embarazo', 'Medicamentos', 'Enfermedad crónica', 'Otra']
 
 export default function RegistroPaciente() {
   const router = useRouter()
   const [nombre, setNombre] = useState('')
   const [telefono, setTelefono] = useState('')
   const [zona, setZona] = useState('')
+  const [edad, setEdad] = useState('')
   const [descripcion, setDescripcion] = useState('')
-  const [consent, setConsent] = useState(false)
   const [tags, setTags] = useState<string[]>([])
+  const [consent, setConsent] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const toggleTag = (t: string) => setTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
+  const toggleTag = (tag: string) => {
+    setTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])
+  }
 
-  const handleSubmit = async () => {
+  const submit = async () => {
     setError('')
-    if (!nombre || !telefono || !zona) { setError('Completa nombre, teléfono y zona.'); return }
-    if (tags.length === 0) { setError('Selecciona al menos un tipo de ayuda.'); return }
-    if (!consent) { setError('Debes aceptar el uso de tus datos.'); return }
+    if (!nombre.trim() || !telefono.trim() || !zona) {
+      setError('Completa nombre, WhatsApp y zona.')
+      return
+    }
+    if (tags.length === 0) {
+      setError('Selecciona al menos un tipo de ayuda.')
+      return
+    }
+    if (!consent) {
+      setError('Debes aceptar el consentimiento para poder continuar.')
+      return
+    }
+
     setLoading(true)
     try {
-      const { data: patient, error: e1 } = await supabase.from('patients').insert({
-        full_name: nombre, phone_whatsapp: telefono, affected_zone: zona,
-        needs_tags: tags, description: descripcion, consent: true, consent_at: new Date().toISOString(),
-      }).select().single()
-      if (e1) throw e1
-      const { error: e2 } = await supabase.from('consultations').insert({
-        patient_id: patient.id, status: 'waiting', priority: 'normal',
-        chief_complaint: descripcion || tags.join(', '), code: 'TEMP-' + Date.now(),
-      })
-      if (e2) throw e2
-      router.push('/sala-espera?nombre=' + encodeURIComponent(nombre))
-    } catch { setError('Error al registrarte. Intenta de nuevo.') }
-    finally { setLoading(false) }
+      const { data: patient, error: patientError } = await supabase
+        .from('patients')
+        .insert({
+          full_name: nombre.trim(),
+          phone_whatsapp: telefono.trim(),
+          affected_zone: zona,
+          age_range: edad || null,
+          needs_tags: tags,
+          description: descripcion.trim() || null,
+          consent: true,
+          consent_at: new Date().toISOString()
+        })
+        .select('id, full_name')
+        .single()
+
+      if (patientError) throw patientError
+
+      const { error: consultationError } = await supabase
+        .from('consultations')
+        .insert({
+          patient_id: patient.id,
+          status: 'waiting',
+          priority: tags.some(t => ['Lesión física', 'Embarazo', 'Niño / pediatría'].includes(t)) ? 'review' : 'normal',
+          category: tags[0],
+          chief_complaint: descripcion.trim() || tags.join(', '),
+          code: `MPV-${Date.now()}`
+        })
+
+      if (consultationError) throw consultationError
+      router.push(`/sala-espera?nombre=${encodeURIComponent(patient.full_name)}`)
+    } catch (e) {
+      console.error(e)
+      setError('No se pudo registrar la solicitud. Revisa la conexión o avisa al equipo administrador.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <>
       <Head><title>Solicitar consulta — Médicos por Venezuela</title></Head>
-      <main style={{ minHeight: '100vh', padding: '1.5rem 1rem 3rem', background: '#f9fafb' }}>
-        <div style={{ maxWidth: '560px', margin: '0 auto' }}>
-          <button onClick={() => router.push('/')} style={{ background: 'none', border: 'none', color: '#555', fontSize: '14px', padding: '0', marginBottom: '1.25rem', cursor: 'pointer' }}>← Volver</button>
-          <h1 style={{ fontSize: '22px', fontWeight: 700, marginBottom: '4px' }}>Solicitar consulta</h1>
-          <p style={{ fontSize: '14px', color: '#555', marginBottom: '1.5rem' }}>Tus datos son confidenciales.</p>
+      <main className="page">
+        <div className="narrow">
+          <Link href="/" className="link-button">← Volver</Link>
+          <div className="card" style={{ marginTop: 14 }}>
+            <h1 style={{ marginTop: 0 }}>Solicitar orientación</h1>
+            <p style={{ color: '#64748b' }}>
+              Comparte solo la información mínima necesaria. Un médico voluntario podrá contactarte por WhatsApp.
+            </p>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={campo}>
-              <span style={label}>Nombre completo *</span>
-              <input type="text" placeholder="María González" value={nombre} onChange={e => setNombre(e.target.value)} />
+            <div className="notice notice-danger" style={{ marginBottom: 16 }}>
+              Si tienes síntomas graves, busca atención presencial urgente. Esta web no reemplaza emergencias.
             </div>
-            <div style={campo}>
-              <span style={label}>Teléfono WhatsApp *</span>
-              <input type="tel" placeholder="+58 412 000 0000" value={telefono} onChange={e => setTelefono(e.target.value)} />
-              <span style={hint}>Aquí recibirás el link para la videollamada</span>
-            </div>
-            <div style={campo}>
-              <span style={label}>Zona afectada *</span>
-              <select value={zona} onChange={e => setZona(e.target.value)}>
-                <option value="">Selecciona tu zona...</option>
-                {ZONAS.map(z => <option key={z} value={z}>{z}</option>)}
-              </select>
-            </div>
-            <div style={campo}>
-              <span style={label}>¿Qué tipo de ayuda necesitas? *</span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {NECESIDADES.map(n => (
-                  <button key={n} type="button" className={`tag${tags.includes(n) ? ' selected' : ''}`} onClick={() => toggleTag(n)}>{n}</button>
-                ))}
+
+            <div className="grid">
+              <div>
+                <label className="label">Nombre o alias *</label>
+                <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej. María" />
               </div>
-            </div>
-            <div style={campo}>
-              <span style={label}>Descripción <span style={hint}>(opcional)</span></span>
-              <textarea rows={3} placeholder="Cuéntanos cómo te sientes..." value={descripcion} onChange={e => setDescripcion(e.target.value)} />
-            </div>
-            <div style={{ background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '10px', padding: '12px 14px' }}>
-              <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', fontSize: '13px', cursor: 'pointer', lineHeight: 1.5 }}>
-                <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ width: 'auto', marginTop: '2px' }} />
-                <span>Acepto que mis datos sean usados únicamente para conectarme con un médico voluntario. Esta es una consulta de orientación.</span>
+              <div>
+                <label className="label">WhatsApp con código de país *</label>
+                <input value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Ej. 584121234567" />
+                <div className="hint">Usa solo un número donde puedas recibir mensajes.</div>
+              </div>
+              <div className="grid grid-2">
+                <div>
+                  <label className="label">Zona afectada *</label>
+                  <select value={zona} onChange={e => setZona(e.target.value)}>
+                    <option value="">Selecciona...</option>
+                    {ZONAS.map(z => <option key={z} value={z}>{z}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Edad aproximada</label>
+                  <select value={edad} onChange={e => setEdad(e.target.value)}>
+                    <option value="">Prefiero no decir</option>
+                    <option value="0-2">0-2 años</option>
+                    <option value="3-12">3-12 años</option>
+                    <option value="13-17">13-17 años</option>
+                    <option value="18-40">18-40 años</option>
+                    <option value="41-65">41-65 años</option>
+                    <option value="65+">65+ años</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="label">Tipo de ayuda *</label>
+                <div className="tag-row">
+                  {NECESIDADES.map(tag => (
+                    <button key={tag} type="button" onClick={() => toggleTag(tag)} className={`tag ${tags.includes(tag) ? 'selected' : ''}`}>{tag}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="label">Descripción breve</label>
+                <textarea rows={4} value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Describe en pocas palabras qué ocurre. Evita datos innecesarios." />
+              </div>
+              <label className="notice notice-warning" style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ width: 'auto', marginTop: 5 }} />
+                <span>
+                  Acepto compartir voluntariamente esta información para recibir orientación médica solidaria. Entiendo que la comunicación puede continuar por WhatsApp y que esto no reemplaza atención presencial ni servicios de emergencia.
+                </span>
               </label>
+              {error && <div className="notice notice-danger">{error}</div>}
+              <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>{loading ? 'Enviando...' : 'Solicitar consulta gratuita'}</button>
             </div>
-            {error && <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#b91c1c' }}>{error}</div>}
-            <button className="btn-primary" onClick={handleSubmit} disabled={loading}>
-              {loading ? 'Registrando...' : 'Solicitar consulta gratuita'}
-            </button>
           </div>
         </div>
       </main>
