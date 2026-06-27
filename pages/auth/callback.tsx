@@ -52,6 +52,7 @@ export default function AuthCallback() {
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role, active, role_chosen')
+        .eq('id', session.user.id)
         .single()
       if (cancelled) return
 

@@ -54,7 +54,7 @@ export default function AdminDashboard() {
       return
     }
 
-    const { data: me, error } = await supabase.from('profiles').select('*').single()
+    const { data: me, error } = await supabase.from('profiles').select('*').eq('id', sessionData.session.user.id).single()
     if (error || !me || !me.active || !['admin', 'super_admin'].includes(me.role)) {
       await supabase.auth.signOut()
       router.push('/admin')

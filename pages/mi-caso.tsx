@@ -43,7 +43,7 @@ export default function MiCaso() {
       return
     }
 
-    const { data: profile } = await supabase.from('profiles').select('role, role_chosen').single()
+    const { data: profile } = await supabase.from('profiles').select('role, role_chosen').eq('id', session.user.id).single()
     if (profile && !profile.role_chosen) {
       router.replace('/elegir-rol')
       return

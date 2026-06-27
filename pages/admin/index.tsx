@@ -19,7 +19,7 @@ export default function AdminLogin() {
     setError('')
     setLoading(true)
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(),
         password
       })
@@ -28,6 +28,7 @@ export default function AdminLogin() {
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role, active')
+        .eq('id', authData.user.id)
         .single()
       if (profileError) throw profileError
 

@@ -29,7 +29,7 @@ export default function ElegirRol() {
         return
       }
       // If the role was already chosen, don't show this screen again.
-      const { data: profile } = await supabase.from('profiles').select('role, role_chosen').single()
+      const { data: profile } = await supabase.from('profiles').select('role, role_chosen').eq('id', session.user.id).single()
       if (profile?.role_chosen) {
         redirectByRole(profile.role)
         return

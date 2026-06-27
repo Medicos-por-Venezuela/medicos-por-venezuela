@@ -74,6 +74,7 @@ export default function PanelMedico() {
     const { data: p, error: profileError } = await supabase
       .from('profiles')
       .select('id, full_name, role, specialty, verified, active')
+      .eq('id', sessionData.session.user.id)
       .single()
 
     if (profileError || !p || !p.active || !p.verified) {
