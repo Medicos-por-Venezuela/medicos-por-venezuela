@@ -2,7 +2,7 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { SPECIALTIES, STATUS_LABELS, minutesSince, whatsappUrl } from '../lib/utils'
+import { SPECIALTIES, STATUS_LABELS, matchesSpecialty, minutesSince, whatsappUrl } from '../lib/utils'
 
 type Patient = {
   id: string
@@ -121,7 +121,7 @@ export default function PanelMedico() {
     })
   }
 
-  async function openConsultation(c: Consultation) {
+  async function openConsultation(c: Consultation, channel: 'whatsapp' | 'video' = 'whatsapp') {
     if (!profile) return
     const now = new Date().toISOString()
     const { error } = await supabase
@@ -139,13 +139,29 @@ export default function PanelMedico() {
     }
 
     await addEvent(c.id, 'opened', `Abierta por ${profile.full_name}`)
-    const patientName = c.patients?.full_name || 'paciente'
-    const text = `Hola ${patientName}. Soy ${profile.full_name}, médico voluntario de Médicos por Venezuela. Recibí tu solicitud de orientación. ¿Puedes contarme brevemente cómo estás ahora?`
-    const url = whatsappUrl(c.patients?.phone_whatsapp || '', text)
-    window.open(url, '_blank')
+    if (channel === 'video' && c.video_room_url) {
+      window.open(c.video_room_url, '_blank')
+    } else {
+      const patientName = c.patients?.full_name || 'paciente'
+      const text = `Hola ${patientName}. Soy ${profile.full_name}, médico voluntario de Médicos por Venezuela. Recibí tu solicitud de orientación. ¿Puedes contarme brevemente cómo estás ahora?`
+      const url = whatsappUrl(c.patients?.phone_whatsapp || '', text)
+      window.open(url, '_blank')
+    }
     setSelected({ ...c, status: 'in_progress', assigned_doctor_id: profile.id, opened_at: c.opened_at || now })
     setNote(c.internal_note || '')
     await loadConsultations()
+  }
+
+  // Take the next waiting patient: prefer one matching the doctor's specialty (oldest first),
+  // otherwise fall back to the oldest waiting patient so nobody is left unattended.
+  async function attendNext() {
+    setMessage('')
+    if (waiting.length === 0) {
+      setMessage('No hay pacientes en cola.')
+      return
+    }
+    const next = waiting.find(c => matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)) || waiting[0]
+    await openConsultation(next, next.video_room_url ? 'video' : 'whatsapp')
   }
 
   async function saveNote() {
@@ -239,6 +255,10 @@ export default function PanelMedico() {
             <div className="kpi"><div className="kpi-value">{referred.length}</div><div className="kpi-label">Derivadas</div></div>
             <div className="kpi"><div className="kpi-value">{urgent.length}</div><div className="kpi-label">Urgentes</div></div>
           </div>
+
+          <button className="btn btn-primary btn-full" style={{ marginBottom: 18, fontSize: 16, padding: '15px 18px' }} onClick={attendNext} disabled={waiting.length === 0}>
+            Atender al siguiente paciente en cola{waiting.length ? ` · ${waiting.length} en espera` : ''}
+          </button>
 
           <div className="grid grid-2">
             <section className="card">
