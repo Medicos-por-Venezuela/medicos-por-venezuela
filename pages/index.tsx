@@ -33,7 +33,7 @@ export default function Home() {
 
           <button onClick={() => router.push('/registro-medico')} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '16px', padding: '1.5rem 1rem', textAlign: 'center', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
             <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#e6f1fb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px' }}>🩺</div>
-            <h2 style={{ fontSize: '15px', fontWeight: 600 }}>Soy médico</h2>
+            <h2 style={{ fontSize: '15px', fontWeight: 600 }}>Soy Médico/Psicólogo</h2>
             <p style={{ fontSize: '13px', color: '#555', lineHeight: 1.4 }}>Quiero ofrecer mi ayuda voluntaria</p>
             <div style={{ marginTop: '8px', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, background: '#185fa5', color: 'white', width: '100%' }}>
               Registrarme →
