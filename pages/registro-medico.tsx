@@ -66,7 +66,7 @@ export default function RegistroMedico() {
         <div className="narrow">
           <Link href="/" className="link-button">← Volver</Link>
           <div className="card" style={{ marginTop: 14 }}>
-            <h1 style={{ marginTop: 0 }}>Crea tu cuenta de médico</h1>
+            <h1 style={{ marginTop: 0 }}>Crea tu cuenta de Médico/Psicólogo</h1>
             <p style={{ color: '#64748b' }}>
               Paso 1 de 2: crea tu cuenta. Luego completarás tu especialidad y datos de contacto.
             </p>
