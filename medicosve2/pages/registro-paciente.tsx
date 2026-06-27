@@ -1,8 +1,10 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { signInWithGoogle } from '../lib/auth'
+import GoogleButton from '../components/GoogleButton'
 
 const ZONAS = ['Caracas - Centro', 'Caracas - Este', 'Caracas - Oeste', 'Caracas - Sur', 'Miranda', 'La Guaira', 'Aragua', 'Carabobo', 'Otro']
 const NECESIDADES = ['Medicina general', 'Lesión física', 'Primeros auxilios', 'Apoyo emocional', 'Crisis de ansiedad', 'Niño / pediatría', 'Embarazo', 'Medicamentos', 'Enfermedad crónica', 'Otra']
@@ -18,6 +20,19 @@ export default function RegistroPaciente() {
   const [consent, setConsent] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Optional account creation
+  const [wantsAccount, setWantsAccount] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  // True when the patient is already logged in (e.g. arrived from the Google role-picker).
+  const [authedPatient, setAuthedPatient] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) setAuthedPatient(true)
+    })
+  }, [])
 
   const toggleTag = (tag: string) => {
     setTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])
@@ -37,12 +52,37 @@ export default function RegistroPaciente() {
       setError('Debes aceptar el consentimiento para poder continuar.')
       return
     }
+    if (wantsAccount && !authedPatient && (!email.trim() || password.length < 6)) {
+      setError('Para crear una cuenta indica un email y una contraseña de al menos 6 caracteres.')
+      return
+    }
 
     setLoading(true)
     try {
+      // Determine the owning account, if any.
+      let userId: string | null = null
+
+      if (authedPatient) {
+        const { data: sessionData } = await supabase.auth.getSession()
+        userId = sessionData.session?.user.id ?? null
+      } else if (wantsAccount) {
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: email.trim().toLowerCase(),
+          password,
+          options: { data: { full_name: nombre.trim(), role: 'patient' } }
+        })
+        if (signUpError) throw signUpError
+        userId = signUpData.user?.id ?? null
+        if (!signUpData.session) {
+          setError('Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión en "Seguir mi caso".')
+          return
+        }
+      }
+
       const { data: patient, error: patientError } = await supabase
         .from('patients')
         .insert({
+          user_id: userId,
           full_name: nombre.trim(),
           phone_whatsapp: telefono.trim(),
           affected_zone: zona,
@@ -69,10 +109,12 @@ export default function RegistroPaciente() {
         })
 
       if (consultationError) throw consultationError
-      router.push(`/sala-espera?nombre=${encodeURIComponent(patient.full_name)}`)
+
+      if (userId) router.push('/mi-caso')
+      else router.push(`/sala-espera?nombre=${encodeURIComponent(patient.full_name)}`)
     } catch (e) {
       console.error(e)
-      setError('No se pudo registrar la solicitud. Revisa la conexión o avisa al equipo administrador.')
+      setError('No se pudo registrar la solicitud. Puede que el email ya esté registrado, o haya un error de conexión.')
     } finally {
       setLoading(false)
     }
@@ -137,6 +179,28 @@ export default function RegistroPaciente() {
                 <label className="label">Descripción breve</label>
                 <textarea rows={4} value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Describe en pocas palabras qué ocurre. Evita datos innecesarios." />
               </div>
+
+              {!authedPatient && (
+                <div className="notice" style={{ background: '#f8fafc' }}>
+                  <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={wantsAccount} onChange={e => setWantsAccount(e.target.checked)} style={{ width: 'auto', marginTop: 5 }} />
+                    <span><strong>Crear una cuenta para seguir mi caso</strong> (opcional). Podrás iniciar sesión y ver el estado de tu solicitud.</span>
+                  </label>
+                  {wantsAccount && (
+                    <div className="grid grid-2" style={{ marginTop: 12 }}>
+                      <div>
+                        <label className="label">Email</label>
+                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="label">Contraseña</label>
+                        <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <label className="notice notice-warning" style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                 <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ width: 'auto', marginTop: 5 }} />
                 <span>
@@ -145,6 +209,22 @@ export default function RegistroPaciente() {
               </label>
               {error && <div className="notice notice-danger">{error}</div>}
               <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>{loading ? 'Enviando...' : 'Solicitar consulta gratuita'}</button>
+
+              {!authedPatient && (
+                <>
+                  <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o crea tu cuenta con</div>
+                  <GoogleButton
+                    disabled={loading}
+                    onClick={async () => {
+                      setError('')
+                      try { await signInWithGoogle() } catch { setError('No se pudo iniciar sesión con Google.') }
+                    }}
+                  />
+                  <p style={{ textAlign: 'center', color: '#64748b', fontSize: 13, margin: 0 }}>
+                    ¿Ya tienes cuenta? <Link href="/mi-caso" style={{ color: '#0f6e56', fontWeight: 700 }}>Seguir mi caso</Link>
+                  </p>
+                </>
+              )}
             </div>
           </div>
         </div>

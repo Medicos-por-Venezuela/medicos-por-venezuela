@@ -1,14 +1,19 @@
 import Head from 'next/head'
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { signInWithGoogle } from '../lib/auth'
+import GoogleButton from '../components/GoogleButton'
 import { SPECIALTIES } from '../lib/utils'
 
 const PAISES = ['Venezuela', 'Colombia', 'España', 'Chile', 'Argentina', 'Perú', 'Ecuador', 'México', 'Estados Unidos', 'Panamá', 'República Dominicana', 'Uruguay', 'Italia', 'Portugal', 'Dinamarca', 'Otro']
 
 export default function RegistroMedico() {
+  const router = useRouter()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [specialty, setSpecialty] = useState('')
   const [country, setCountry] = useState('')
   const [license, setLicense] = useState('')
@@ -16,32 +21,50 @@ export default function RegistroMedico() {
   const [availability, setAvailability] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [done, setDone] = useState(false)
 
   const submit = async () => {
     setError('')
-    if (!fullName.trim() || !email.trim() || !specialty || !country || !whatsapp.trim()) {
-      setError('Completa nombre, email, especialidad, país y WhatsApp.')
+    if (!fullName.trim() || !email.trim() || password.length < 6 || !specialty || !country || !whatsapp.trim()) {
+      setError('Completa nombre, email, contraseña (mín. 6), especialidad, país y WhatsApp.')
       return
     }
     setLoading(true)
     try {
-      const { error } = await supabase.from('doctor_applications').insert({
-        full_name: fullName.trim(),
+      const { data, error } = await supabase.auth.signUp({
         email: email.trim().toLowerCase(),
-        specialty,
-        country,
-        medical_license: license.trim() || null,
-        whatsapp_number: whatsapp.trim(),
-        availability: availability.trim() || null,
-        status: 'pending'
+        password,
+        options: {
+          data: {
+            full_name: fullName.trim(),
+            role: 'doctor',
+            specialty,
+            country,
+            medical_license: license.trim() || null,
+            whatsapp_number: whatsapp.trim()
+          }
+        }
       })
       if (error) throw error
-      setDone(true)
+      if (!data.session) {
+        setError('Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión.')
+        return
+      }
+      router.push('/panel-medico')
     } catch (e) {
       console.error(e)
-      setError('No se pudo enviar el registro. Puede que este email ya esté registrado o haya un error de conexión.')
+      setError('No se pudo crear la cuenta. Puede que este email ya esté registrado o haya un error de conexión.')
     } finally {
+      setLoading(false)
+    }
+  }
+
+  const googleSignup = async () => {
+    setError('')
+    setLoading(true)
+    try {
+      await signInWithGoogle()
+    } catch {
+      setError('No se pudo iniciar sesión con Google. Intenta de nuevo.')
       setLoading(false)
     }
   }
@@ -55,22 +78,23 @@ export default function RegistroMedico() {
           <div className="card" style={{ marginTop: 14 }}>
             <h1 style={{ marginTop: 0 }}>Registro de médico voluntario</h1>
             <p style={{ color: '#64748b' }}>
-              Este formulario no crea acceso inmediato. Un administrador debe verificar el registro y crear tu usuario.
+              Crea tu cuenta con email y contraseña (o con Google) y entra directamente al panel médico.
             </p>
 
-            {done ? (
-              <div className="notice notice-info">
-                <strong>Registro recibido.</strong> Un administrador revisará la información. Cuando seas aprobado recibirás usuario/contraseña o un enlace de invitación.
-              </div>
-            ) : (
-              <div className="grid">
+            <div className="grid">
                 <div>
                   <label className="label">Nombre completo *</label>
                   <input value={fullName} onChange={e => setFullName(e.target.value)} />
                 </div>
-                <div>
-                  <label className="label">Email *</label>
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                <div className="grid grid-2">
+                  <div>
+                    <label className="label">Email *</label>
+                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="label">Contraseña *</label>
+                    <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
+                  </div>
                 </div>
                 <div className="grid grid-2">
                   <div>
@@ -103,12 +127,13 @@ export default function RegistroMedico() {
                   <textarea rows={3} value={availability} onChange={e => setAvailability(e.target.value)} placeholder="Ej. 2 horas por la noche, pediatría, solo WhatsApp" />
                 </div>
                 {error && <div className="notice notice-danger">{error}</div>}
-                <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>{loading ? 'Enviando...' : 'Enviar registro'}</button>
+                <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>{loading ? 'Creando cuenta...' : 'Crear cuenta y entrar'}</button>
+                <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>
+                <GoogleButton onClick={googleSignup} disabled={loading} />
               </div>
-            )}
 
             <p style={{ marginTop: 18, color: '#64748b' }}>
-              ¿Ya tienes acceso? <Link href="/login-medico" style={{ color: '#0f6e56', fontWeight: 800 }}>Entrar al panel médico</Link>
+              ¿Ya tienes cuenta? <Link href="/login-medico" style={{ color: '#0f6e56', fontWeight: 800 }}>Entrar al panel médico</Link>
             </p>
           </div>
         </div>

@@ -1,12 +1,14 @@
 import Head from 'next/head'
-import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useState } from 'react'
-import { supabase } from '../lib/supabase'
-import { signInWithGoogle } from '../lib/auth'
-import GoogleButton from '../components/GoogleButton'
+import { supabase } from '../../lib/supabase'
+import { signInWithGoogle } from '../../lib/auth'
+import GoogleButton from '../../components/GoogleButton'
 
-export default function LoginMedico() {
+// Private admin entrance. Not linked from anywhere public. Only admin/super_admin may pass;
+// any other account is signed out. Google sign-in routes through /auth/callback, which sends
+// a real admin to the dashboard and never lets a new account self-assign the admin role.
+export default function AdminLogin() {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -25,28 +27,19 @@ export default function LoginMedico() {
 
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('role, verified, active, role_chosen')
+        .select('role, active')
         .single()
       if (profileError) throw profileError
-      if (!profile.role_chosen) {
-        router.push('/elegir-rol')
-        return
-      }
-      if (!profile.active) {
+
+      if (!profile.active || !['admin', 'super_admin'].includes(profile.role)) {
         await supabase.auth.signOut()
-        setError('Tu cuenta está desactivada. Contacta a un administrador.')
+        setError('No autorizado.')
         return
       }
-      if (['admin', 'super_admin'].includes(profile.role)) {
-        router.push('/admin/dashboard')
-      } else if (['doctor', 'specialist'].includes(profile.role)) {
-        router.push('/panel-medico')
-      } else {
-        router.push('/mi-caso')
-      }
+      router.push('/admin/dashboard')
     } catch (e) {
       console.error(e)
-      setError('Email o contraseña incorrectos.')
+      setError('Credenciales inválidas o cuenta no autorizada.')
     } finally {
       setLoading(false)
     }
@@ -57,23 +50,23 @@ export default function LoginMedico() {
     setLoading(true)
     try {
       await signInWithGoogle()
-      // On success the browser is redirected to Google, then back to /auth/callback.
-    } catch (e) {
-      console.error(e)
-      setError('No se pudo iniciar sesión con Google. Intenta de nuevo.')
+    } catch {
+      setError('No se pudo iniciar sesión con Google.')
       setLoading(false)
     }
   }
 
   return (
     <>
-      <Head><title>Acceso médico — Médicos por Venezuela</title></Head>
+      <Head>
+        <title>Administración</title>
+        <meta name="robots" content="noindex" />
+      </Head>
       <main className="page">
         <div className="narrow">
-          <Link href="/" className="link-button">← Volver</Link>
           <div className="card" style={{ marginTop: 14 }}>
-            <h1 style={{ marginTop: 0 }}>Acceso médico</h1>
-            <p style={{ color: '#64748b' }}>Entra con tu email y contraseña, o con Google.</p>
+            <h1 style={{ marginTop: 0 }}>Administración</h1>
+            <p style={{ color: '#64748b' }}>Acceso restringido.</p>
             <div className="grid">
               <div>
                 <label className="label">Email</label>

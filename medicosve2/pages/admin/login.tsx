@@ -1,1 +1,1 @@
-export { default } from '../login-medico'
+export { default } from './index'

@@ -16,9 +16,10 @@ create table if not exists public.profiles (
   whatsapp_number text,
   verified boolean not null default false,
   active boolean not null default true,
+  role_chosen boolean not null default false, -- false = OAuth placeholder waiting for the user to pick a role
   last_seen_at timestamptz,
   created_at timestamptz not null default now(),
-  constraint profiles_role_check check (role in ('doctor', 'specialist', 'admin', 'super_admin'))
+  constraint profiles_role_check check (role in ('patient', 'doctor', 'specialist', 'admin', 'super_admin'))
 );
 
 alter table public.profiles add column if not exists email text unique;
@@ -30,27 +31,27 @@ alter table public.profiles add column if not exists country text;
 alter table public.profiles add column if not exists whatsapp_number text;
 alter table public.profiles add column if not exists verified boolean default false;
 alter table public.profiles add column if not exists active boolean default true;
+alter table public.profiles add column if not exists role_chosen boolean not null default false;
+-- Backfill: accounts that predate the role picker already have a real role (only fresh OAuth
+-- placeholders use role='patient' with role_chosen=false), so finalize the existing staff rows.
+update public.profiles set role_chosen = true where role <> 'patient' and role_chosen = false;
 alter table public.profiles add column if not exists last_seen_at timestamptz;
 alter table public.profiles add column if not exists created_at timestamptz default now();
 
--- 2) Doctor volunteer applications. These are NOT login accounts yet.
-create table if not exists public.doctor_applications (
-  id uuid primary key default gen_random_uuid(),
-  full_name text not null,
-  email text not null unique,
-  specialty text not null,
-  country text not null,
-  medical_license text,
-  whatsapp_number text not null,
-  availability text,
-  status text not null default 'pending', -- pending | approved | rejected
-  created_at timestamptz not null default now(),
-  constraint doctor_applications_status_check check (status in ('pending', 'approved', 'rejected'))
-);
+-- Allow 'patient' in the role constraint (idempotent for existing databases).
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check
+  check (role in ('patient', 'doctor', 'specialist', 'admin', 'super_admin'));
+
+-- 2) Doctor volunteer applications: RETIRED. Doctors now self-register as real accounts.
+-- Dropping the table also removes its policies (cascade); safe whether or not it exists.
+drop table if exists public.doctor_applications cascade;
 
 -- 3) Patients. Keep this minimal; avoid storing more health data than needed.
+-- user_id links a patient record to an (optional) Supabase Auth account so they can follow their case.
 create table if not exists public.patients (
   id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete set null,
   full_name text not null,
   phone_whatsapp text not null,
   affected_zone text not null,
@@ -62,6 +63,7 @@ create table if not exists public.patients (
   created_at timestamptz not null default now()
 );
 
+alter table public.patients add column if not exists user_id uuid references auth.users(id) on delete set null;
 alter table public.patients add column if not exists age_range text;
 alter table public.patients add column if not exists needs_tags text[] default '{}';
 alter table public.patients add column if not exists description text;
@@ -111,29 +113,89 @@ create index if not exists idx_profiles_last_seen on public.profiles(last_seen_a
 create index if not exists idx_consultations_status on public.consultations(status);
 create index if not exists idx_consultations_assigned on public.consultations(assigned_doctor_id);
 create index if not exists idx_consultations_patient on public.consultations(patient_id);
+create index if not exists idx_patients_user on public.patients(user_id);
 create index if not exists idx_consultation_events_consultation on public.consultation_events(consultation_id);
 
 -- Create a profile automatically when a Supabase Auth user is created.
+-- Email signups pass role + (for doctors) professional fields via user metadata and are finalized
+-- immediately (role_chosen = true, instant access). OAuth signups (Google) have no role metadata,
+-- so they get a placeholder profile with role_chosen = false; the app then sends them to /elegir-rol.
+-- Never assigns admin/specialist here; those are promoted manually.
 create or replace function public.handle_new_auth_user()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  meta_role text := new.raw_user_meta_data->>'role';
+  resolved_role text;
+  has_role boolean;
 begin
-  insert into public.profiles (id, email, full_name, role, verified, active)
+  has_role := meta_role in ('patient', 'doctor');
+  resolved_role := case when has_role then meta_role else 'patient' end;
+
+  insert into public.profiles (
+    id, email, full_name, role,
+    specialty, country, medical_license, whatsapp_number,
+    verified, active, role_chosen
+  )
   values (
     new.id,
     new.email,
-    coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email, '@', 1)),
-    'doctor',
-    false,
-    true
+    coalesce(
+      new.raw_user_meta_data->>'full_name',
+      new.raw_user_meta_data->>'name',
+      split_part(new.email, '@', 1)
+    ),
+    resolved_role,
+    case when resolved_role = 'doctor' then new.raw_user_meta_data->>'specialty' end,
+    case when resolved_role = 'doctor' then new.raw_user_meta_data->>'country' end,
+    case when resolved_role = 'doctor' then new.raw_user_meta_data->>'medical_license' end,
+    case when resolved_role = 'doctor' then new.raw_user_meta_data->>'whatsapp_number' end,
+    true,
+    true,
+    has_role -- email signup with an explicit role is finalized; OAuth placeholders are not
   )
   on conflict (id) do nothing;
   return new;
 end;
 $$;
+
+-- Users finalize their OWN profile exactly once (used by /elegir-rol after Google sign-in).
+-- Cannot be used to escalate: only patient/doctor, only while role_chosen is still false.
+create or replace function public.set_my_role(
+  p_role text,
+  p_specialty text default null,
+  p_country text default null,
+  p_medical_license text default null,
+  p_whatsapp_number text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_role not in ('patient', 'doctor') then
+    raise exception 'invalid role';
+  end if;
+
+  update public.profiles
+  set
+    role = p_role,
+    specialty = case when p_role = 'doctor' then p_specialty else specialty end,
+    country = case when p_role = 'doctor' then p_country else country end,
+    medical_license = case when p_role = 'doctor' then p_medical_license else medical_license end,
+    whatsapp_number = case when p_role = 'doctor' then p_whatsapp_number else whatsapp_number end,
+    verified = true,
+    active = true,
+    role_chosen = true
+  where id = auth.uid() and role_chosen = false;
+end;
+$$;
+
+grant execute on function public.set_my_role(text, text, text, text, text) to authenticated;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
@@ -187,7 +249,6 @@ grant execute on function public.mark_myself_online() to authenticated;
 
 -- Enable Row Level Security
 alter table public.profiles enable row level security;
-alter table public.doctor_applications enable row level security;
 alter table public.patients enable row level security;
 alter table public.consultations enable row level security;
 alter table public.consultation_events enable row level security;
@@ -197,17 +258,15 @@ alter table public.consultation_events enable row level security;
 drop policy if exists profiles_select_self_or_admin on public.profiles;
 drop policy if exists profiles_insert_admin on public.profiles;
 drop policy if exists profiles_update_admin on public.profiles;
--- applications
-drop policy if exists applications_insert_public on public.doctor_applications;
-drop policy if exists applications_select_admin on public.doctor_applications;
-drop policy if exists applications_update_admin on public.doctor_applications;
 -- patients
 drop policy if exists patients_insert_public on public.patients;
 drop policy if exists patients_select_staff on public.patients;
+drop policy if exists patients_select_own on public.patients;
 drop policy if exists patients_update_admin on public.patients;
 -- consultations
 drop policy if exists consultations_insert_public on public.consultations;
 drop policy if exists consultations_select_staff on public.consultations;
+drop policy if exists consultations_select_own on public.consultations;
 drop policy if exists consultations_update_staff on public.consultations;
 drop policy if exists consultations_update_admin on public.consultations;
 -- events
@@ -234,38 +293,25 @@ to authenticated
 using (public.is_admin())
 with check (public.is_admin());
 
--- doctor applications policies
-create policy applications_insert_public
-on public.doctor_applications
-for insert
-to anon, authenticated
-with check (true);
-
-create policy applications_select_admin
-on public.doctor_applications
-for select
-to authenticated
-using (public.is_admin());
-
-create policy applications_update_admin
-on public.doctor_applications
-for update
-to authenticated
-using (public.is_admin())
-with check (public.is_admin());
-
 -- patients policies
 create policy patients_insert_public
 on public.patients
 for insert
 to anon, authenticated
-with check (consent = true);
+with check (consent = true and (user_id is null or user_id = auth.uid()));
 
 create policy patients_select_staff
 on public.patients
 for select
 to authenticated
 using (public.is_staff());
+
+-- A patient with an account can read only their own record.
+create policy patients_select_own
+on public.patients
+for select
+to authenticated
+using (user_id = auth.uid());
 
 create policy patients_update_admin
 on public.patients
@@ -286,6 +332,18 @@ on public.consultations
 for select
 to authenticated
 using (public.is_staff());
+
+-- A patient with an account can read only the consultations tied to their own patient record.
+create policy consultations_select_own
+on public.consultations
+for select
+to authenticated
+using (
+  exists (
+    select 1 from public.patients p
+    where p.id = consultations.patient_id and p.user_id = auth.uid()
+  )
+);
 
 create policy consultations_update_staff
 on public.consultations

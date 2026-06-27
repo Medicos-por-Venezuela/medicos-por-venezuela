@@ -23,7 +23,7 @@ export default function Home() {
             </div>
           </section>
 
-          <div className="grid grid-3" style={{ marginTop: 22 }}>
+          <div className="grid grid-2" style={{ marginTop: 22 }}>
             <Link className="card" href="/registro-paciente">
               <h2 style={{ marginTop: 0 }}>Soy paciente</h2>
               <p style={{ color: '#64748b' }}>Necesito orientación médica o apoyo emocional.</p>
@@ -34,12 +34,6 @@ export default function Home() {
               <h2 style={{ marginTop: 0 }}>Soy médico</h2>
               <p style={{ color: '#64748b' }}>Quiero registrarme como voluntario.</p>
               <span className="btn btn-secondary">Registrar voluntario</span>
-            </Link>
-
-            <Link className="card" href="/login-medico">
-              <h2 style={{ marginTop: 0 }}>Acceso médico</h2>
-              <p style={{ color: '#64748b' }}>Ya tengo usuario y contraseña.</p>
-              <span className="btn btn-outline">Entrar al panel</span>
             </Link>
           </div>
 
