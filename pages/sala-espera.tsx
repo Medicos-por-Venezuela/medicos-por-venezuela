@@ -14,19 +14,35 @@ export default function SalaEspera() {
   // Waiting-room heartbeat: while this page is open, tell the backend the patient is present every
   // ~20s so the doctor panel can distinguish people actually waiting from those who submitted and left.
   useEffect(() => {
-    if (!cid) return
-    const ping = () => { supabase.rpc('mark_patient_waiting', { p_consultation_id: cid }) }
-    ping()
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== 'hidden') ping()
-    }, 20000)
-    const onVisible = () => { if (document.visibilityState === 'visible') ping() }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      window.clearInterval(timer)
-      document.removeEventListener('visibilitychange', onVisible)
+  if (!cid) return
+
+  const ping = async () => {
+    const { error } = await supabase.rpc('mark_patient_waiting', {
+      p_consultation_id: cid
+    })
+
+    if (error) {
+      console.error('Error actualizando presencia del paciente:', error)
     }
-  }, [cid])
+  }
+
+  ping()
+
+  const timer = window.setInterval(ping, 15000)
+
+  const onVisible = () => {
+    ping()
+  }
+
+  window.addEventListener('focus', ping)
+  document.addEventListener('visibilitychange', onVisible)
+
+  return () => {
+    window.clearInterval(timer)
+    window.removeEventListener('focus', ping)
+    document.removeEventListener('visibilitychange', onVisible)
+  }
+}, [cid])
 
   return (
     <>
