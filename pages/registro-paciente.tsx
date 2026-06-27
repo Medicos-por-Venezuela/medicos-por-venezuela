@@ -202,7 +202,7 @@ export default function RegistroPaciente() {
                 <div>
                   <label className="label">Edad aproximada</label>
                   <select value={edad} onChange={e => setEdad(e.target.value)}>
-                    <option value="">Prefiero no decir</option>
+                    <option value="">Selecciona...</option>
                     <option value="0-2">0-2 años</option>
                     <option value="3-12">3-12 años</option>
                     <option value="13-17">13-17 años</option>
