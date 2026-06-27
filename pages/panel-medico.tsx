@@ -28,8 +28,17 @@ type Consultation = {
   referred_specialty: string | null
   internal_note: string | null
   video_room_url: string | null
+  patient_last_seen_at: string | null
   assigned_doctor_id: string | null
   patients: Patient | null
+}
+
+// A patient counts as "in the waiting room" if their /sala-espera page pinged within this window
+// (it pings every ~20s, so we allow a couple of missed beats before treating them as gone).
+const PRESENCE_WINDOW_MS = 50000
+function isPatientPresent(c: Consultation): boolean {
+  if (!c.patient_last_seen_at) return false
+  return Date.now() - new Date(c.patient_last_seen_at).getTime() < PRESENCE_WINDOW_MS
 }
 
 type Profile = {
@@ -62,6 +71,13 @@ export default function PanelMedico() {
     }
     updateOnline()
     const timer = window.setInterval(updateOnline, 60000)
+    return () => window.clearInterval(timer)
+  }, [profile?.id])
+
+  // Poll the queue so patient presence (and cases claimed by other doctors) stay fresh.
+  useEffect(() => {
+    if (!profile?.id) return
+    const timer = window.setInterval(() => { loadConsultations() }, 20000)
     return () => window.clearInterval(timer)
   }, [profile?.id])
 
@@ -121,13 +137,15 @@ export default function PanelMedico() {
   }
 
   const waiting = useMemo(() => consultations.filter(c => c.status === 'waiting'), [consultations])
-  // Waiting patients that align with this doctor's specialty (and that they're allowed to take).
+  // Only patients whose waiting-room page is still pinging count as actually present in the queue.
+  const waitingPresent = useMemo(() => waiting.filter(isPatientPresent), [waiting])
+  // Present waiting patients that align with this doctor's specialty (and that they're allowed to take).
   const mySpecialtyWaiting = useMemo(
-    () => waiting.filter(c =>
+    () => waitingPresent.filter(c =>
       canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null) &&
       matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)
     ),
-    [waiting, profile?.specialty]
+    [waitingPresent, profile?.specialty]
   )
 
   async function addEvent(consultationId: string, eventType: string, eventNote?: string) {
@@ -176,11 +194,12 @@ export default function PanelMedico() {
   // otherwise fall back to the oldest waiting patient so nobody is left unattended.
   async function attendNext() {
     setMessage('')
-    // Hard filter first: never assign cases reserved for other specialties (e.g. psychology
+    // Only consider patients actually present in the waiting room, so we never open an empty call.
+    // Hard filter too: never assign cases reserved for other specialties (e.g. psychology
     // cases only go to psychologists/psychiatrists).
-    const eligible = waiting.filter(c => canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null))
+    const eligible = waitingPresent.filter(c => canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null))
     if (eligible.length === 0) {
-      setMessage(waiting.length ? 'No hay pacientes en cola para tu especialidad ahora.' : 'No hay pacientes en cola.')
+      setMessage(waitingPresent.length ? 'No hay pacientes en sala para tu especialidad ahora.' : 'No hay pacientes en sala en este momento.')
       return
     }
     const next = eligible.find(c => matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)) || eligible[0]
@@ -194,18 +213,23 @@ export default function PanelMedico() {
     else setMessage('Nota guardada.')
   }
 
-  async function closeConsultation() {
+  async function closeConsultation(outcome: 'closed' | 'patient_no_show' = 'closed') {
     if (!selected || !profile) return
+    const noShow = outcome === 'patient_no_show'
     const { error } = await supabase
       .from('consultations')
-      .update({ status: 'closed', internal_note: note, closed_at: new Date().toISOString() })
+      .update({ status: outcome, internal_note: note, closed_at: new Date().toISOString() })
       .eq('id', selected.id)
 
     if (error) {
-      setMessage('No se pudo cerrar la consulta.')
+      setMessage(noShow ? 'No se pudo marcar como ausente.' : 'No se pudo cerrar la consulta.')
       return
     }
-    await addEvent(selected.id, 'closed', `Cerrada por ${profile.full_name}`)
+    await addEvent(
+      selected.id,
+      noShow ? 'patient_no_show' : 'closed',
+      noShow ? `Paciente no estaba en la sala de espera (${profile.full_name})` : `Cerrada por ${profile.full_name}`
+    )
     setSelected(null)
     setNote('')
     await loadConsultations()
@@ -239,13 +263,13 @@ export default function PanelMedico() {
           {message && <div className="notice notice-info" style={{ marginBottom: 16 }}>{message}</div>}
 
           <div className="grid grid-3" style={{ marginBottom: 18 }}>
-            <div className="kpi"><div className="kpi-value">{waiting.length}</div><div className="kpi-label">Esperando</div></div>
-            <div className="kpi"><div className="kpi-value">{mySpecialtyWaiting.length}</div><div className="kpi-label">Personas esperando asignadas a esta especialidad</div></div>
+            <div className="kpi"><div className="kpi-value">{waitingPresent.length}</div><div className="kpi-label">En sala esperando ahora</div></div>
+            <div className="kpi"><div className="kpi-value">{mySpecialtyWaiting.length}</div><div className="kpi-label">En sala asignados a esta especialidad</div></div>
             <div className="kpi"><div className="kpi-value">{myClosed}</div><div className="kpi-label">Consultas cerradas por mí</div></div>
           </div>
 
-          <button className="btn btn-primary btn-full" style={{ marginBottom: 18, fontSize: 16, padding: '15px 18px' }} onClick={attendNext} disabled={waiting.length === 0}>
-            Atender al siguiente paciente en cola{waiting.length ? ` · ${waiting.length} en espera` : ''}
+          <button className="btn btn-primary btn-full" style={{ marginBottom: 18, fontSize: 16, padding: '15px 18px' }} onClick={attendNext} disabled={waitingPresent.length === 0}>
+            Atender al siguiente paciente en sala{waitingPresent.length ? ` · ${waitingPresent.length} en sala` : ''}
           </button>
 
           <div className="grid grid-2">
@@ -283,7 +307,8 @@ export default function PanelMedico() {
                     </a>
                   )}
                   <button className="btn btn-secondary" onClick={saveNote}>Guardar nota</button>
-                  <button className="btn btn-primary btn-full" onClick={closeConsultation}>Cerrar consulta</button>
+                  <button className="btn btn-primary btn-full" onClick={() => closeConsultation('closed')}>Cerrar consulta</button>
+                  <button className="btn btn-outline btn-full" onClick={() => closeConsultation('patient_no_show')}>Paciente no estaba en la sala de espera</button>
                 </div>
               )}
             </section>
@@ -301,6 +326,11 @@ function ConsultationCard({ c, onOpen }: { c: Consultation; onOpen: () => void }
         <div>
           <strong>{c.patients?.full_name || 'Paciente'}</strong>
           <div style={{ color: '#64748b', fontSize: 13 }}>{c.patients?.affected_zone} · hace {minutesSince(c.created_at)} min</div>
+          <div style={{ marginTop: 4 }}>
+            {isPatientPresent(c)
+              ? <span className="badge badge-green">● En sala</span>
+              : <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>○ Sin conexión</span>}
+          </div>
         </div>
         <span className={`badge ${c.status === 'urgent_in_person' ? 'badge-red' : c.status === 'referred_to_specialist' ? 'badge-blue' : 'badge-green'}`}>{STATUS_LABELS[c.status] || c.status}</span>
       </div>

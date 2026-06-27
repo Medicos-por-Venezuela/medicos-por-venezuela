@@ -86,10 +86,11 @@ create table if not exists public.consultations (
   referred_specialty text,
   internal_note text,
   video_room_url text,
+  patient_last_seen_at timestamptz, -- heartbeat: last time the patient's waiting-room page pinged
   opened_at timestamptz,
   closed_at timestamptz,
   created_at timestamptz not null default now(),
-  constraint consultations_status_check check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled'))
+  constraint consultations_status_check check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show'))
 );
 
 alter table public.consultations add column if not exists category text;
@@ -98,9 +99,15 @@ alter table public.consultations add column if not exists assigned_doctor_id uui
 alter table public.consultations add column if not exists referred_specialty text;
 alter table public.consultations add column if not exists internal_note text;
 alter table public.consultations add column if not exists video_room_url text;
+alter table public.consultations add column if not exists patient_last_seen_at timestamptz;
 alter table public.consultations add column if not exists opened_at timestamptz;
 alter table public.consultations add column if not exists closed_at timestamptz;
 alter table public.consultations add column if not exists created_at timestamptz default now();
+
+-- Allow the 'patient_no_show' status on existing databases (idempotent).
+alter table public.consultations drop constraint if exists consultations_status_check;
+alter table public.consultations add constraint consultations_status_check
+  check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show'));
 
 -- 5) Events/audit trail for status changes.
 create table if not exists public.consultation_events (
@@ -252,6 +259,25 @@ end;
 $$;
 
 grant execute on function public.mark_myself_online() to authenticated;
+
+-- Patient waiting-room heartbeat. The patient's /sala-espera page calls this every ~20s while open
+-- so the doctor panel can tell who is actually present (vs. who submitted and left). Security definer
+-- so anonymous patients (no auth) can update only this one timestamp, and only on still-open cases.
+create or replace function public.mark_patient_waiting(p_consultation_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.consultations
+  set patient_last_seen_at = now()
+  where id = p_consultation_id
+    and status in ('waiting', 'in_progress');
+end;
+$$;
+
+grant execute on function public.mark_patient_waiting(uuid) to anon, authenticated;
 
 -- Enable Row Level Security
 alter table public.profiles enable row level security;

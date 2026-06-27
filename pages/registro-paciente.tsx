@@ -149,6 +149,7 @@ export default function RegistroPaciente() {
       const params = new URLSearchParams({ nombre: patient.full_name })
       if (room) params.set('room', room)
       if (consultation.code) params.set('code', consultation.code)
+      params.set('cid', consultation.id) // lets /sala-espera send the waiting-room heartbeat
       router.push(`/sala-espera?${params.toString()}`)
     } catch (e) {
       console.error(e)

@@ -65,7 +65,6 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `lib/utils.ts` — status labels, specialty list, specialty↔needs matching (`matchesSpecialty`, `canAttend`)
 - `components/` — shared UI (e.g. `GoogleButton.tsx`)
 - `supabase_schema.sql` — **the backend**: tables, triggers, RLS policies, RPCs (run in Supabase)
-- `README-PARA-JESUS.md` — operator guide (Spanish): deploy, create admin, manage doctors
 
 ### Routes (`pages/`)
 - `/` — home (two cards: paciente / médico; no admin link)

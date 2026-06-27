@@ -28,7 +28,7 @@ type Consultation = {
   patients: { full_name: string; affected_zone: string; needs_tags: string[] | null } | null
 }
 
-const STATUS_OPTIONS = ['waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled']
+const STATUS_OPTIONS = ['waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show']
 
 export default function AdminDashboard() {
   const router = useRouter()
@@ -113,7 +113,7 @@ export default function AdminDashboard() {
       assigned_doctor_id: caseDoctor || null,
       internal_note: caseNote
     }
-    if (caseStatus === 'closed') update.closed_at = new Date().toISOString()
+    if (caseStatus === 'closed' || caseStatus === 'patient_no_show') update.closed_at = new Date().toISOString()
     if (caseStatus === 'in_progress' && !selected.assigned_doctor_id && !caseDoctor) {
       setMessage('Asigna un médico para poner el caso en progreso.')
       return

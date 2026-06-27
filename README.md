@@ -141,7 +141,8 @@ Defined entirely in [supabase_schema.sql](supabase_schema.sql) (idempotent — s
 - **`patients`** — minimal patient data; insert requires `consent = true`; optional `user_id`. Includes
   `cedula` (collected on the request form).
 - **`consultations`** — cases; status `waiting | in_progress | referred_to_specialist | urgent_in_person |
-  closed | cancelled`; carries `video_room_url`.
+  closed | cancelled | patient_no_show`; carries `video_room_url` and `patient_last_seen_at` (presence
+  heartbeat).
 - **`consultation_events`** — audit trail of status changes.
 
 Functions / RPCs:
@@ -162,6 +163,22 @@ the update affects 0 rows, the doctor sees *"Este paciente ya fue tomado por otr
 room is **not** opened — preventing two doctors from landing in the same meeting. This complements the RLS
 policy, which already blocks reassigning an already-claimed case. See
 [pages/panel-medico.tsx](pages/panel-medico.tsx) (`openConsultation`).
+
+### Patient presence (waiting-room heartbeat)
+
+A submitted request is not the same as a patient actually waiting. While `/sala-espera` is open it calls the
+`mark_patient_waiting` RPC every ~20s, updating `consultations.patient_last_seen_at`. The doctor panel polls
+the queue every ~20s and treats a patient as **present** only if seen within `PRESENCE_WINDOW_MS` (~50s).
+Consequences:
+
+- The "En sala esperando" KPIs and the **"Atender al siguiente paciente en sala"** button only count/serve
+  **present** patients, so a doctor is never sent into an empty room. Each queue card shows **● En sala** or
+  **○ Sin conexión**; absent cases stay visible (a doctor can still open one manually).
+- At the end of a call the doctor can close a case as **"El paciente no estaba en la llamada"** → status
+  `patient_no_show` (logged in `consultation_events`), distinct from a normal close.
+
+This is a presence *proxy* (it tracks the waiting-room tab, not literal Jitsi attendance). For exact in-call
+presence, the Jitsi IFrame API would be needed.
 
 ### Specialty routing
 
@@ -287,5 +304,6 @@ See [.knowledge/TODOs.md](.knowledge/TODOs.md) for the full list. Highlights:
   `/sala-espera` is the primary channel, so this is a backup only.
 - **Per-IP rate limiting** on `/api/videoconsulta` before public promotion (anti-abuse/cost).
 - **Apex DNS** — verify `medicosporvenezuela.org` 308-redirects to `www` once public DNS caches expire.
-- **Optional UX:** real-time / polling refresh so claimed patients vanish from other doctors' panels
-  automatically (the atomic claim already prevents double-joins without it).
+- **Exact in-call presence (optional):** the current presence signal is a waiting-room-tab heartbeat proxy;
+  wiring the Jitsi IFrame API would give true "in the meeting" presence. The panel already polls every ~20s,
+  so claimed patients and presence changes refresh automatically.

@@ -1,12 +1,32 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
+import { useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 
 export default function SalaEspera() {
   const router = useRouter()
   const nombre = typeof router.query.nombre === 'string' ? router.query.nombre : 'paciente'
   const room = typeof router.query.room === 'string' ? router.query.room : ''
   const code = typeof router.query.code === 'string' ? router.query.code : ''
+  const cid = typeof router.query.cid === 'string' ? router.query.cid : ''
+
+  // Waiting-room heartbeat: while this page is open, tell the backend the patient is present every
+  // ~20s so the doctor panel can distinguish people actually waiting from those who submitted and left.
+  useEffect(() => {
+    if (!cid) return
+    const ping = () => { supabase.rpc('mark_patient_waiting', { p_consultation_id: cid }) }
+    ping()
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') ping()
+    }, 20000)
+    const onVisible = () => { if (document.visibilityState === 'visible') ping() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [cid])
 
   return (
     <>
