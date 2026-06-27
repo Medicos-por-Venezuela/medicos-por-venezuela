@@ -35,7 +35,7 @@ type Consultation = {
 
 // A patient counts as "in the waiting room" if their /sala-espera page pinged within this window
 // (it pings every ~20s, so we allow a couple of missed beats before treating them as gone).
-const PRESENCE_WINDOW_MS = 50000
+const PRESENCE_WINDOW_MS = 5 * 60 * 1000
 function isPatientPresent(c: Consultation): boolean {
   if (!c.patient_last_seen_at) return false
   return Date.now() - new Date(c.patient_last_seen_at).getTime() < PRESENCE_WINDOW_MS
