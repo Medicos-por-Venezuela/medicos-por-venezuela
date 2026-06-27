@@ -45,3 +45,19 @@ backup (rejoin later / share with someone).
     ship; downside: email is slower/less reliable than WhatsApp in an emergency.
   - Keep on-screen link as the primary channel regardless; add a "copiar enlace" button / QR.
 - [ ] Add **per-IP rate limiting** to `/api/videoconsulta` before public promotion (anti-abuse/cost).
+
+## Domain / DNS — apex redirect (double-check pending propagation)
+
+Fixed the iOS "unrelated website" issue: the apex `medicosporvenezuela.org` was pointing to a
+Network Solutions parking page (`208.91.197.27`). Repointed it to Vercel.
+
+State as of last check:
+- Apex `A @` → `216.150.1.1` (Vercel) at the authoritative NS (ns51/ns52.worldnic.com) ✅
+- Cloudflare resolver already returns the new IP ✅; Google (8.8.8.8) still cached the old parking IP ❌
+- Vercel apex domain = **Redirect to Another Domain → 308 → www** (correct); `www` is primary/Production
+- Vercel still shows **"Invalid Configuration"** only due to the stale public-DNS cache
+
+- [ ] Once Google/other resolvers expire the old cache (up to a few hours), click **Refresh** in
+  Vercel → expect it to turn valid and **auto-issue the TLS cert** for the apex.
+- [ ] Verify `https://medicosporvenezuela.org` loads and 308-redirects to `www` (test on iOS Safari).
+- [ ] Confirm no stale apex `A` record pointing to `208.91.197.27` remains at Network Solutions.

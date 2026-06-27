@@ -49,6 +49,7 @@ export default function PanelMedico() {
   const [refSpecialty, setRefSpecialty] = useState('')
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const [myClosed, setMyClosed] = useState(0)
 
   useEffect(() => {
     init()
@@ -89,11 +90,11 @@ export default function PanelMedico() {
     }
 
     setProfile(p)
-    await loadConsultations()
+    await loadConsultations(p.id)
     setLoading(false)
   }
 
-  async function loadConsultations() {
+  async function loadConsultations(doctorId?: string) {
     const { data, error } = await supabase
       .from('consultations')
       .select('*, patients(id, full_name, phone_whatsapp, affected_zone, age_range, needs_tags, description)')
@@ -106,12 +107,28 @@ export default function PanelMedico() {
       return
     }
     setConsultations((data || []) as Consultation[])
+
+    // How many cases this doctor has closed.
+    const id = doctorId || profile?.id
+    if (id) {
+      const { count } = await supabase
+        .from('consultations')
+        .select('id', { count: 'exact', head: true })
+        .eq('assigned_doctor_id', id)
+        .eq('status', 'closed')
+      setMyClosed(count || 0)
+    }
   }
 
   const waiting = useMemo(() => consultations.filter(c => c.status === 'waiting'), [consultations])
-  const mine = useMemo(() => consultations.filter(c => c.assigned_doctor_id === profile?.id && c.status === 'in_progress'), [consultations, profile?.id])
-  const referred = useMemo(() => consultations.filter(c => c.status === 'referred_to_specialist'), [consultations])
-  const urgent = useMemo(() => consultations.filter(c => c.status === 'urgent_in_person'), [consultations])
+  // Waiting patients that align with this doctor's specialty (and that they're allowed to take).
+  const mySpecialtyWaiting = useMemo(
+    () => waiting.filter(c =>
+      canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null) &&
+      matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)
+    ),
+    [waiting, profile?.specialty]
+  )
 
   async function addEvent(consultationId: string, eventType: string, eventNote?: string) {
     await supabase.from('consultation_events').insert({
@@ -234,8 +251,8 @@ export default function PanelMedico() {
         <div className="container">
           <div className="topbar">
             <div>
-              <h1 style={{ margin: 0 }}>Panel médico</h1>
-              <p style={{ margin: 0, color: '#64748b' }}>{profile?.full_name} · <span className="badge badge-green">Activo</span></p>
+              <h1 style={{ margin: 0 }}>{profile?.full_name}</h1>
+              <p style={{ margin: 0, color: '#64748b' }}>{profile?.specialty || 'Sin especialidad'} · <span className="badge badge-green">Activo</span></p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {['admin', 'super_admin'].includes(profile?.role || '') && <button className="btn btn-outline" onClick={() => router.push('/admin/dashboard')}>Panel admin</button>}
@@ -245,11 +262,10 @@ export default function PanelMedico() {
 
           {message && <div className="notice notice-info" style={{ marginBottom: 16 }}>{message}</div>}
 
-          <div className="grid grid-4" style={{ marginBottom: 18 }}>
+          <div className="grid grid-3" style={{ marginBottom: 18 }}>
             <div className="kpi"><div className="kpi-value">{waiting.length}</div><div className="kpi-label">Esperando</div></div>
-            <div className="kpi"><div className="kpi-value">{mine.length}</div><div className="kpi-label">Mis abiertas</div></div>
-            <div className="kpi"><div className="kpi-value">{referred.length}</div><div className="kpi-label">Derivadas</div></div>
-            <div className="kpi"><div className="kpi-value">{urgent.length}</div><div className="kpi-label">Urgentes</div></div>
+            <div className="kpi"><div className="kpi-value">{mySpecialtyWaiting.length}</div><div className="kpi-label">Personas esperando asignadas a esta especialidad</div></div>
+            <div className="kpi"><div className="kpi-value">{myClosed}</div><div className="kpi-label">Consultas cerradas por mí</div></div>
           </div>
 
           <button className="btn btn-primary btn-full" style={{ marginBottom: 18, fontSize: 16, padding: '15px 18px' }} onClick={attendNext} disabled={waiting.length === 0}>
@@ -262,13 +278,6 @@ export default function PanelMedico() {
               {waiting.length === 0 ? <p style={{ color: '#64748b' }}>No hay pacientes esperando.</p> : (
                 <div className="grid">
                   {waiting.map(c => <ConsultationCard key={c.id} c={c} onOpen={() => openConsultation(c)} />)}
-                </div>
-              )}
-
-              <h2>Derivadas a especialista</h2>
-              {referred.length === 0 ? <p style={{ color: '#64748b' }}>No hay derivaciones pendientes.</p> : (
-                <div className="grid">
-                  {referred.map(c => <ConsultationCard key={c.id} c={c} onOpen={() => openConsultation(c)} />)}
                 </div>
               )}
             </section>
