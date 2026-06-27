@@ -7,40 +7,46 @@ import { supabase } from '../../lib/supabase'
 export default function AuthCallback() {
   const router = useRouter()
   const [error, setError] = useState('')
+  const [debug, setDebug] = useState('')
 
   useEffect(() => {
-    if (!router.isReady) return
     let cancelled = false
 
     const run = async () => {
+      const search = new URLSearchParams(window.location.search)
       const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+      const diag = `search:[${Array.from(search.keys()).join(',') || '∅'}] hash:[${Array.from(hash.keys()).join(',') || '∅'}]`
 
-      // 1) Surface any explicit OAuth error (query or hash).
-      const oErr = (router.query.error as string) || hash.get('error')
-      const oErrDesc = (router.query.error_description as string) || hash.get('error_description')
-      if (oErr || oErrDesc) { setError(`Google: ${oErrDesc || oErr}`); return }
+      // 1) Explicit OAuth error?
+      const oErr = search.get('error') || hash.get('error')
+      const oErrDesc = search.get('error_description') || hash.get('error_description')
+      if (oErr || oErrDesc) { setError(`Google: ${oErrDesc || oErr}`); setDebug(diag); return }
 
-      // 2) Establish the session from whatever the provider returned.
+      // 2) Establish the session from whatever was returned.
       const accessToken = hash.get('access_token')
       const refreshToken = hash.get('refresh_token')
-      const code = router.query.code as string | undefined
-
-      if (accessToken && refreshToken) {
-        // Implicit flow: tokens in the URL hash.
-        const { error: e } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
-        if (e) { setError(`No se pudo iniciar sesión: ${e.message}`); return }
-      } else if (code) {
-        // PKCE flow: ?code= to exchange.
-        const { error: e } = await supabase.auth.exchangeCodeForSession(code)
-        if (e) { setError(`No se pudo iniciar sesión: ${e.message}`); return }
+      const code = search.get('code')
+      try {
+        if (accessToken && refreshToken) {
+          const { error: e } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+          if (e) throw e
+        } else if (code) {
+          const { error: e } = await supabase.auth.exchangeCodeForSession(code)
+          if (e) throw e
+        }
+      } catch (e: any) {
+        setError(`No se pudo iniciar sesión: ${e?.message || e}`); setDebug(diag); return
       }
-
-      // Remove tokens/code from the URL + history.
-      window.history.replaceState({}, '', '/auth/callback')
 
       const { data: { session } } = await supabase.auth.getSession()
       if (cancelled) return
-      if (!session) { setError('No se pudo completar el inicio de sesión con Google. Vuelve a intentarlo.'); return }
+      if (!session) {
+        setError('No se pudo completar el inicio de sesión con Google. Vuelve a intentarlo.')
+        setDebug(diag)
+        return
+      }
+
+      window.history.replaceState({}, '', '/auth/callback')
 
       // 3) Route by profile.
       const { data: profile, error: profileError } = await supabase
@@ -51,7 +57,7 @@ export default function AuthCallback() {
 
       if (profileError || !profile) {
         await supabase.auth.signOut()
-        setError('No se pudo cargar tu perfil. Intenta de nuevo.')
+        setError(`No se pudo cargar tu perfil${profileError ? `: ${profileError.message}` : ''}.`)
         return
       }
       if (!profile.role_chosen) { router.replace('/elegir-rol'); return }
@@ -67,7 +73,7 @@ export default function AuthCallback() {
 
     run()
     return () => { cancelled = true }
-  }, [router, router.isReady])
+  }, [router])
 
   return (
     <>
@@ -78,6 +84,7 @@ export default function AuthCallback() {
             {error ? (
               <>
                 <div className="notice notice-danger">{error}</div>
+                {debug && <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 8, wordBreak: 'break-all' }}>Debug: {debug}</p>}
                 <Link href="/login-medico" className="link-button" style={{ marginTop: 12, display: 'inline-block' }}>← Volver al inicio de sesión</Link>
               </>
             ) : (

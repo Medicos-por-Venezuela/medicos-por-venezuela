@@ -132,7 +132,9 @@ declare
   resolved_role text;
   has_role boolean;
 begin
-  has_role := meta_role in ('patient', 'doctor');
+  -- coalesce: NULL metadata (e.g. Google sign-in) must yield false, not NULL,
+  -- because role_chosen is NOT NULL.
+  has_role := coalesce(meta_role in ('patient', 'doctor'), false);
   resolved_role := case when has_role then meta_role else 'patient' end;
 
   insert into public.profiles (

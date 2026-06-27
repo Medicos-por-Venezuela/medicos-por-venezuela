@@ -12,6 +12,8 @@ export default function ElegirRol() {
   const router = useRouter()
   const [checking, setChecking] = useState(true)
   const [choice, setChoice] = useState<'' | 'patient' | 'doctor'>('')
+  // True when the role was pre-selected from registration intent — hides the "Volver" choice toggle.
+  const [locked, setLocked] = useState(false)
   const [specialty, setSpecialty] = useState('')
   const [country, setCountry] = useState('')
   const [license, setLicense] = useState('')
@@ -32,6 +34,14 @@ export default function ElegirRol() {
         redirectByRole(profile.role)
         return
       }
+
+      // Pre-select the form when the intent is known (email redirect ?rol= or Google localStorage).
+      const intent = new URLSearchParams(window.location.search).get('rol')
+        || (typeof window !== 'undefined' ? localStorage.getItem('mpv_role') : null)
+      if (typeof window !== 'undefined') localStorage.removeItem('mpv_role')
+      if (intent === 'medico' || intent === 'doctor') { setChoice('doctor'); setLocked(true) }
+      else if (intent === 'paciente' || intent === 'patient') { setChoice('patient'); setLocked(true) }
+
       setChecking(false)
     }
     run()
@@ -111,7 +121,7 @@ export default function ElegirRol() {
                 <div className="notice notice-info">Tu cuenta quedará como paciente. Luego podrás registrar tu solicitud.</div>
                 {error && <div className="notice notice-danger">{error}</div>}
                 <button className="btn btn-primary btn-full" onClick={confirmPatient} disabled={loading}>{loading ? 'Guardando...' : 'Confirmar como paciente'}</button>
-                <button className="btn btn-muted" onClick={() => setChoice('')} disabled={loading}>Volver</button>
+                {!locked && <button className="btn btn-muted" onClick={() => setChoice('')} disabled={loading}>Volver</button>}
               </div>
             )}
 
@@ -145,7 +155,7 @@ export default function ElegirRol() {
                 </div>
                 {error && <div className="notice notice-danger">{error}</div>}
                 <button className="btn btn-primary btn-full" onClick={confirmDoctor} disabled={loading}>{loading ? 'Guardando...' : 'Confirmar como médico'}</button>
-                <button className="btn btn-muted" onClick={() => setChoice('')} disabled={loading}>Volver</button>
+                {!locked && <button className="btn btn-muted" onClick={() => setChoice('')} disabled={loading}>Volver</button>}
               </div>
             )}
           </div>

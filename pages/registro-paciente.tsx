@@ -217,7 +217,10 @@ export default function RegistroPaciente() {
                     disabled={loading}
                     onClick={async () => {
                       setError('')
-                      try { await signInWithGoogle() } catch { setError('No se pudo iniciar sesión con Google.') }
+                      try {
+                        if (typeof window !== 'undefined') localStorage.setItem('mpv_role', 'patient')
+                        await signInWithGoogle()
+                      } catch { setError('No se pudo iniciar sesión con Google.') }
                     }}
                   />
                   <p style={{ textAlign: 'center', color: '#64748b', fontSize: 13, margin: 0 }}>
