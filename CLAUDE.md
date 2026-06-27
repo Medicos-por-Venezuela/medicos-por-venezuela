@@ -28,7 +28,7 @@ case oversight.
 
 There is **no separate backend server**. This is a **Next.js frontend + Supabase BaaS**:
 
-- The Next.js app (in `medicosve2/`) runs entirely client-side against Supabase.
+- The Next.js app (at the repo root) runs entirely client-side against Supabase.
 - "The backend" = a **Supabase project** providing Postgres, Auth, and Row Level Security.
 - All data access goes directly from the browser through the Supabase JS client using the
   **anon key** + RLS. There is no service-role key in the app (by design — see security notes).
@@ -53,15 +53,17 @@ There is **no separate backend server**. This is a **Next.js frontend + Supabase
 
 ## Project layout
 
-- `medicosve2/` — the Next.js app (the repo's actual deployable project)
-  - `pages/` — routes (see below)
-  - `lib/supabase.ts` — Supabase client (reads `NEXT_PUBLIC_*` env vars)
-  - `lib/auth.ts` — `signInWithGoogle()` OAuth helper (redirects to `/auth/callback`)
-  - `lib/utils.ts` — WhatsApp URL helpers, status labels, specialty list
-- `supabase_schema.sql` — **the backend**: tables, triggers, RLS policies, RPCs (run in Supabase)
-- `README-PARA-JESUS.md` — operator guide (Spanish): deploy, create admin, approve doctors
+The Next.js app lives at the **repo root** (so Vercel builds with default settings — Root Directory = root).
 
-### Routes (`medicosve2/pages/`)
+- `pages/` — routes (see below)
+- `lib/supabase.ts` — Supabase client (reads `NEXT_PUBLIC_*` env vars)
+- `lib/auth.ts` — `signInWithGoogle()` OAuth helper (redirects to `/auth/callback`)
+- `lib/utils.ts` — WhatsApp URL helpers, status labels, specialty list
+- `components/` — shared UI (e.g. `GoogleButton.tsx`)
+- `supabase_schema.sql` — **the backend**: tables, triggers, RLS policies, RPCs (run in Supabase)
+- `README-PARA-JESUS.md` — operator guide (Spanish): deploy, create admin, manage doctors
+
+### Routes (`pages/`)
 - `/` — home (two cards: paciente / médico; no admin link)
 - `/registro-paciente` — patient request form (public; optional account + Google)
 - `/sala-espera` — patient confirmation (anonymous submissions)
@@ -116,17 +118,16 @@ The "backend" is provisioned entirely in Supabase — there is no local server t
 ### Run the frontend locally
 
 ```bash
-cd medicosve2
-cp .env.example .env.local   # then fill in the two values below
+cp .env.example .env        # then fill in the values below
 npm install
-npm run dev                  # http://localhost:3000
+npm run dev                 # http://localhost:3000
 ```
 
-Other scripts (in `medicosve2/`): `npm run build`, `npm run start`.
+Other scripts: `npm run build`, `npm run start`.
 
 ### Environment variables
 
-Set in `medicosve2/.env.local` for local dev, and in Vercel for production:
+Set in `.env` for local dev, and in Vercel for production:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
