@@ -137,6 +137,10 @@ export default function PanelMedico() {
   }
 
   const waiting = useMemo(() => consultations.filter(c => c.status === 'waiting'), [consultations])
+  const myOpenConsultations = useMemo(
+  () => consultations.filter(c => c.status === 'in_progress' && c.assigned_doctor_id === profile?.id),
+  [consultations, profile?.id]
+)
   // Only patients whose waiting-room page is still pinging count as actually present in the queue.
   const waitingPresent = useMemo(() => waiting.filter(isPatientPresent), [waiting])
   // Present waiting patients that align with this doctor's specialty (and that they're allowed to take).
@@ -273,6 +277,32 @@ export default function PanelMedico() {
           </button>
 
           <div className="grid grid-2">
+            <section className="card">
+  <h2>Mis consultas abiertas</h2>
+
+  {myOpenConsultations.length === 0 ? (
+    <p style={{ color: '#64748b' }}>No tienes consultas abiertas.</p>
+  ) : (
+    <div className="grid">
+      {myOpenConsultations.map(c => (
+        <div key={c.id} className="card-flat">
+          <strong>{c.patients?.full_name || 'Paciente'}</strong>
+          <p>{c.chief_complaint || c.patients?.description || 'Sin descripción'}</p>
+
+          <button
+            className="btn btn-primary btn-full"
+            onClick={() => {
+              setSelected(c)
+              setNote(c.internal_note || '')
+            }}
+          >
+            Continuar / cerrar consulta
+          </button>
+        </div>
+      ))}
+    </div>
+  )}
+</section>
             <section className="card">
               <h2 style={{ marginTop: 0 }}>Consultas disponibles</h2>
               {waiting.length === 0 ? <p style={{ color: '#64748b' }}>No hay pacientes esperando.</p> : (
