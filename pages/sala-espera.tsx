@@ -40,6 +40,9 @@ export default function SalaEspera() {
             {room ? (
               <>
                 <p>Tu sala de videoconsulta está lista.</p>
+                <div className="notice notice-info" style={{ marginTop: 8 }}>
+                  ℹ️ Funciona mejor desde el navegador, no hay necesidad de bajarse la app.
+                </div>
                 <a className="btn btn-primary btn-full" href={room} target="_blank" rel="noreferrer" style={{ marginTop: 8 }}>
                   Entrar a la videoconsulta
                 </a>
