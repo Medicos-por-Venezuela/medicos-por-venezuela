@@ -13,6 +13,7 @@ type Profile = {
   verified: boolean
   active: boolean
   last_seen_at: string | null
+  created_at: string
 }
 
 type Consultation = {
@@ -29,6 +30,18 @@ type Consultation = {
 }
 
 const STATUS_OPTIONS = ['waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show']
+const ROLE_OPTIONS = ['all', 'doctor', 'specialist', 'admin', 'super_admin', 'patient']
+
+const fmtDate = (s?: string | null) => (s ? new Date(s).toLocaleDateString('es-VE') : '—')
+
+// True if an ISO timestamp falls within an inclusive [from, to] date range (either bound optional).
+// `from`/`to` come from <input type="date"> as 'YYYY-MM-DD'.
+function inDateRange(iso: string, from: string, to: string): boolean {
+  const t = new Date(iso).getTime()
+  if (from && t < new Date(from + 'T00:00:00').getTime()) return false
+  if (to && t > new Date(to + 'T23:59:59.999').getTime()) return false
+  return true
+}
 
 export default function AdminDashboard() {
   const router = useRouter()
@@ -44,6 +57,19 @@ export default function AdminDashboard() {
   const [caseStatus, setCaseStatus] = useState('')
   const [caseDoctor, setCaseDoctor] = useState('')
   const [caseNote, setCaseNote] = useState('')
+
+  // Users (doctors/admins) table filters
+  const [userSearch, setUserSearch] = useState('')
+  const [userRole, setUserRole] = useState('all')
+  const [userState, setUserState] = useState('all') // all | active | revoked
+  const [userFrom, setUserFrom] = useState('')
+  const [userTo, setUserTo] = useState('')
+
+  // Consultations table filters
+  const [caseSearch, setCaseSearch] = useState('')
+  const [caseStatusFilter, setCaseStatusFilter] = useState('all')
+  const [caseFrom, setCaseFrom] = useState('')
+  const [caseTo, setCaseTo] = useState('')
 
   useEffect(() => { init() }, [])
 
@@ -97,6 +123,28 @@ export default function AdminDashboard() {
   }, [referred])
 
   const doctorName = (id: string | null) => doctors.find(d => d.id === id)?.full_name || (id ? 'Médico' : 'Sin asignar')
+
+  const filteredProfiles = useMemo(() => {
+    const q = userSearch.trim().toLowerCase()
+    return profiles.filter(p => {
+      if (userRole !== 'all' && p.role !== userRole) return false
+      if (userState === 'active' && !p.active) return false
+      if (userState === 'revoked' && p.active) return false
+      if (!inDateRange(p.created_at, userFrom, userTo)) return false
+      if (q && !`${p.full_name} ${p.email} ${p.specialty || ''}`.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [profiles, userSearch, userRole, userState, userFrom, userTo])
+
+  const filteredConsultations = useMemo(() => {
+    const q = caseSearch.trim().toLowerCase()
+    return consultations.filter(c => {
+      if (caseStatusFilter !== 'all' && c.status !== caseStatusFilter) return false
+      if (!inDateRange(c.created_at, caseFrom, caseTo)) return false
+      if (q && !`${c.patients?.full_name || ''} ${c.code} ${c.patients?.affected_zone || ''}`.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [consultations, caseSearch, caseStatusFilter, caseFrom, caseTo])
 
   function selectCase(c: Consultation) {
     setSelected(c)
@@ -229,16 +277,32 @@ export default function AdminDashboard() {
 
           <div className="grid grid-2" style={{ marginTop: 18 }}>
             <section className="card">
-              <h2 style={{ marginTop: 0 }}>Médicos y administradores</h2>
+              <h2 style={{ marginTop: 0 }}>Médicos y administradores <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 14 }}>({filteredProfiles.length} de {profiles.length})</span></h2>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                <input style={{ flex: '1 1 160px' }} placeholder="Buscar nombre o email" value={userSearch} onChange={e => setUserSearch(e.target.value)} />
+                <select style={{ flex: '0 1 130px' }} value={userRole} onChange={e => setUserRole(e.target.value)}>
+                  {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r === 'all' ? 'Todos los roles' : r}</option>)}
+                </select>
+                <select style={{ flex: '0 1 130px' }} value={userState} onChange={e => setUserState(e.target.value)}>
+                  <option value="all">Todos los estados</option>
+                  <option value="active">Activos</option>
+                  <option value="revoked">Revocados</option>
+                </select>
+                <input type="date" style={{ flex: '0 1 140px' }} value={userFrom} onChange={e => setUserFrom(e.target.value)} title="Registrado desde" />
+                <input type="date" style={{ flex: '0 1 140px' }} value={userTo} onChange={e => setUserTo(e.target.value)} title="Registrado hasta" />
+              </div>
               <div style={{ overflowX: 'auto' }}>
                 <table className="table">
-                  <thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Online</th><th></th></tr></thead>
+                  <thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Registrado</th><th>Online</th><th></th></tr></thead>
                   <tbody>
-                    {profiles.map(p => (
+                    {filteredProfiles.length === 0 ? (
+                      <tr><td colSpan={6} style={{ color: '#64748b' }}>No hay usuarios que coincidan con el filtro.</td></tr>
+                    ) : filteredProfiles.map(p => (
                       <tr key={p.id}>
                         <td><strong>{p.full_name}</strong><br /><span style={{ color: '#64748b' }}>{p.email}</span><br />{p.specialty || ''}</td>
                         <td>{p.role}</td>
                         <td>{p.active ? <span className="badge badge-green">Activo</span> : <span className="badge badge-red">Revocado</span>}</td>
+                        <td>{fmtDate(p.created_at)}</td>
                         <td>{p.last_seen_at && now - new Date(p.last_seen_at).getTime() < 3 * 60 * 1000 ? 'Sí' : 'No'}</td>
                         <td>
                           {['admin', 'super_admin'].includes(p.role)
@@ -253,16 +317,28 @@ export default function AdminDashboard() {
             </section>
 
             <section className="card">
-              <h2 style={{ marginTop: 0 }}>Consultas recientes</h2>
+              <h2 style={{ marginTop: 0 }}>Consultas recientes <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 14 }}>({filteredConsultations.length} de {consultations.length})</span></h2>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                <input style={{ flex: '1 1 160px' }} placeholder="Buscar paciente, código o zona" value={caseSearch} onChange={e => setCaseSearch(e.target.value)} />
+                <select style={{ flex: '0 1 160px' }} value={caseStatusFilter} onChange={e => setCaseStatusFilter(e.target.value)}>
+                  <option value="all">Todos los estados</option>
+                  {STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
+                </select>
+                <input type="date" style={{ flex: '0 1 140px' }} value={caseFrom} onChange={e => setCaseFrom(e.target.value)} title="Creada desde" />
+                <input type="date" style={{ flex: '0 1 140px' }} value={caseTo} onChange={e => setCaseTo(e.target.value)} title="Creada hasta" />
+              </div>
               <div style={{ overflowX: 'auto' }}>
                 <table className="table">
-                  <thead><tr><th>Paciente</th><th>Estado</th><th>Médico</th><th></th></tr></thead>
+                  <thead><tr><th>Paciente</th><th>Estado</th><th>Médico</th><th>Creada</th><th></th></tr></thead>
                   <tbody>
-                    {consultations.map(c => (
+                    {filteredConsultations.length === 0 ? (
+                      <tr><td colSpan={5} style={{ color: '#64748b' }}>No hay consultas que coincidan con el filtro.</td></tr>
+                    ) : filteredConsultations.map(c => (
                       <tr key={c.id}>
                         <td>{c.patients?.full_name || 'Paciente'}<br /><span style={{ color: '#64748b' }}>{c.code}</span></td>
                         <td>{STATUS_LABELS[c.status] || c.status}</td>
                         <td>{doctorName(c.assigned_doctor_id)}</td>
+                        <td>{fmtDate(c.created_at)}</td>
                         <td><button className="btn btn-secondary" onClick={() => selectCase(c)}>Gestionar</button></td>
                       </tr>
                     ))}
