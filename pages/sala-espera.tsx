@@ -28,13 +28,15 @@ export default function SalaEspera() {
                   Mantén esta página abierta.
                 </div>
                 <p style={{ color: '#64748b', fontSize: 14, marginTop: 12 }}>
-                  También te enviamos este enlace por WhatsApp/SMS{code ? ` (código ${code})` : ''}. Si no llega, usa el botón de arriba.
+                  Guarda este enlace{code ? ` (código ${code})` : ''} para volver a entrar si se corta la conexión.
                 </p>
                 <div className="notice notice-info" style={{ marginTop: 12 }}>
                   <strong>Para que funcione bien:</strong>
                   <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
                     <li>Al abrir el enlace, elige <strong>“Continuar en el navegador”</strong> (no necesitas descargar la app).</li>
                     <li>Pulsa <strong>“Permitir”</strong> cuando te pida cámara y micrófono.</li>
+                    <li>Busca un lugar con <strong>mejor señal móvil</strong> y lo más <strong>silencioso</strong> posible.</li>
+                    <li>Procura estar <strong>a solas</strong> para proteger tu privacidad (salvo consulta de un niño/a, donde debe acompañarte un adulto responsable).</li>
                   </ul>
                 </div>
               </>

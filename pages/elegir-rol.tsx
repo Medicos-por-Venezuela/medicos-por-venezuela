@@ -149,8 +149,9 @@ export default function ElegirRol() {
                     <input value={license} onChange={e => setLicense(e.target.value)} placeholder="Opcional, pero recomendado" />
                   </div>
                   <div>
-                    <label className="label">WhatsApp *</label>
+                    <label className="label">WhatsApp / teléfono (uso administrativo) *</label>
                     <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="Ej. 584121234567" />
+                    <div className="hint">Solo para uso administrativo. Nunca se comparte con pacientes ni con terceros.</div>
                   </div>
                 </div>
                 {error && <div className="notice notice-danger">{error}</div>}

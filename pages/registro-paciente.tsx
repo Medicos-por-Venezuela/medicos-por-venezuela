@@ -41,7 +41,7 @@ export default function RegistroPaciente() {
   const submit = async () => {
     setError('')
     if (!nombre.trim() || !telefono.trim() || !zona) {
-      setError('Completa nombre, WhatsApp y zona.')
+      setError('Completa nombre, teléfono y zona.')
       return
     }
     if (tags.length === 0) {
@@ -112,8 +112,8 @@ export default function RegistroPaciente() {
 
       if (consultationError) throw consultationError
 
-      // Create the Jitsi room + send the link via WhatsApp/SMS (server-side). If this fails,
-      // we still continue — the patient lands in the waiting room and a doctor can reach them.
+      // Create the Jitsi video room (server-side) and show it on the waiting page. If this fails,
+      // we still continue — the case stays in the queue for a doctor to attend.
       let room = ''
       try {
         const resp = await fetch('/api/videoconsulta', {
@@ -147,7 +147,7 @@ export default function RegistroPaciente() {
           <div className="card" style={{ marginTop: 14 }}>
             <h1 style={{ marginTop: 0 }}>Solicitar orientación</h1>
             <p style={{ color: '#64748b' }}>
-              Comparte solo la información mínima necesaria. Un médico voluntario podrá contactarte por WhatsApp.
+              Comparte solo la información mínima necesaria. Un médico voluntario te atenderá por videoconsulta.
             </p>
 
             <div className="notice notice-danger" style={{ marginBottom: 16 }}>
@@ -160,9 +160,9 @@ export default function RegistroPaciente() {
                 <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej. María" />
               </div>
               <div>
-                <label className="label">WhatsApp con código de país *</label>
+                <label className="label">Teléfono con código de país *</label>
                 <input value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Ej. 584121234567" />
-                <div className="hint">Usa solo un número donde puedas recibir mensajes.</div>
+                <div className="hint">Solo lo usaremos si tu caso necesita seguimiento.</div>
               </div>
               <div className="grid grid-2">
                 <div>
@@ -222,7 +222,7 @@ export default function RegistroPaciente() {
               <label className="notice notice-warning" style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                 <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ width: 'auto', marginTop: 5 }} />
                 <span>
-                  Acepto compartir voluntariamente esta información para recibir orientación médica solidaria. Entiendo que la comunicación puede continuar por WhatsApp y que esto no reemplaza atención presencial ni servicios de emergencia.
+                  Acepto compartir voluntariamente esta información para recibir orientación médica solidaria. Entiendo que la atención es por videoconsulta, que el seguimiento podría continuar por teléfono si fuese necesario, y que esto no reemplaza atención presencial ni servicios de emergencia.
                 </span>
               </label>
               {error && <div className="notice notice-danger">{error}</div>}

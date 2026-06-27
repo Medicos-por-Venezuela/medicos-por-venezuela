@@ -2,7 +2,7 @@
 
 MVP web app connecting volunteer doctors with patients in Venezuela. Self-service email+password
 **and Google** registration for doctors and patients, an optional patient account to follow a case,
-a doctor panel (opens WhatsApp, closes/refers cases), and a private `/admin` section with metrics and
+a doctor panel (video consultations, closes/refers cases), and a private `/admin` section with metrics and
 case oversight.
 
 ## Auth model (current)
@@ -41,7 +41,8 @@ There is **no separate backend server**. This is a **Next.js frontend + Supabase
 
 - **Next.js 14.2** (Pages Router) + **React 18** + **TypeScript 5**
 - **Supabase** (`@supabase/supabase-js` v2) — Postgres DB, Auth (email/password), RLS
-- **WhatsApp** — deep links only (`https://wa.me/...`), no API integration; see `lib/utils.ts`
+- **No WhatsApp contact in-app** — patients are attended by video; the patient phone is stored only
+  for optional follow-up, the doctor's phone only for admin use (never shared)
 - **Vercel** — hosting/deploy target (env vars configured there)
 - No CSS framework — plain global CSS class names (`card`, `btn`, `kpi`, `table`, etc.)
 
@@ -51,9 +52,8 @@ There is **no separate backend server**. This is a **Next.js frontend + Supabase
 |-----------|------------------------------------------------------------------|
 | Supabase  | Database (Postgres), authentication, RLS authorization           |
 | Vercel    | Hosting, environment variables, serverless API routes            |
-| Twilio    | Sends video-room links to patients via WhatsApp (SMS fallback)   |
+| Twilio    | (PARKED — compliance pending) would send video links via WhatsApp/SMS |
 | Jitsi Meet| Free in-browser video rooms (`meet.jit.si`, no server/keys)      |
-| WhatsApp  | Outbound deep links (doctor↔patient text), nothing stored        |
 
 ## Project layout
 
@@ -62,7 +62,7 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `pages/` — routes (see below)
 - `lib/supabase.ts` — Supabase client (reads `NEXT_PUBLIC_*` env vars)
 - `lib/auth.ts` — `signInWithGoogle()` OAuth helper (redirects to `/auth/callback`)
-- `lib/utils.ts` — WhatsApp URL helpers, status labels, specialty list
+- `lib/utils.ts` — status labels, specialty list, specialty↔needs matching (`matchesSpecialty`, `canAttend`)
 - `components/` — shared UI (e.g. `GoogleButton.tsx`)
 - `supabase_schema.sql` — **the backend**: tables, triggers, RLS policies, RPCs (run in Supabase)
 - `README-PARA-JESUS.md` — operator guide (Spanish): deploy, create admin, manage doctors
@@ -136,22 +136,25 @@ Set in `.env` for local dev, and in Vercel for production:
 Browser-exposed (`NEXT_PUBLIC_*`, fine — RLS enforces access):
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `NEXT_PUBLIC_SUPPORT_WHATSAPP` (optional — patient WhatsApp button on `/mi-caso`)
 
 Server-only (used by `pages/api/videoconsulta.ts`; **never** prefix with `NEXT_PUBLIC`):
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER`, `TWILIO_SMS_NUMBER`
+- `TWILIO_*` (PARKED — see TODOs; not needed while link delivery is on-screen only)
 
-## Video consultations (Twilio + Jitsi)
+## Video consultations (Jitsi)
 
 Patient self-service flow: a patient submits a request → [registro-paciente.tsx](pages/registro-paciente.tsx)
 POSTs to [pages/api/videoconsulta.ts](pages/api/videoconsulta.ts), which generates a Jitsi room
-([lib/jitsi.ts](lib/jitsi.ts)), stores it on `consultations.video_room_url`, and sends the link to the
-patient via Twilio WhatsApp (SMS fallback). The patient lands on `/sala-espera` with the room link (also
-shown on-screen, so a failed message never blocks the call) and waits for a doctor. Doctors see waiting
-cases with a **"Unirse a videoconsulta"** button in [panel-medico.tsx](pages/panel-medico.tsx) that joins
-the same room. The API route is idempotent (one room per consultation). Twilio Sandbox requires the
-recipient to `join <keyword>` first; production needs Meta-approved WhatsApp templates.
+([lib/jitsi.ts](lib/jitsi.ts)) and stores it on `consultations.video_room_url`. The patient lands on
+`/sala-espera` with the room link shown **on-screen** (the primary, always-works channel) and waits for a
+doctor. (The route also contains a **parked** Twilio WhatsApp/SMS send — disabled pending Twilio
+compliance; see [.knowledge/TODOs.md](.knowledge/TODOs.md). No links are sent via WhatsApp today.)
+
+Doctors use **"Atender al siguiente paciente en cola"** in [panel-medico.tsx](pages/panel-medico.tsx),
+which assigns the next waiting case matching their specialty (`matchesSpecialty`) and opens the same Jitsi
+room. Reserved needs (psychology: *Apoyo emocional* / *Crisis de ansiedad*) only go to
+Psicología/Psiquiatría and never fall back to general doctors (`canAttend` in [lib/utils.ts](lib/utils.ts)).
+The API route is idempotent (one room per consultation).
 
 ### Revoking a doctor (operational)
 
@@ -169,6 +172,6 @@ the same button.
   admin-only via RLS, and `set_my_role` only finalizes the caller's own profile once (patient/doctor,
   never admin/specialist).
 - Doctors update only `last_seen_at` via the `mark_myself_online()` RPC.
-- Avoid storing full WhatsApp conversations — only minimal operational data is kept.
+- Avoid storing full consultation conversations — only minimal operational data is kept.
 - `/admin` is unlinked from the public UI and marked `noindex`; it is not a real access control —
   RLS + the admin-role check on the page are.

@@ -2,7 +2,7 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { SPECIALTIES, STATUS_LABELS, matchesSpecialty, minutesSince, whatsappUrl } from '../lib/utils'
+import { SPECIALTIES, STATUS_LABELS, canAttend, matchesSpecialty, minutesSince } from '../lib/utils'
 
 type Patient = {
   id: string
@@ -121,7 +121,7 @@ export default function PanelMedico() {
     })
   }
 
-  async function openConsultation(c: Consultation, channel: 'whatsapp' | 'video' = 'whatsapp') {
+  async function openConsultation(c: Consultation) {
     if (!profile) return
     const now = new Date().toISOString()
     const { error } = await supabase
@@ -139,14 +139,7 @@ export default function PanelMedico() {
     }
 
     await addEvent(c.id, 'opened', `Abierta por ${profile.full_name}`)
-    if (channel === 'video' && c.video_room_url) {
-      window.open(c.video_room_url, '_blank')
-    } else {
-      const patientName = c.patients?.full_name || 'paciente'
-      const text = `Hola ${patientName}. Soy ${profile.full_name}, médico voluntario de Médicos por Venezuela. Recibí tu solicitud de orientación. ¿Puedes contarme brevemente cómo estás ahora?`
-      const url = whatsappUrl(c.patients?.phone_whatsapp || '', text)
-      window.open(url, '_blank')
-    }
+    if (c.video_room_url) window.open(c.video_room_url, '_blank')
     setSelected({ ...c, status: 'in_progress', assigned_doctor_id: profile.id, opened_at: c.opened_at || now })
     setNote(c.internal_note || '')
     await loadConsultations()
@@ -156,12 +149,15 @@ export default function PanelMedico() {
   // otherwise fall back to the oldest waiting patient so nobody is left unattended.
   async function attendNext() {
     setMessage('')
-    if (waiting.length === 0) {
-      setMessage('No hay pacientes en cola.')
+    // Hard filter first: never assign cases reserved for other specialties (e.g. psychology
+    // cases only go to psychologists/psychiatrists).
+    const eligible = waiting.filter(c => canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null))
+    if (eligible.length === 0) {
+      setMessage(waiting.length ? 'No hay pacientes en cola para tu especialidad ahora.' : 'No hay pacientes en cola.')
       return
     }
-    const next = waiting.find(c => matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)) || waiting[0]
-    await openConsultation(next, next.video_room_url ? 'video' : 'whatsapp')
+    const next = eligible.find(c => matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)) || eligible[0]
+    await openConsultation(next)
   }
 
   async function saveNote() {
@@ -265,14 +261,14 @@ export default function PanelMedico() {
               <h2 style={{ marginTop: 0 }}>Consultas disponibles</h2>
               {waiting.length === 0 ? <p style={{ color: '#64748b' }}>No hay pacientes esperando.</p> : (
                 <div className="grid">
-                  {waiting.map(c => <ConsultationCard key={c.id} c={c} onOpen={() => openConsultation(c)} onUrgent={() => markUrgent(c)} />)}
+                  {waiting.map(c => <ConsultationCard key={c.id} c={c} onOpen={() => openConsultation(c)} />)}
                 </div>
               )}
 
               <h2>Derivadas a especialista</h2>
               {referred.length === 0 ? <p style={{ color: '#64748b' }}>No hay derivaciones pendientes.</p> : (
                 <div className="grid">
-                  {referred.map(c => <ConsultationCard key={c.id} c={c} onOpen={() => openConsultation(c)} onUrgent={() => markUrgent(c)} />)}
+                  {referred.map(c => <ConsultationCard key={c.id} c={c} onOpen={() => openConsultation(c)} />)}
                 </div>
               )}
             </section>
@@ -280,13 +276,14 @@ export default function PanelMedico() {
             <section className="card">
               <h2 style={{ marginTop: 0 }}>Consulta seleccionada</h2>
               {!selected ? (
-                <p style={{ color: '#64748b' }}>Abre una consulta para contactar al paciente por WhatsApp y gestionar el estado.</p>
+                <p style={{ color: '#64748b' }}>Atiende una consulta para iniciar la videoconsulta y gestionar el estado.</p>
               ) : (
                 <div className="grid">
                   <div>
                     <h3 style={{ marginBottom: 4 }}>{selected.patients?.full_name}</h3>
                     <p style={{ marginTop: 0, color: '#64748b' }}>{selected.patients?.affected_zone} · {selected.patients?.age_range || 'Edad no indicada'}</p>
-                    <div className="tag-row">{selected.patients?.needs_tags?.map(t => <span key={t} className="tag">{t}</span>)}</div>
+                    <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 13 }}>Tel. (solo para seguimiento): {selected.patients?.phone_whatsapp || '—'}</p>
+                    <div className="tag-row" style={{ marginTop: 8 }}>{selected.patients?.needs_tags?.map(t => <span key={t} className="tag">{t}</span>)}</div>
                   </div>
                   <div className="notice">
                     <strong>Motivo:</strong><br />{selected.chief_complaint || selected.patients?.description || 'Sin descripción'}
@@ -322,7 +319,7 @@ export default function PanelMedico() {
   )
 }
 
-function ConsultationCard({ c, onOpen, onUrgent }: { c: Consultation; onOpen: () => void; onUrgent: () => void }) {
+function ConsultationCard({ c, onOpen }: { c: Consultation; onOpen: () => void }) {
   return (
     <div className="card-flat">
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'start' }}>
@@ -335,15 +332,7 @@ function ConsultationCard({ c, onOpen, onUrgent }: { c: Consultation; onOpen: ()
       <p>{c.chief_complaint || c.patients?.description || 'Sin descripción'}</p>
       {c.referred_specialty && <p><span className="badge badge-blue">{c.referred_specialty}</span></p>}
       <div className="tag-row" style={{ marginBottom: 12 }}>{c.patients?.needs_tags?.slice(0, 4).map(t => <span key={t} className="tag">{t}</span>)}</div>
-      {c.video_room_url && (
-        <a className="btn btn-primary btn-full" href={c.video_room_url} target="_blank" rel="noreferrer" style={{ marginBottom: 8 }}>
-          Unirse a videoconsulta
-        </a>
-      )}
-      <div className="grid grid-2">
-        <button className="btn btn-primary" onClick={onOpen}>Abrir WhatsApp</button>
-        <button className="btn btn-danger" onClick={onUrgent}>Urgente</button>
-      </div>
+      <button className="btn btn-primary btn-full" onClick={onOpen}>Atender</button>
     </div>
   )
 }

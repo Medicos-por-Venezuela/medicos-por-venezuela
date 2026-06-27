@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { signInWithGoogle } from '../lib/auth'
 import GoogleButton from '../components/GoogleButton'
-import { STATUS_LABELS, whatsappUrl } from '../lib/utils'
+import { STATUS_LABELS } from '../lib/utils'
 
 type Consultation = {
   id: string
@@ -16,8 +16,6 @@ type Consultation = {
   referred_specialty: string | null
   created_at: string
 }
-
-const SUPPORT_WHATSAPP = process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP || ''
 
 export default function MiCaso() {
   const router = useRouter()
@@ -169,13 +167,6 @@ export default function MiCaso() {
                 </div>
               ))}
             </div>
-          )}
-
-          {SUPPORT_WHATSAPP && (
-            <a className="btn btn-secondary btn-full" style={{ marginTop: 14 }} target="_blank" rel="noreferrer"
-              href={whatsappUrl(SUPPORT_WHATSAPP, 'Hola, tengo una pregunta sobre mi caso en Médicos por Venezuela.')}>
-              Continuar por WhatsApp
-            </a>
           )}
 
           <div className="notice notice-warning" style={{ marginTop: 14 }}>
