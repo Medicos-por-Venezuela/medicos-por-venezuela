@@ -141,7 +141,10 @@ export default function PanelMedico() {
   async function openConsultation(c: Consultation) {
     if (!profile) return
     const now = new Date().toISOString()
-    const { error } = await supabase
+    // Atomic claim: the update only matches while the case is still 'waiting', so if another
+    // doctor grabbed it first it returns 0 rows. We must NOT open the video room in that case,
+    // otherwise two doctors could land in the same meeting.
+    const { data: claimed, error } = await supabase
       .from('consultations')
       .update({
         status: 'in_progress',
@@ -149,9 +152,16 @@ export default function PanelMedico() {
         opened_at: c.opened_at || now
       })
       .eq('id', c.id)
+      .eq('status', 'waiting')
+      .select('id')
 
     if (error) {
       setMessage('No se pudo abrir la consulta.')
+      return
+    }
+    if (!claimed || claimed.length === 0) {
+      setMessage('Este paciente ya fue tomado por otro médico.')
+      await loadConsultations()
       return
     }
 
