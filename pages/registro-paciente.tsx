@@ -6,12 +6,31 @@ import { supabase } from '../lib/supabase'
 import { signInWithGoogle } from '../lib/auth'
 import GoogleButton from '../components/GoogleButton'
 
-const ZONAS = ['Caracas - Centro', 'Caracas - Este', 'Caracas - Oeste', 'Caracas - Sur', 'Miranda', 'La Guaira', 'Aragua', 'Carabobo', 'Otro']
+const ZONAS = [
+  'La Guaira - Catia La Mar',
+  'La Guaira - Maiquetía',
+  'La Guaira - La Guaira (centro)',
+  'La Guaira - Macuto',
+  'La Guaira - Caraballeda',
+  'La Guaira - Naiguatá',
+  'La Guaira - Carayaca',
+  'La Guaira - Caruao',
+  'La Guaira - Otro sector',
+  'Caracas - Centro',
+  'Caracas - Este',
+  'Caracas - Oeste',
+  'Caracas - Sur',
+  'Miranda',
+  'Aragua',
+  'Carabobo',
+  'Otro'
+]
 const NECESIDADES = ['Medicina general', 'Lesión física', 'Primeros auxilios', 'Apoyo emocional', 'Crisis de ansiedad', 'Niño / pediatría', 'Embarazo', 'Medicamentos', 'Enfermedad crónica', 'Otra']
 
 export default function RegistroPaciente() {
   const router = useRouter()
   const [nombre, setNombre] = useState('')
+  const [cedula, setCedula] = useState('')
   const [telefono, setTelefono] = useState('')
   const [zona, setZona] = useState('')
   const [edad, setEdad] = useState('')
@@ -40,8 +59,8 @@ export default function RegistroPaciente() {
 
   const submit = async () => {
     setError('')
-    if (!nombre.trim() || !telefono.trim() || !zona) {
-      setError('Completa nombre, teléfono y zona.')
+    if (!nombre.trim() || !cedula.trim() || !telefono.trim() || !zona) {
+      setError('Completa nombre, cédula, teléfono y zona.')
       return
     }
     if (tags.length === 0) {
@@ -84,6 +103,7 @@ export default function RegistroPaciente() {
         .insert({
           user_id: userId,
           full_name: nombre.trim(),
+          cedula: cedula.trim(),
           phone_whatsapp: telefono.trim(),
           affected_zone: zona,
           age_range: edad || null,
@@ -155,9 +175,16 @@ export default function RegistroPaciente() {
             </div>
 
             <div className="grid">
-              <div>
-                <label className="label">Nombre o alias *</label>
-                <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej. María" />
+              <div className="grid grid-2">
+                <div>
+                  <label className="label">Nombre completo *</label>
+                  <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej. María González" />
+                </div>
+                <div>
+                  <label className="label">Número de cédula *</label>
+                  <input value={cedula} onChange={e => setCedula(e.target.value)} placeholder="Ej. V-12345678" />
+                  <div className="hint">Nos ayuda a dar seguimiento a tu caso.</div>
+                </div>
               </div>
               <div>
                 <label className="label">Teléfono con código de país *</label>

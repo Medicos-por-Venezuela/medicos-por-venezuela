@@ -59,12 +59,22 @@ export const RESERVED_NEEDS: Record<string, string[]> = {
   'Crisis de ansiedad': ['Psicología', 'Psiquiatría']
 }
 
-// Hard eligibility: a doctor may attend a case unless it contains a reserved need their
-// specialty isn't allowed for (e.g. a general doctor can never take a psychology case).
+// Hard eligibility (two-way separation between psychology and physical-health care):
+// 1) Reserved needs (psychology) can only go to the allowed mental-health specialties
+//    (Psicología/Psiquiatría) — never to a general/physical-health doctor.
+// 2) Psicología only ever attends psychology cases — never physical-health cases.
 export function canAttend(specialty: string | null | undefined, category: string | null, needsTags: string[] | null): boolean {
   const values = [category, ...(needsTags || [])].filter(Boolean) as string[]
-  return values.every(v => {
+
+  const reservedOk = values.every(v => {
     const allowed = RESERVED_NEEDS[v]
     return !allowed || (!!specialty && allowed.includes(specialty))
   })
+  if (!reservedOk) return false
+
+  if (specialty === 'Psicología') {
+    const isPsychCase = values.some(v => !!RESERVED_NEEDS[v])
+    if (!isPsychCase) return false
+  }
+  return true
 }

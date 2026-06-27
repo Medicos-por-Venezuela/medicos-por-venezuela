@@ -2,11 +2,12 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { SPECIALTIES, STATUS_LABELS, canAttend, matchesSpecialty, minutesSince } from '../lib/utils'
+import { STATUS_LABELS, canAttend, matchesSpecialty, minutesSince } from '../lib/utils'
 
 type Patient = {
   id: string
   full_name: string
+  cedula: string | null
   phone_whatsapp: string
   affected_zone: string
   age_range: string | null
@@ -46,7 +47,6 @@ export default function PanelMedico() {
   const [consultations, setConsultations] = useState<Consultation[]>([])
   const [selected, setSelected] = useState<Consultation | null>(null)
   const [note, setNote] = useState('')
-  const [refSpecialty, setRefSpecialty] = useState('')
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [myClosed, setMyClosed] = useState(0)
@@ -97,7 +97,7 @@ export default function PanelMedico() {
   async function loadConsultations(doctorId?: string) {
     const { data, error } = await supabase
       .from('consultations')
-      .select('*, patients(id, full_name, phone_whatsapp, affected_zone, age_range, needs_tags, description)')
+      .select('*, patients(id, full_name, cedula, phone_whatsapp, affected_zone, age_range, needs_tags, description)')
       .in('status', ['waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person'])
       .order('created_at', { ascending: true })
 
@@ -201,40 +201,6 @@ export default function PanelMedico() {
     await loadConsultations()
   }
 
-  async function referConsultation() {
-    if (!selected || !refSpecialty) {
-      setMessage('Selecciona una especialidad para derivar.')
-      return
-    }
-    const { error } = await supabase
-      .from('consultations')
-      .update({ status: 'referred_to_specialist', referred_specialty: refSpecialty, internal_note: note, assigned_doctor_id: null })
-      .eq('id', selected.id)
-
-    if (error) {
-      setMessage('No se pudo derivar la consulta.')
-      return
-    }
-    await addEvent(selected.id, 'referred', `Derivada a ${refSpecialty}`)
-    setSelected(null)
-    setRefSpecialty('')
-    await loadConsultations()
-  }
-
-  async function markUrgent(c: Consultation) {
-    const { error } = await supabase
-      .from('consultations')
-      .update({ status: 'urgent_in_person', assigned_doctor_id: profile?.id || c.assigned_doctor_id })
-      .eq('id', c.id)
-
-    if (error) {
-      setMessage('No se pudo marcar como urgente.')
-      return
-    }
-    await addEvent(c.id, 'urgent_flagged', 'Se recomienda atención presencial urgente')
-    await loadConsultations()
-  }
-
   async function logout() {
     await supabase.auth.signOut()
     router.push('/')
@@ -291,7 +257,7 @@ export default function PanelMedico() {
                   <div>
                     <h3 style={{ marginBottom: 4 }}>{selected.patients?.full_name}</h3>
                     <p style={{ marginTop: 0, color: '#64748b' }}>{selected.patients?.affected_zone} · {selected.patients?.age_range || 'Edad no indicada'}</p>
-                    <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 13 }}>Tel. (solo para seguimiento): {selected.patients?.phone_whatsapp || '—'}</p>
+                    <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 13 }}>Cédula: {selected.patients?.cedula || '—'} · Tel. (solo seguimiento): {selected.patients?.phone_whatsapp || '—'}</p>
                     <div className="tag-row" style={{ marginTop: 8 }}>{selected.patients?.needs_tags?.map(t => <span key={t} className="tag">{t}</span>)}</div>
                   </div>
                   <div className="notice">
@@ -307,17 +273,7 @@ export default function PanelMedico() {
                     </a>
                   )}
                   <button className="btn btn-secondary" onClick={saveNote}>Guardar nota</button>
-                  <div className="grid grid-2">
-                    <select value={refSpecialty} onChange={e => setRefSpecialty(e.target.value)}>
-                      <option value="">Especialidad para derivar...</option>
-                      {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <button className="btn btn-warning" onClick={referConsultation}>Derivar a especialista</button>
-                  </div>
-                  <div className="grid grid-2">
-                    <button className="btn btn-danger" onClick={() => markUrgent(selected)}>Marcar urgente presencial</button>
-                    <button className="btn btn-primary" onClick={closeConsultation}>Cerrar consulta</button>
-                  </div>
+                  <button className="btn btn-primary btn-full" onClick={closeConsultation}>Cerrar consulta</button>
                 </div>
               )}
             </section>

@@ -53,6 +53,7 @@ create table if not exists public.patients (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users(id) on delete set null,
   full_name text not null,
+  cedula text,
   phone_whatsapp text not null,
   affected_zone text not null,
   age_range text,
@@ -64,6 +65,7 @@ create table if not exists public.patients (
 );
 
 alter table public.patients add column if not exists user_id uuid references auth.users(id) on delete set null;
+alter table public.patients add column if not exists cedula text;
 alter table public.patients add column if not exists age_range text;
 alter table public.patients add column if not exists needs_tags text[] default '{}';
 alter table public.patients add column if not exists description text;
