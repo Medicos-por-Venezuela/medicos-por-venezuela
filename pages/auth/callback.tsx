@@ -9,70 +9,65 @@ export default function AuthCallback() {
   const [error, setError] = useState('')
 
   useEffect(() => {
+    if (!router.isReady) return
     let cancelled = false
 
-    const routeBySession = async () => {
-      // supabase-js (detectSessionInUrl) processes the OAuth response on load.
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return false
+    const run = async () => {
+      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
 
+      // 1) Surface any explicit OAuth error (query or hash).
+      const oErr = (router.query.error as string) || hash.get('error')
+      const oErrDesc = (router.query.error_description as string) || hash.get('error_description')
+      if (oErr || oErrDesc) { setError(`Google: ${oErrDesc || oErr}`); return }
+
+      // 2) Establish the session from whatever the provider returned.
+      const accessToken = hash.get('access_token')
+      const refreshToken = hash.get('refresh_token')
+      const code = router.query.code as string | undefined
+
+      if (accessToken && refreshToken) {
+        // Implicit flow: tokens in the URL hash.
+        const { error: e } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+        if (e) { setError(`No se pudo iniciar sesión: ${e.message}`); return }
+      } else if (code) {
+        // PKCE flow: ?code= to exchange.
+        const { error: e } = await supabase.auth.exchangeCodeForSession(code)
+        if (e) { setError(`No se pudo iniciar sesión: ${e.message}`); return }
+      }
+
+      // Remove tokens/code from the URL + history.
+      window.history.replaceState({}, '', '/auth/callback')
+
+      const { data: { session } } = await supabase.auth.getSession()
+      if (cancelled) return
+      if (!session) { setError('No se pudo completar el inicio de sesión con Google. Vuelve a intentarlo.'); return }
+
+      // 3) Route by profile.
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('role, verified, active, role_chosen')
+        .select('role, active, role_chosen')
         .single()
-
-      if (cancelled) return true
+      if (cancelled) return
 
       if (profileError || !profile) {
         await supabase.auth.signOut()
         setError('No se pudo cargar tu perfil. Intenta de nuevo.')
-        return true
+        return
       }
-
-      // First-time Google account that still needs to pick patient vs doctor.
-      if (!profile.role_chosen) {
-        router.replace('/elegir-rol')
-        return true
-      }
-
-      // Revoked/suspended accounts are blocked.
+      if (!profile.role_chosen) { router.replace('/elegir-rol'); return }
       if (!profile.active) {
         await supabase.auth.signOut()
         setError('Tu cuenta está desactivada. Contacta a un administrador.')
-        return true
+        return
       }
-
-      if (['admin', 'super_admin'].includes(profile.role)) {
-        router.replace('/admin/dashboard')
-      } else if (['doctor', 'specialist'].includes(profile.role)) {
-        router.replace('/panel-medico')
-      } else {
-        router.replace('/mi-caso')
-      }
-      return true
+      if (['admin', 'super_admin'].includes(profile.role)) router.replace('/admin/dashboard')
+      else if (['doctor', 'specialist'].includes(profile.role)) router.replace('/panel-medico')
+      else router.replace('/mi-caso')
     }
 
-    // Try immediately; if the session isn't ready yet, wait for the auth event.
-    routeBySession().then(handled => {
-      if (handled || cancelled) return
-      const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-        if (session) routeBySession()
-      })
-      // Safety net if no session ever arrives.
-      setTimeout(() => {
-        if (!cancelled) {
-          supabase.auth.getSession().then(({ data }) => {
-            if (!data.session && !cancelled) {
-              setError('No se pudo completar el inicio de sesión con Google.')
-            }
-          })
-        }
-      }, 4000)
-      return () => sub.subscription.unsubscribe()
-    })
-
+    run()
     return () => { cancelled = true }
-  }, [router])
+  }, [router, router.isReady])
 
   return (
     <>
