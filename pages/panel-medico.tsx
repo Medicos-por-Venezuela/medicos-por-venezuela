@@ -196,20 +196,29 @@ export default function PanelMedico() {
 
   // Take the next waiting patient: prefer one matching the doctor's specialty (oldest first),
   // otherwise fall back to the oldest waiting patient so nobody is left unattended.
-  async function attendNext() {
-    setMessage('')
-    // Only consider patients actually present in the waiting room, so we never open an empty call.
-    // Hard filter too: never assign cases reserved for other specialties (e.g. psychology
-    // cases only go to psychologists/psychiatrists).
-    const eligible = waitingPresent.filter(c => canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null))
-    if (eligible.length === 0) {
-      setMessage(waitingPresent.length ? 'No hay pacientes en sala para tu especialidad ahora.' : 'No hay pacientes en sala en este momento.')
-      return
-    }
-    const next = eligible.find(c => matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)) || eligible[0]
-    await openConsultation(next)
+ async function attendNext() {
+  setMessage('')
+
+  const eligible = waiting.filter(c =>
+    canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null)
+  )
+
+  if (eligible.length === 0) {
+    setMessage(waiting.length ? 'No hay pacientes para tu especialidad ahora.' : 'No hay pacientes esperando en este momento.')
+    return
   }
 
+  // Preferimos pacientes detectados como presentes, pero si el heartbeat falló,
+  // igual permitimos atender casos que están en waiting.
+  const presentEligible = eligible.filter(isPatientPresent)
+  const pool = presentEligible.length > 0 ? presentEligible : eligible
+
+  const next =
+    pool.find(c => matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)) ||
+    pool[0]
+
+  await openConsultation(next)
+}
   async function saveNote() {
     if (!selected) return
     const { error } = await supabase.from('consultations').update({ internal_note: note }).eq('id', selected.id)
@@ -272,9 +281,14 @@ export default function PanelMedico() {
             <div className="kpi"><div className="kpi-value">{myClosed}</div><div className="kpi-label">Consultas cerradas por mí</div></div>
           </div>
 
-          <button className="btn btn-primary btn-full" style={{ marginBottom: 18, fontSize: 16, padding: '15px 18px' }} onClick={attendNext} disabled={waitingPresent.length === 0}>
-            Atender al siguiente paciente en sala{waitingPresent.length ? ` · ${waitingPresent.length} en sala` : ''}
-          </button>
+          <button
+  className="btn btn-primary btn-full"
+  style={{ marginBottom: 18, fontSize: 16, padding: '15px 18px' }}
+  onClick={attendNext}
+  disabled={waiting.length === 0}
+>
+  Atender al siguiente paciente{waiting.length ? ` · ${waiting.length} esperando` : ''}
+</button>
 
           <div className="grid grid-2">
             <section className="card">
