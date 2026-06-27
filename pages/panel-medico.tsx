@@ -26,6 +26,7 @@ type Consultation = {
   closed_at: string | null
   referred_specialty: string | null
   internal_note: string | null
+  video_room_url: string | null
   assigned_doctor_id: string | null
   patients: Patient | null
 }
@@ -273,6 +274,11 @@ export default function PanelMedico() {
                     <label className="label">Nota operativa interna</label>
                     <textarea rows={5} value={note} onChange={e => setNote(e.target.value)} placeholder="Evita escribir historia clínica completa. Solo información necesaria para coordinación." />
                   </div>
+                  {selected.video_room_url && (
+                    <a className="btn btn-primary" href={selected.video_room_url} target="_blank" rel="noreferrer">
+                      Unirse a videoconsulta
+                    </a>
+                  )}
                   <button className="btn btn-secondary" onClick={saveNote}>Guardar nota</button>
                   <div className="grid grid-2">
                     <select value={refSpecialty} onChange={e => setRefSpecialty(e.target.value)}>
@@ -308,6 +314,11 @@ function ConsultationCard({ c, onOpen, onUrgent }: { c: Consultation; onOpen: ()
       <p>{c.chief_complaint || c.patients?.description || 'Sin descripción'}</p>
       {c.referred_specialty && <p><span className="badge badge-blue">{c.referred_specialty}</span></p>}
       <div className="tag-row" style={{ marginBottom: 12 }}>{c.patients?.needs_tags?.slice(0, 4).map(t => <span key={t} className="tag">{t}</span>)}</div>
+      {c.video_room_url && (
+        <a className="btn btn-primary btn-full" href={c.video_room_url} target="_blank" rel="noreferrer" style={{ marginBottom: 8 }}>
+          Unirse a videoconsulta
+        </a>
+      )}
       <div className="grid grid-2">
         <button className="btn btn-primary" onClick={onOpen}>Abrir WhatsApp</button>
         <button className="btn btn-danger" onClick={onUrgent}>Urgente</button>

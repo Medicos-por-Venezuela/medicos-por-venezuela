@@ -5,6 +5,8 @@ import { useRouter } from 'next/router'
 export default function SalaEspera() {
   const router = useRouter()
   const nombre = typeof router.query.nombre === 'string' ? router.query.nombre : 'paciente'
+  const room = typeof router.query.room === 'string' ? router.query.room : ''
+  const code = typeof router.query.code === 'string' ? router.query.code : ''
 
   return (
     <>
@@ -14,13 +16,38 @@ export default function SalaEspera() {
           <div className="card">
             <span className="badge badge-green">Solicitud recibida</span>
             <h1>Gracias, {nombre}</h1>
-            <p>
-              Tu solicitud quedó en espera. Un médico voluntario podrá contactarte por WhatsApp cuando tome el caso.
-            </p>
+
+            {room ? (
+              <>
+                <p>Tu sala de videoconsulta está lista.</p>
+                <a className="btn btn-primary btn-full" href={room} target="_blank" rel="noreferrer" style={{ marginTop: 8 }}>
+                  Entrar a la videoconsulta
+                </a>
+                <div className="notice notice-warning" style={{ marginTop: 12 }}>
+                  Una vez dentro, <strong>espera a que tu médico asignado se conecte</strong>. Puede tardar varios minutos.
+                  Mantén esta página abierta.
+                </div>
+                <p style={{ color: '#64748b', fontSize: 14, marginTop: 12 }}>
+                  También te enviamos este enlace por WhatsApp/SMS{code ? ` (código ${code})` : ''}. Si no llega, usa el botón de arriba.
+                </p>
+                <div className="notice notice-info" style={{ marginTop: 12 }}>
+                  <strong>Para que funcione bien:</strong>
+                  <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                    <li>Al abrir el enlace, elige <strong>“Continuar en el navegador”</strong> (no necesitas descargar la app).</li>
+                    <li>Pulsa <strong>“Permitir”</strong> cuando te pida cámara y micrófono.</li>
+                  </ul>
+                </div>
+              </>
+            ) : (
+              <p>
+                Tu solicitud quedó en espera. Un médico voluntario podrá contactarte por WhatsApp cuando tome el caso.
+              </p>
+            )}
+
             <div className="notice notice-warning" style={{ margin: '16px 0' }}>
               Si tu situación empeora o hay señales de alarma, busca atención presencial urgente. No esperes a que respondan por WhatsApp.
             </div>
-            <Link className="btn btn-primary" href="/">Volver al inicio</Link>
+            <Link className="btn btn-muted" href="/">Volver al inicio</Link>
           </div>
         </div>
       </main>

@@ -30,10 +30,12 @@ There is **no separate backend server**. This is a **Next.js frontend + Supabase
 
 - The Next.js app (at the repo root) runs entirely client-side against Supabase.
 - "The backend" = a **Supabase project** providing Postgres, Auth, and Row Level Security.
-- All data access goes directly from the browser through the Supabase JS client using the
-  **anon key** + RLS. There is no service-role key in the app (by design — see security notes).
-- No custom API routes (`pages/api/*` does not exist); all logic is RLS policies + Postgres
-  functions/triggers in [supabase_schema.sql](supabase_schema.sql).
+- Most data access goes directly from the browser through the Supabase JS client using the
+  **anon key** + RLS; logic lives in RLS policies + Postgres functions/triggers in
+  [supabase_schema.sql](supabase_schema.sql).
+- One server-side **API route** exists: `pages/api/videoconsulta.ts` (Vercel serverless function).
+  It uses the Twilio + Supabase **service-role** secrets, which must stay server-only — see
+  [lib/supabaseAdmin.ts](lib/supabaseAdmin.ts) (imported only by API routes).
 
 ## Tech stack
 
@@ -48,8 +50,10 @@ There is **no separate backend server**. This is a **Next.js frontend + Supabase
 | Service   | Role                                                              |
 |-----------|------------------------------------------------------------------|
 | Supabase  | Database (Postgres), authentication, RLS authorization           |
-| Vercel    | Hosting and environment variables                                |
-| WhatsApp  | Outbound deep links only (patient↔doctor contact), nothing stored|
+| Vercel    | Hosting, environment variables, serverless API routes            |
+| Twilio    | Sends video-room links to patients via WhatsApp (SMS fallback)   |
+| Jitsi Meet| Free in-browser video rooms (`meet.jit.si`, no server/keys)      |
+| WhatsApp  | Outbound deep links (doctor↔patient text), nothing stored        |
 
 ## Project layout
 
@@ -129,12 +133,25 @@ Other scripts: `npm run build`, `npm run start`.
 
 Set in `.env` for local dev, and in Vercel for production:
 
+Browser-exposed (`NEXT_PUBLIC_*`, fine — RLS enforces access):
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_SUPPORT_WHATSAPP` (optional — patient WhatsApp button on `/mi-caso`)
 
-(From Supabase → Project Settings → API. All are `NEXT_PUBLIC_*` → exposed to the browser, which
-is fine: RLS is what enforces access control.)
+Server-only (used by `pages/api/videoconsulta.ts`; **never** prefix with `NEXT_PUBLIC`):
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER`, `TWILIO_SMS_NUMBER`
+
+## Video consultations (Twilio + Jitsi)
+
+Patient self-service flow: a patient submits a request → [registro-paciente.tsx](pages/registro-paciente.tsx)
+POSTs to [pages/api/videoconsulta.ts](pages/api/videoconsulta.ts), which generates a Jitsi room
+([lib/jitsi.ts](lib/jitsi.ts)), stores it on `consultations.video_room_url`, and sends the link to the
+patient via Twilio WhatsApp (SMS fallback). The patient lands on `/sala-espera` with the room link (also
+shown on-screen, so a failed message never blocks the call) and waits for a doctor. Doctors see waiting
+cases with a **"Unirse a videoconsulta"** button in [panel-medico.tsx](pages/panel-medico.tsx) that joins
+the same room. The API route is idempotent (one room per consultation). Twilio Sandbox requires the
+recipient to `join <keyword>` first; production needs Meta-approved WhatsApp templates.
 
 ### Revoking a doctor (operational)
 

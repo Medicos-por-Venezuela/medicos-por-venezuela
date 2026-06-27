@@ -83,6 +83,7 @@ create table if not exists public.consultations (
   assigned_doctor_id uuid references public.profiles(id),
   referred_specialty text,
   internal_note text,
+  video_room_url text,
   opened_at timestamptz,
   closed_at timestamptz,
   created_at timestamptz not null default now(),
@@ -94,6 +95,7 @@ alter table public.consultations add column if not exists chief_complaint text;
 alter table public.consultations add column if not exists assigned_doctor_id uuid references public.profiles(id);
 alter table public.consultations add column if not exists referred_specialty text;
 alter table public.consultations add column if not exists internal_note text;
+alter table public.consultations add column if not exists video_room_url text;
 alter table public.consultations add column if not exists opened_at timestamptz;
 alter table public.consultations add column if not exists closed_at timestamptz;
 alter table public.consultations add column if not exists created_at timestamptz default now();

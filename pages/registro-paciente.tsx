@@ -97,7 +97,7 @@ export default function RegistroPaciente() {
 
       if (patientError) throw patientError
 
-      const { error: consultationError } = await supabase
+      const { data: consultation, error: consultationError } = await supabase
         .from('consultations')
         .insert({
           patient_id: patient.id,
@@ -107,11 +107,29 @@ export default function RegistroPaciente() {
           chief_complaint: descripcion.trim() || tags.join(', '),
           code: `MPV-${Date.now()}`
         })
+        .select('id, code')
+        .single()
 
       if (consultationError) throw consultationError
 
-      if (userId) router.push('/mi-caso')
-      else router.push(`/sala-espera?nombre=${encodeURIComponent(patient.full_name)}`)
+      // Create the Jitsi room + send the link via WhatsApp/SMS (server-side). If this fails,
+      // we still continue — the patient lands in the waiting room and a doctor can reach them.
+      let room = ''
+      try {
+        const resp = await fetch('/api/videoconsulta', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ consultationId: consultation.id })
+        })
+        if (resp.ok) room = (await resp.json()).url || ''
+      } catch (e) {
+        console.error('No se pudo iniciar la videoconsulta:', e)
+      }
+
+      const params = new URLSearchParams({ nombre: patient.full_name })
+      if (room) params.set('room', room)
+      if (consultation.code) params.set('code', consultation.code)
+      router.push(`/sala-espera?${params.toString()}`)
     } catch (e) {
       console.error(e)
       setError('No se pudo registrar la solicitud. Puede que el email ya esté registrado, o haya un error de conexión.')
