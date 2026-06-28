@@ -41,6 +41,20 @@ function isPatientPresent(c: Consultation): boolean {
   return Date.now() - new Date(c.patient_last_seen_at).getTime() < PRESENCE_WINDOW_MS
 }
 
+function statusBadgeClass(status: string): string {
+  if (status === 'urgent_in_person') return 'badge-red'
+  if (status === 'referred_to_specialist') return 'badge-blue'
+  if (status === 'in_progress') return 'badge-orange'
+  return 'badge-green'
+}
+
+const ADMIN_ROLES = ['admin', 'super_admin'] as const
+const PANEL_ALLOWED_ROLES = ['doctor', 'specialist', ...ADMIN_ROLES] as const
+
+function isAdminRole(role?: string | null): boolean {
+  return !!role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])
+}
+
 type Profile = {
   id: string
   full_name: string
@@ -50,19 +64,28 @@ type Profile = {
   active: boolean
 }
 
+type AssignedDoctor = Pick<Profile, 'id' | 'full_name' | 'role' | 'specialty'>
+
 export default function PanelMedico() {
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [consultations, setConsultations] = useState<Consultation[]>([])
-  const [selected, setSelected] = useState<Consultation | null>(null)
-  const [note, setNote] = useState('')
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [myClosed, setMyClosed] = useState(0)
+  const [assignedDoctorsById, setAssignedDoctorsById] = useState<Record<string, AssignedDoctor>>({})
+  const isCurrentUserAdmin = isAdminRole(profile?.role)
 
   useEffect(() => {
     init()
   }, [])
+
+  useEffect(() => {
+    if (!router.isReady || !profile?.id || router.query.actualizado !== '1') return
+    loadConsultations(profile)
+    setMessage('Panel actualizado.')
+    router.replace('/panel-medico', undefined, { shallow: true })
+  }, [router.isReady, router.query.actualizado, profile?.id])
 
   useEffect(() => {
     if (!profile?.id) return
@@ -78,10 +101,20 @@ export default function PanelMedico() {
   useEffect(() => {
     if (!profile?.id) return
     const timer = window.setInterval(() => {
-      loadConsultations()
+      loadConsultations(profile)
     }, 20000)
     return () => window.clearInterval(timer)
-  }, [profile?.id])
+  }, [profile])
+
+  // Refresh when returning to this tab/page after actions performed in the detail page.
+  useEffect(() => {
+    if (!profile?.id) return
+    const refresh = () => {
+      loadConsultations(profile)
+    }
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [profile])
 
   async function init() {
     const { data: sessionData } = await supabase.auth.getSession()
@@ -102,17 +135,17 @@ export default function PanelMedico() {
       return
     }
 
-    if (!['doctor', 'specialist', 'admin', 'super_admin'].includes(p.role)) {
+    if (!PANEL_ALLOWED_ROLES.includes(p.role as (typeof PANEL_ALLOWED_ROLES)[number])) {
       router.push('/')
       return
     }
 
     setProfile(p)
-    await loadConsultations(p.id)
+    await loadConsultations(p)
     setLoading(false)
   }
 
-  async function loadConsultations(doctorId?: string) {
+  async function loadConsultations(currentProfile: Profile | null = profile) {
     const { data, error } = await supabase
       .from('consultations')
       .select(
@@ -126,10 +159,36 @@ export default function PanelMedico() {
       setMessage('No se pudieron cargar las consultas.')
       return
     }
-    setConsultations((data || []) as Consultation[])
+    const rows = (data || []) as Consultation[]
+    setConsultations(rows)
+
+    if (isAdminRole(currentProfile?.role)) {
+      const assignedIds = Array.from(
+        new Set(rows.map((c) => c.assigned_doctor_id).filter((id): id is string => !!id))
+      )
+      if (assignedIds.length > 0) {
+        const { data: doctors, error: doctorsError } = await supabase
+          .from('profiles')
+          .select('id, full_name, role, specialty')
+          .in('id', assignedIds)
+
+        if (doctorsError) {
+          console.error(doctorsError)
+          setAssignedDoctorsById({})
+        } else {
+          setAssignedDoctorsById(
+            Object.fromEntries(((doctors || []) as AssignedDoctor[]).map((d) => [d.id, d]))
+          )
+        }
+      } else {
+        setAssignedDoctorsById({})
+      }
+    } else {
+      setAssignedDoctorsById({})
+    }
 
     // How many cases this doctor has closed.
-    const id = doctorId || profile?.id
+    const id = currentProfile?.id
     if (id) {
       const { count } = await supabase
         .from('consultations')
@@ -142,6 +201,13 @@ export default function PanelMedico() {
 
   const waiting = useMemo(
     () => consultations.filter((c) => c.status === 'waiting'),
+    [consultations]
+  )
+  const activeSystemConsultations = useMemo(
+    () =>
+      consultations.filter((c) =>
+        ['in_progress', 'urgent_in_person', 'referred_to_specialist'].includes(c.status)
+      ),
     [consultations]
   )
   const myOpenConsultations = useMemo(
@@ -158,11 +224,36 @@ export default function PanelMedico() {
     () =>
       waitingPresent.filter(
         (c) =>
-          canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null) &&
-          matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)
+          isCurrentUserAdmin ||
+          (canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null) &&
+            matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null))
       ),
-    [waitingPresent, profile?.specialty]
+    [waitingPresent, profile?.specialty, isCurrentUserAdmin]
   )
+  const kpis = isCurrentUserAdmin
+    ? [
+        { value: waitingPresent.length, label: 'En sala esperando ahora' },
+        { value: waiting.length, label: 'Nuevos en cola (waiting)' },
+        { value: activeSystemConsultations.length, label: 'Casos activos del sistema' }
+      ]
+    : [
+        { value: waitingPresent.length, label: 'En sala esperando ahora' },
+        { value: mySpecialtyWaiting.length, label: 'En sala asignados a esta especialidad' },
+        { value: myClosed, label: 'Consultas cerradas por mí' }
+      ]
+
+  const waitingEmptyMessage = isCurrentUserAdmin
+    ? activeSystemConsultations.length > 0
+      ? 'No hay pacientes nuevos en cola (waiting). Hay casos activos del sistema abajo.'
+      : 'No hay pacientes nuevos en cola (waiting) ni casos activos del sistema.'
+    : 'No hay pacientes nuevos en cola (waiting). Si ya tomaste un caso, aparecerá en “Mis consultas abiertas”.'
+
+  function assignmentLabel(c: Consultation): string {
+    if (!c.assigned_doctor_id) return 'Sin asignar'
+    if (c.assigned_doctor_id === profile?.id) return 'Asignado a ti'
+    const doctor = assignedDoctorsById[c.assigned_doctor_id]
+    return doctor ? `Asignado a ${doctor.full_name}` : 'Asignado a otro médico'
+  }
 
   async function addEvent(consultationId: string, eventType: string, eventNote?: string) {
     await supabase.from('consultation_events').insert({
@@ -201,14 +292,7 @@ export default function PanelMedico() {
 
     await addEvent(c.id, 'opened', `Abierta por ${profile.full_name}`)
     if (c.video_room_url) window.open(c.video_room_url, '_blank')
-    setSelected({
-      ...c,
-      status: 'in_progress',
-      assigned_doctor_id: profile.id,
-      opened_at: c.opened_at || now
-    })
-    setNote(c.internal_note || '')
-    await loadConsultations()
+    await router.push(`/panel-medico/consulta/${c.id}`)
   }
 
   // Take the next waiting patient: prefer one matching the doctor's specialty (oldest first),
@@ -216,15 +300,15 @@ export default function PanelMedico() {
   async function attendNext() {
     setMessage('')
 
-    const eligible = waiting.filter((c) =>
-      canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null)
+    const eligible = waiting.filter(
+      (c) =>
+        isCurrentUserAdmin ||
+        canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null)
     )
 
     if (eligible.length === 0) {
       setMessage(
-        waiting.length
-          ? 'No hay pacientes para tu especialidad ahora.'
-          : 'No hay pacientes esperando en este momento.'
+        waiting.length ? 'No hay pacientes para tu especialidad ahora.' : waitingEmptyMessage
       )
       return
     }
@@ -234,47 +318,14 @@ export default function PanelMedico() {
     const presentEligible = eligible.filter(isPatientPresent)
     const pool = presentEligible.length > 0 ? presentEligible : eligible
 
-    const next =
-      pool.find((c) =>
-        matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)
-      ) || pool[0]
+    const next = isCurrentUserAdmin
+      ? pool[0]
+      : pool.find((c) =>
+          matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)
+        ) || pool[0]
 
     await openConsultation(next)
   }
-  async function saveNote() {
-    if (!selected) return
-    const { error } = await supabase
-      .from('consultations')
-      .update({ internal_note: note })
-      .eq('id', selected.id)
-    if (error) setMessage('No se pudo guardar la nota.')
-    else setMessage('Nota guardada.')
-  }
-
-  async function closeConsultation(outcome: 'closed' | 'patient_no_show' = 'closed') {
-    if (!selected || !profile) return
-    const noShow = outcome === 'patient_no_show'
-    const { error } = await supabase
-      .from('consultations')
-      .update({ status: outcome, internal_note: note, closed_at: new Date().toISOString() })
-      .eq('id', selected.id)
-
-    if (error) {
-      setMessage(noShow ? 'No se pudo marcar como ausente.' : 'No se pudo cerrar la consulta.')
-      return
-    }
-    await addEvent(
-      selected.id,
-      noShow ? 'patient_no_show' : 'closed',
-      noShow
-        ? `Paciente no estaba en la sala de espera (${profile.full_name})`
-        : `Cerrada por ${profile.full_name}`
-    )
-    setSelected(null)
-    setNote('')
-    await loadConsultations()
-  }
-
   async function logout() {
     await supabase.auth.signOut()
     router.push('/')
@@ -297,16 +348,16 @@ export default function PanelMedico() {
       </Head>
       <main className="page">
         <div className="container">
-          <div className="topbar">
+          <div className="panel-topbar">
             <div>
               <h1 style={{ margin: 0 }}>{profile?.full_name}</h1>
               <p style={{ margin: 0, color: '#64748b' }}>
-                {profile?.specialty || 'Sin especialidad'} ·{' '}
+                {isCurrentUserAdmin ? 'Administrador' : profile?.specialty || 'Sin especialidad'} ·{' '}
                 <span className="badge badge-green">Activo</span>
               </p>
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {['admin', 'super_admin'].includes(profile?.role || '') && (
+            <div className="panel-actions">
+              {isCurrentUserAdmin && (
                 <button className="btn btn-outline" onClick={() => router.push('/admin/dashboard')}>
                   Panel admin
                 </button>
@@ -323,19 +374,13 @@ export default function PanelMedico() {
             </div>
           )}
 
-          <div className="grid grid-3" style={{ marginBottom: 18 }}>
-            <div className="kpi">
-              <div className="kpi-value">{waitingPresent.length}</div>
-              <div className="kpi-label">En sala esperando ahora</div>
-            </div>
-            <div className="kpi">
-              <div className="kpi-value">{mySpecialtyWaiting.length}</div>
-              <div className="kpi-label">En sala asignados a esta especialidad</div>
-            </div>
-            <div className="kpi">
-              <div className="kpi-value">{myClosed}</div>
-              <div className="kpi-label">Consultas cerradas por mí</div>
-            </div>
+          <div className="panel-kpis">
+            {kpis.map((kpi) => (
+              <div key={kpi.label} className="kpi">
+                <div className="kpi-value">{kpi.value}</div>
+                <div className="kpi-label">{kpi.label}</div>
+              </div>
+            ))}
           </div>
 
           <button
@@ -344,10 +389,12 @@ export default function PanelMedico() {
             onClick={attendNext}
             disabled={waiting.length === 0}
           >
-            Atender al siguiente paciente{waiting.length ? ` · ${waiting.length} esperando` : ''}
+            {waiting.length
+              ? `Atender al siguiente paciente · ${waiting.length} esperando`
+              : 'No hay pacientes nuevos en cola'}
           </button>
 
-          <div className="grid grid-2">
+          <div className="panel-sections">
             <section className="card">
               <h2>Mis consultas abiertas</h2>
 
@@ -362,10 +409,7 @@ export default function PanelMedico() {
 
                       <button
                         className="btn btn-primary btn-full"
-                        onClick={() => {
-                          setSelected(c)
-                          setNote(c.internal_note || '')
-                        }}
+                        onClick={() => router.push(`/panel-medico/consulta/${c.id}`)}
                       >
                         Continuar / cerrar consulta
                       </button>
@@ -377,7 +421,7 @@ export default function PanelMedico() {
             <section className="card">
               <h2 style={{ marginTop: 0 }}>Consultas disponibles</h2>
               {waiting.length === 0 ? (
-                <p style={{ color: '#64748b' }}>No hay pacientes esperando.</p>
+                <p style={{ color: '#64748b' }}>{waitingEmptyMessage}</p>
               ) : (
                 <div className="grid">
                   {waiting.map((c) => (
@@ -387,89 +431,155 @@ export default function PanelMedico() {
               )}
             </section>
 
-            <section className="card">
-              <h2 style={{ marginTop: 0 }}>Consulta seleccionada</h2>
-              {!selected ? (
-                <p style={{ color: '#64748b' }}>
-                  Atiende una consulta para iniciar la videoconsulta y gestionar el estado.
-                </p>
-              ) : (
-                <div className="grid">
-                  <div>
-                    <h3 style={{ marginBottom: 4 }}>{selected.patients?.full_name}</h3>
-                    <p style={{ marginTop: 0, color: '#64748b' }}>
-                      {selected.patients?.affected_zone} ·{' '}
-                      {selected.patients?.age_range || 'Edad no indicada'}
-                    </p>
-                    <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 13 }}>
-                      Cédula: {selected.patients?.cedula || '—'} · Tel. (solo seguimiento):{' '}
-                      {selected.patients?.phone_whatsapp || '—'}
-                    </p>
-                    <div className="tag-row" style={{ marginTop: 8 }}>
-                      {selected.patients?.needs_tags?.map((t) => (
-                        <span key={t} className="tag">
-                          {t}
-                        </span>
-                      ))}
-                    </div>
+            {isCurrentUserAdmin && (
+              <section className="card panel-full-span">
+                <h2 style={{ marginTop: 0 }}>Casos activos del sistema</h2>
+                {activeSystemConsultations.length === 0 ? (
+                  <p style={{ color: '#64748b' }}>
+                    No hay casos activos en progreso, derivados o marcados como urgentes
+                    presenciales.
+                  </p>
+                ) : (
+                  <div className="grid">
+                    {activeSystemConsultations.map((c) => (
+                      <AdminActiveCaseCard
+                        key={c.id}
+                        c={c}
+                        assignment={assignmentLabel(c)}
+                        onSelect={() => router.push(`/panel-medico/consulta/${c.id}`)}
+                      />
+                    ))}
                   </div>
-                  <div className="notice">
-                    <strong>Motivo:</strong>
-                    <br />
-                    {selected.chief_complaint ||
-                      selected.patients?.description ||
-                      'Sin descripción'}
-                  </div>
-                  <div>
-                    <label className="label">Nota operativa interna</label>
-                    <textarea
-                      rows={5}
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      placeholder="Evita escribir historia clínica completa. Solo información necesaria para coordinación."
-                    />
-                  </div>
-                  {selected.video_room_url && (
-                    <a
-                      className="btn btn-primary"
-                      href={selected.video_room_url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Unirse a videoconsulta
-                    </a>
-                  )}
-                  <button className="btn btn-secondary" onClick={saveNote}>
-                    Guardar nota
-                  </button>
-                  <button
-                    className="btn btn-primary btn-full"
-                    onClick={() => closeConsultation('closed')}
-                  >
-                    Cerrar consulta
-                  </button>
-                  <button
-                    className="btn btn-outline btn-full"
-                    onClick={() => closeConsultation('patient_no_show')}
-                  >
-                    Paciente no estaba en la sala de espera
-                  </button>
-                </div>
-              )}
-            </section>
+                )}
+              </section>
+            )}
           </div>
         </div>
       </main>
+
+      <style jsx global>{`
+        .panel-topbar {
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+
+        .panel-actions {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+
+        .panel-kpis,
+        .panel-sections {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 16px;
+        }
+
+        .panel-kpis {
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+
+        .panel-full-span {
+          grid-column: 1 / -1;
+        }
+
+        .panel-card-header {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 10px;
+        }
+
+        @media (min-width: 640px) {
+          .panel-topbar {
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+          }
+
+          .panel-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+          }
+
+          .panel-kpis {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+
+          .panel-card-header {
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: flex-start;
+          }
+        }
+
+        @media (min-width: 900px) {
+          .panel-sections {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+      `}</style>
     </>
+  )
+}
+
+function AdminActiveCaseCard({
+  c,
+  assignment,
+  onSelect
+}: {
+  c: Consultation
+  assignment: string
+  onSelect: () => void
+}) {
+  return (
+    <div className="card-flat">
+      <div className="panel-card-header">
+        <div>
+          <strong>{c.patients?.full_name || 'Paciente'}</strong>
+          <div style={{ color: '#64748b', fontSize: 13 }}>
+            {c.patients?.affected_zone || 'Zona no indicada'} · hace {minutesSince(c.created_at)}{' '}
+            min
+          </div>
+        </div>
+        <span className={`badge ${statusBadgeClass(c.status)}`}>
+          {STATUS_LABELS[c.status] || c.status}
+        </span>
+      </div>
+
+      <p>{c.chief_complaint || c.patients?.description || 'Sin descripción'}</p>
+
+      <div className="tag-row" style={{ marginBottom: 12 }}>
+        <span className="badge">{assignment}</span>
+        {isPatientPresent(c) ? (
+          <span className="badge badge-green">● En sala</span>
+        ) : (
+          <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>
+            ○ Sin conexión
+          </span>
+        )}
+        {c.referred_specialty && (
+          <span className="badge badge-blue">Derivado a {c.referred_specialty}</span>
+        )}
+      </div>
+
+      <button className="btn btn-secondary btn-full" onClick={onSelect}>
+        Ver / gestionar caso
+      </button>
+    </div>
   )
 }
 
 function ConsultationCard({ c, onOpen }: { c: Consultation; onOpen: () => void }) {
   return (
     <div className="card-flat">
-      <div
-        style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'start' }}
-      >
+      <div className="panel-card-header">
         <div>
           <strong>{c.patients?.full_name || 'Paciente'}</strong>
           <div style={{ color: '#64748b', fontSize: 13 }}>
@@ -485,9 +595,7 @@ function ConsultationCard({ c, onOpen }: { c: Consultation; onOpen: () => void }
             )}
           </div>
         </div>
-        <span
-          className={`badge ${c.status === 'urgent_in_person' ? 'badge-red' : c.status === 'referred_to_specialist' ? 'badge-blue' : 'badge-green'}`}
-        >
+        <span className={`badge ${statusBadgeClass(c.status)}`}>
           {STATUS_LABELS[c.status] || c.status}
         </span>
       </div>

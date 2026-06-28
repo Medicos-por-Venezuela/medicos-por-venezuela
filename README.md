@@ -97,20 +97,21 @@ CLAUDE.md              assistant/codebase conventions
 
 ## Routes
 
-| Route                       | Purpose                                                        |
-| --------------------------- | -------------------------------------------------------------- |
-| `/`                         | Home — two cards: paciente / médico (no admin link)            |
-| `/registro-paciente`        | Patient request form (public; optional account + Google)       |
-| `/sala-espera`              | Patient confirmation; shows the video room link on screen      |
-| `/registro-medico`          | Doctor self-registration (email+password or Google)            |
-| `/elegir-rol`               | First-time Google role picker (patient vs doctor)              |
-| `/mi-caso`                  | Patient login + read-only case status                          |
-| `/login-medico`             | Doctor login                                                   |
-| `/panel-medico`             | Doctor panel — queue, claim case, video, close/refer           |
-| `/auth/callback`            | OAuth redirect handler (routes by role / `role_chosen`)        |
-| `/admin` (+ `/admin/login`) | Private admin login (unlinked, `noindex`)                      |
-| `/admin/dashboard`          | Admin dashboard — metrics, doctor revoke, case oversight       |
-| `/api/videoconsulta`        | **Server** — creates/returns the Jitsi room for a consultation |
+| Route                         | Purpose                                                                     |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `/`                           | Home — two cards: paciente / médico (no admin link)                         |
+| `/registro-paciente`          | Patient request form (public; optional account + Google)                    |
+| `/sala-espera`                | Patient confirmation; shows the video room link on screen                   |
+| `/registro-medico`            | Doctor self-registration (email+password or Google)                         |
+| `/elegir-rol`                 | First-time Google role picker (patient vs doctor)                           |
+| `/mi-caso`                    | Patient login + read-only case status                                       |
+| `/login-medico`               | Doctor login                                                                |
+| `/panel-medico`               | Doctor/admin panel — queue, claim case, active case visibility, counters    |
+| `/panel-medico/consulta/[id]` | Case detail page — patient details, video link, note, close/no-show actions |
+| `/auth/callback`              | OAuth redirect handler (routes by role / `role_chosen`)                     |
+| `/admin` (+ `/admin/login`)   | Private admin login (unlinked, `noindex`)                                   |
+| `/admin/dashboard`            | Admin dashboard — metrics, doctor revoke, case oversight                    |
+| `/api/videoconsulta`          | **Server** — creates/returns the Jitsi room for a consultation              |
 
 ---
 
@@ -151,6 +152,7 @@ Functions / RPCs:
 - `set_my_role(...)` — RPC; lets a user finalize their own profile once (patient/doctor only).
 - `current_user_role()`, `is_admin()`, `is_staff()` — RLS helpers.
 - `mark_myself_online()` — RPC doctors call to update `last_seen_at`.
+- `mark_patient_waiting(uuid)` — RPC called by `/sala-espera` to update `patient_last_seen_at`.
 
 RLS is enabled on every table: anon can INSERT patients/consultations; account-holding patients read their
 own rows; staff read all; admins manage.
@@ -161,21 +163,24 @@ When a doctor opens a case, the panel performs an **atomic claim**: the update o
 still `waiting` (`.eq('status','waiting')`) and verifies a row came back. If another doctor claimed it first
 the update affects 0 rows, the doctor sees _"Este paciente ya fue tomado por otro médico"_, and the video
 room is **not** opened — preventing two doctors from landing in the same meeting. This complements the RLS
-policy, which already blocks reassigning an already-claimed case. See
-[pages/panel-medico.tsx](pages/panel-medico.tsx) (`openConsultation`).
+policy, which already blocks reassigning an already-claimed case. After a successful claim, the doctor is
+sent to the dedicated case detail page (`/panel-medico/consulta/[id]`) to manage the call. See
+[pages/panel-medico.tsx](pages/panel-medico.tsx) (`openConsultation`) and
+[pages/panel-medico/consulta/[id].tsx](pages/panel-medico/consulta/[id].tsx).
 
 ### Patient presence (waiting-room heartbeat)
 
 A submitted request is not the same as a patient actually waiting. While `/sala-espera` is open it calls the
-`mark_patient_waiting` RPC every ~20s, updating `consultations.patient_last_seen_at`. The doctor panel polls
-the queue every ~20s and treats a patient as **present** only if seen within `PRESENCE_WINDOW_MS` (~50s).
-Consequences:
+`mark_patient_waiting` RPC every ~20s, updating `consultations.patient_last_seen_at`. The doctor/admin panel
+polls the queue every ~20s and treats a patient as **present** only if seen within `PRESENCE_WINDOW_MS`
+(currently 5 minutes). Consequences:
 
-- The "En sala esperando" KPIs and the **"Atender al siguiente paciente en sala"** button only count/serve
-  **present** patients, so a doctor is never sent into an empty room. Each queue card shows **● En sala** or
-  **○ Sin conexión**; absent cases stay visible (a doctor can still open one manually).
-- At the end of a call the doctor can close a case as **"El paciente no estaba en la llamada"** → status
-  `patient_no_show` (logged in `consultation_events`), distinct from a normal close.
+- The "En sala esperando" KPIs count only **present** patients. Each queue card shows **● En sala** or
+  **○ Sin conexión**.
+- The **"Atender al siguiente paciente"** action prefers present waiting patients, but falls back to the
+  oldest eligible `waiting` case if the heartbeat failed, so nobody is blocked by a missed ping.
+- At the end of a call the doctor/admin can close a case as **"Paciente no estaba en la sala de espera"** →
+  status `patient_no_show` (logged in `consultation_events`), distinct from a normal close.
 
 This is a presence _proxy_ (it tracks the waiting-room tab, not literal Jitsi attendance). For exact in-call
 presence, the Jitsi IFrame API would be needed.
@@ -198,8 +203,9 @@ channel).
 
 **Flow:** `registro-paciente` POSTs to `/api/videoconsulta` → it generates a Jitsi room
 ([lib/jitsi.ts](lib/jitsi.ts)) and stores it on `consultations.video_room_url` → the patient lands on
-`/sala-espera` with the link shown on screen → a doctor claims the case in `/panel-medico` and opens the same
-room. The API route is **idempotent** (one room per consultation).
+`/sala-espera` with the link shown on screen → a doctor claims the case in `/panel-medico` → the app opens the
+same room and navigates to `/panel-medico/consulta/[id]` for the case workflow. The API route is
+**idempotent** (one room per consultation).
 
 **Self-hosted instance:** video runs on a self-hosted Jitsi server, not public `meet.jit.si`. Point the app
 at it by setting `NEXT_PUBLIC_JITSI_DOMAIN` (bare host, no `https://` / trailing slash) — `lib/jitsi.ts`
@@ -278,6 +284,13 @@ Set in `.env` for local dev and in Vercel for production. See [.env.example](.en
 - **Revoke a doctor:** `/admin/dashboard` → doctor list → **"Revocar acceso"** sets `active = false`, which
   immediately blocks them (`current_user_role()` requires `active = true`). The same button reactivates.
 - **Manage cases:** reassign doctor, change status, edit internal note from `/admin/dashboard`.
+- **Admin medical panel:** admin/super_admin users can also enter `/panel-medico`; they see normal queue
+  cards plus an admin-only **Casos activos del sistema** section for `in_progress`, `urgent_in_person`, and
+  `referred_to_specialist` cases, including patient, status, motive, presence, and assignment. Selecting a
+  case opens `/panel-medico/consulta/[id]`.
+- **Panel counters:** doctors see personal/specialty counters; admins see waiting/present/active-system
+  counters. Returning from close/no-show actions refreshes the panel via `/panel-medico?actualizado=1`, and
+  the panel also refreshes on focus and polling.
 
 ---
 
