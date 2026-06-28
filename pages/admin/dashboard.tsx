@@ -31,7 +31,7 @@ type Consultation = {
 
 const STATUS_OPTIONS = ['waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show']
 const ROLE_OPTIONS = ['all', 'doctor', 'specialist', 'admin', 'super_admin', 'patient']
-const PAGE_SIZE = 30
+const PAGE_SIZE = 5
 
 const fmtDate = (s?: string | null) => (s ? new Date(s).toLocaleDateString('es-VE') : '—')
 
