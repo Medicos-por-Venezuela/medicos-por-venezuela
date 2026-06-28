@@ -25,7 +25,18 @@ const ZONAS = [
   'Carabobo',
   'Otro'
 ]
-const NECESIDADES = ['Medicina general', 'Lesión física', 'Primeros auxilios', 'Apoyo emocional', 'Crisis de ansiedad', 'Niño / pediatría', 'Embarazo', 'Medicamentos', 'Enfermedad crónica', 'Otra']
+const NECESIDADES = [
+  'Medicina general',
+  'Lesión física',
+  'Primeros auxilios',
+  'Apoyo emocional',
+  'Crisis de ansiedad',
+  'Niño / pediatría',
+  'Embarazo',
+  'Medicamentos',
+  'Enfermedad crónica',
+  'Otra'
+]
 
 export default function RegistroPaciente() {
   const router = useRouter()
@@ -54,7 +65,7 @@ export default function RegistroPaciente() {
   }, [])
 
   const toggleTag = (tag: string) => {
-    setTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])
+    setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
   }
 
   const submit = async () => {
@@ -93,7 +104,9 @@ export default function RegistroPaciente() {
         if (signUpError) throw signUpError
         userId = signUpData.user?.id ?? null
         if (!signUpData.session) {
-          setError('Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión en "Seguir mi caso".')
+          setError(
+            'Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión en "Seguir mi caso".'
+          )
           return
         }
       }
@@ -122,7 +135,9 @@ export default function RegistroPaciente() {
         .insert({
           patient_id: patient.id,
           status: 'waiting',
-          priority: tags.some(t => ['Lesión física', 'Embarazo', 'Niño / pediatría'].includes(t)) ? 'review' : 'normal',
+          priority: tags.some((t) => ['Lesión física', 'Embarazo', 'Niño / pediatría'].includes(t))
+            ? 'review'
+            : 'normal',
           category: tags[0],
           chief_complaint: descripcion.trim() || tags.join(', '),
           code: `MPV-${Date.now()}`
@@ -153,7 +168,9 @@ export default function RegistroPaciente() {
       router.push(`/sala-espera?${params.toString()}`)
     } catch (e) {
       console.error(e)
-      setError('No se pudo registrar la solicitud. Puede que el email ya esté registrado, o haya un error de conexión.')
+      setError(
+        'No se pudo registrar la solicitud. Puede que el email ya esté registrado, o haya un error de conexión.'
+      )
     } finally {
       setLoading(false)
     }
@@ -161,48 +178,70 @@ export default function RegistroPaciente() {
 
   return (
     <>
-      <Head><title>Solicitar consulta — Médicos por Venezuela</title></Head>
+      <Head>
+        <title>Solicitar consulta — Médicos por Venezuela</title>
+      </Head>
       <main className="page">
         <div className="narrow">
-          <Link href="/" className="link-button">← Volver</Link>
+          <Link href="/" className="link-button">
+            ← Volver
+          </Link>
           <div className="card" style={{ marginTop: 14 }}>
             <h1 style={{ marginTop: 0 }}>Solicitar orientación</h1>
             <p style={{ color: '#64748b' }}>
-              Comparte solo la información mínima necesaria. Un médico voluntario te atenderá por videoconsulta.
+              Comparte solo la información mínima necesaria. Un médico voluntario te atenderá por
+              videoconsulta.
             </p>
 
             <div className="notice notice-danger" style={{ marginBottom: 16 }}>
-              Si tienes síntomas graves, busca atención presencial urgente. Esta web no reemplaza emergencias.
+              Si tienes síntomas graves, busca atención presencial urgente. Esta web no reemplaza
+              emergencias.
             </div>
 
             <div className="grid">
               <div className="grid grid-2">
                 <div>
                   <label className="label">Nombre completo *</label>
-                  <input value={nombre} onChange={e => setNombre(e.target.value)} placeholder="Ej. María González" />
+                  <input
+                    value={nombre}
+                    onChange={(e) => setNombre(e.target.value)}
+                    placeholder="Ej. María González"
+                  />
                 </div>
                 <div>
                   <label className="label">Número de cédula *</label>
-                  <input value={cedula} onChange={e => setCedula(e.target.value)} placeholder="Ej. V-12345678" />
+                  <input
+                    value={cedula}
+                    onChange={(e) => setCedula(e.target.value)}
+                    placeholder="Ej. V-12345678"
+                  />
                   <div className="hint">Nos ayuda a dar seguimiento a tu caso.</div>
                 </div>
               </div>
               <div>
                 <label className="label">Teléfono con código de país *</label>
-                <input value={telefono} onChange={e => setTelefono(e.target.value)} placeholder="Ej. 584121234567" />
+                <input
+                  value={telefono}
+                  onChange={(e) => setTelefono(e.target.value)}
+                  placeholder="Ej. 584121234567"
+                />
                 <div className="hint">Solo lo usaremos si tu caso necesita seguimiento.</div>
               </div>
               <div className="grid grid-2">
                 <div>
                   <label className="label">Zona afectada *</label>
-                  <select value={zona} onChange={e => setZona(e.target.value)}>
+                  <select value={zona} onChange={(e) => setZona(e.target.value)}>
                     <option value="">Selecciona...</option>
-                    {ZONAS.map(z => <option key={z} value={z}>{z}</option>)}
+                    {ZONAS.map((z) => (
+                      <option key={z} value={z}>
+                        {z}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <label className="label">Edad aproximada</label>
-                  <select value={edad} onChange={e => setEdad(e.target.value)}>
+                  <select value={edad} onChange={(e) => setEdad(e.target.value)}>
                     <option value="">Selecciona...</option>
                     <option value="0-2">0-2 años</option>
                     <option value="3-12">3-12 años</option>
@@ -216,61 +255,118 @@ export default function RegistroPaciente() {
               <div>
                 <label className="label">Tipo de ayuda *</label>
                 <div className="tag-row">
-                  {NECESIDADES.map(tag => (
-                    <button key={tag} type="button" onClick={() => toggleTag(tag)} className={`tag ${tags.includes(tag) ? 'selected' : ''}`}>{tag}</button>
+                  {NECESIDADES.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => toggleTag(tag)}
+                      className={`tag ${tags.includes(tag) ? 'selected' : ''}`}
+                    >
+                      {tag}
+                    </button>
                   ))}
                 </div>
               </div>
               <div>
                 <label className="label">Descripción breve</label>
-                <textarea rows={4} value={descripcion} onChange={e => setDescripcion(e.target.value)} placeholder="Describe en pocas palabras qué ocurre. Evita datos innecesarios." />
+                <textarea
+                  rows={4}
+                  value={descripcion}
+                  onChange={(e) => setDescripcion(e.target.value)}
+                  placeholder="Describe en pocas palabras qué ocurre. Evita datos innecesarios."
+                />
               </div>
 
               {!authedPatient && (
                 <div className="notice" style={{ background: '#f8fafc' }}>
-                  <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={wantsAccount} onChange={e => setWantsAccount(e.target.checked)} style={{ width: 'auto', marginTop: 5 }} />
-                    <span><strong>Crear una cuenta para seguir mi caso</strong> (opcional). Podrás iniciar sesión y ver el estado de tu solicitud.</span>
+                  <label
+                    style={{
+                      display: 'flex',
+                      gap: 10,
+                      alignItems: 'flex-start',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={wantsAccount}
+                      onChange={(e) => setWantsAccount(e.target.checked)}
+                      style={{ width: 'auto', marginTop: 5 }}
+                    />
+                    <span>
+                      <strong>Crear una cuenta para seguir mi caso</strong> (opcional). Podrás
+                      iniciar sesión y ver el estado de tu solicitud.
+                    </span>
                   </label>
                   {wantsAccount && (
                     <div className="grid grid-2" style={{ marginTop: 12 }}>
                       <div>
                         <label className="label">Email</label>
-                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                        <input
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                        />
                       </div>
                       <div>
                         <label className="label">Contraseña</label>
-                        <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
+                        <input
+                          type="password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="Mínimo 6 caracteres"
+                        />
                       </div>
                     </div>
                   )}
                 </div>
               )}
 
-              <label className="notice notice-warning" style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} style={{ width: 'auto', marginTop: 5 }} />
+              <label
+                className="notice notice-warning"
+                style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={consent}
+                  onChange={(e) => setConsent(e.target.checked)}
+                  style={{ width: 'auto', marginTop: 5 }}
+                />
                 <span>
-                  Acepto compartir voluntariamente esta información para recibir orientación médica solidaria. Entiendo que la atención es por videoconsulta, que el seguimiento podría continuar por teléfono si fuese necesario, y que esto no reemplaza atención presencial ni servicios de emergencia.
+                  Acepto compartir voluntariamente esta información para recibir orientación médica
+                  solidaria. Entiendo que la atención es por videoconsulta, que el seguimiento
+                  podría continuar por teléfono si fuese necesario, y que esto no reemplaza atención
+                  presencial ni servicios de emergencia.
                 </span>
               </label>
               {error && <div className="notice notice-danger">{error}</div>}
-              <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>{loading ? 'Enviando...' : 'Solicitar consulta gratuita'}</button>
+              <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>
+                {loading ? 'Enviando...' : 'Solicitar consulta gratuita'}
+              </button>
 
               {!authedPatient && (
                 <>
-                  <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o crea tu cuenta con</div>
+                  <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+                    o crea tu cuenta con
+                  </div>
                   <GoogleButton
                     disabled={loading}
                     onClick={async () => {
                       setError('')
                       try {
-                        if (typeof window !== 'undefined') localStorage.setItem('mpv_role', 'patient')
+                        if (typeof window !== 'undefined')
+                          localStorage.setItem('mpv_role', 'patient')
                         await signInWithGoogle()
-                      } catch { setError('No se pudo iniciar sesión con Google.') }
+                      } catch {
+                        setError('No se pudo iniciar sesión con Google.')
+                      }
                     }}
                   />
                   <p style={{ textAlign: 'center', color: '#64748b', fontSize: 13, margin: 0 }}>
-                    ¿Ya tienes cuenta? <Link href="/mi-caso" style={{ color: '#0f6e56', fontWeight: 700 }}>Seguir mi caso</Link>
+                    ¿Ya tienes cuenta?{' '}
+                    <Link href="/mi-caso" style={{ color: '#0f6e56', fontWeight: 700 }}>
+                      Seguir mi caso
+                    </Link>
                   </p>
                 </>
               )}

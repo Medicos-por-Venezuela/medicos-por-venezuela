@@ -34,14 +34,20 @@ export default function MiCaso() {
   }, [])
 
   async function load() {
-    const { data: { session } } = await supabase.auth.getSession()
+    const {
+      data: { session }
+    } = await supabase.auth.getSession()
     if (!session) {
       setAuthed(false)
       setLoading(false)
       return
     }
 
-    const { data: profile } = await supabase.from('profiles').select('role, role_chosen').eq('id', session.user.id).single()
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role, role_chosen')
+      .eq('id', session.user.id)
+      .single()
     if (profile && !profile.role_chosen) {
       router.replace('/elegir-rol')
       return
@@ -58,7 +64,7 @@ export default function MiCaso() {
     setAuthed(true)
     // Patient's own records (RLS: patients_select_own / consultations_select_own)
     const { data: patients } = await supabase.from('patients').select('id, full_name')
-    const ids = (patients || []).map(p => p.id)
+    const ids = (patients || []).map((p) => p.id)
     if (patients && patients.length) setPatientName(patients[0].full_name)
 
     if (ids.length) {
@@ -95,35 +101,65 @@ export default function MiCaso() {
     setConsultations([])
   }
 
-  if (loading) return <main className="page"><div className="narrow"><div className="card">Cargando...</div></div></main>
+  if (loading)
+    return (
+      <main className="page">
+        <div className="narrow">
+          <div className="card">Cargando...</div>
+        </div>
+      </main>
+    )
 
   if (!authed) {
     return (
       <>
-        <Head><title>Seguir mi caso — Médicos por Venezuela</title></Head>
+        <Head>
+          <title>Seguir mi caso — Médicos por Venezuela</title>
+        </Head>
         <main className="page">
           <div className="narrow">
-            <Link href="/" className="link-button">← Volver</Link>
+            <Link href="/" className="link-button">
+              ← Volver
+            </Link>
             <div className="card" style={{ marginTop: 14 }}>
               <h1 style={{ marginTop: 0 }}>Seguir mi caso</h1>
               <p style={{ color: '#64748b' }}>Inicia sesión para ver el estado de tu solicitud.</p>
               <div className="grid">
                 <div>
                   <label className="label">Email</label>
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
                 </div>
                 <div>
                   <label className="label">Contraseña</label>
-                  <input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') login() }} />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') login()
+                    }}
+                  />
                 </div>
                 {error && <div className="notice notice-danger">{error}</div>}
-                <button className="btn btn-primary btn-full" onClick={login}>Entrar</button>
+                <button className="btn btn-primary btn-full" onClick={login}>
+                  Entrar
+                </button>
                 <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>
                 <GoogleButton
-                  onClick={async () => { setError(''); try { await signInWithGoogle() } catch { setError('No se pudo iniciar sesión con Google.') } }}
+                  onClick={async () => {
+                    setError('')
+                    try {
+                      await signInWithGoogle()
+                    } catch {
+                      setError('No se pudo iniciar sesión con Google.')
+                    }
+                  }}
                 />
                 <p style={{ textAlign: 'center', color: '#64748b', fontSize: 13, margin: 0 }}>
-                  ¿No tienes cuenta? <Link href="/registro-paciente" style={{ color: '#0f6e56', fontWeight: 700 }}>Solicitar consulta</Link>
+                  ¿No tienes cuenta?{' '}
+                  <Link href="/registro-paciente" style={{ color: '#0f6e56', fontWeight: 700 }}>
+                    Solicitar consulta
+                  </Link>
                 </p>
               </div>
             </div>
@@ -135,7 +171,9 @@ export default function MiCaso() {
 
   return (
     <>
-      <Head><title>Seguir mi caso — Médicos por Venezuela</title></Head>
+      <Head>
+        <title>Seguir mi caso — Médicos por Venezuela</title>
+      </Head>
       <main className="page">
         <div className="narrow">
           <div className="topbar">
@@ -143,19 +181,32 @@ export default function MiCaso() {
               <h1 style={{ margin: 0 }}>Mi caso</h1>
               {patientName && <p style={{ margin: 0, color: '#64748b' }}>{patientName}</p>}
             </div>
-            <button className="btn btn-muted" onClick={logout}>Salir</button>
+            <button className="btn btn-muted" onClick={logout}>
+              Salir
+            </button>
           </div>
 
           {consultations.length === 0 ? (
             <div className="card">
-              <p style={{ color: '#64748b' }}>Todavía no tienes solicitudes registradas con esta cuenta.</p>
-              <Link className="btn btn-primary" href="/registro-paciente">Solicitar consulta</Link>
+              <p style={{ color: '#64748b' }}>
+                Todavía no tienes solicitudes registradas con esta cuenta.
+              </p>
+              <Link className="btn btn-primary" href="/registro-paciente">
+                Solicitar consulta
+              </Link>
             </div>
           ) : (
             <div className="grid">
-              {consultations.map(c => (
+              {consultations.map((c) => (
                 <div key={c.id} className="card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'start' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      gap: 10,
+                      alignItems: 'start'
+                    }}
+                  >
                     <div>
                       <strong>{c.category || 'Consulta'}</strong>
                       <div style={{ color: '#64748b', fontSize: 13 }}>Código {c.code}</div>
@@ -163,7 +214,11 @@ export default function MiCaso() {
                     <span className="badge badge-green">{STATUS_LABELS[c.status] || c.status}</span>
                   </div>
                   {c.chief_complaint && <p style={{ color: '#475569' }}>{c.chief_complaint}</p>}
-                  {c.referred_specialty && <p><span className="badge badge-blue">Derivado a {c.referred_specialty}</span></p>}
+                  {c.referred_specialty && (
+                    <p>
+                      <span className="badge badge-blue">Derivado a {c.referred_specialty}</span>
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

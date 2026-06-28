@@ -35,14 +35,14 @@ doctors pick up cases from a queue. A private `/admin` area gives operators metr
 
 ## Tech stack
 
-| Layer      | Choice |
-|------------|--------|
-| Framework  | **Next.js 14.2** (Pages Router) + **React 18** + **TypeScript 5** |
-| Backend    | **Supabase** (`@supabase/supabase-js` v2) — Postgres, Auth, RLS |
-| Video      | **Jitsi Meet** (self-hosted, see below) |
-| Messaging  | **Twilio** WhatsApp/SMS — **PARKED** (compliance pending) |
-| Hosting    | **Vercel** (serverless API routes + env vars) |
-| Styling    | Plain global CSS class names (`card`, `btn`, `kpi`, `table`, …) — no CSS framework |
+| Layer     | Choice                                                                             |
+| --------- | ---------------------------------------------------------------------------------- |
+| Framework | **Next.js 14.2** (Pages Router) + **React 18** + **TypeScript 5**                  |
+| Backend   | **Supabase** (`@supabase/supabase-js` v2) — Postgres, Auth, RLS                    |
+| Video     | **Jitsi Meet** (self-hosted, see below)                                            |
+| Messaging | **Twilio** WhatsApp/SMS — **PARKED** (compliance pending)                          |
+| Hosting   | **Vercel** (serverless API routes + env vars)                                      |
+| Styling   | Plain global CSS class names (`card`, `btn`, `kpi`, `table`, …) — no CSS framework |
 
 ---
 
@@ -66,12 +66,12 @@ Browser ──(anon key + RLS)──────────────► Supa
 
 ### Services
 
-| Service     | Role                                                            |
-|-------------|----------------------------------------------------------------|
-| Supabase    | Database (Postgres), authentication, RLS authorization         |
-| Vercel      | Hosting, environment variables, serverless API routes          |
-| Jitsi Meet  | In-browser video rooms (self-hosted instance)                  |
-| Twilio      | (PARKED — compliance pending) WhatsApp/SMS link delivery       |
+| Service    | Role                                                     |
+| ---------- | -------------------------------------------------------- |
+| Supabase   | Database (Postgres), authentication, RLS authorization   |
+| Vercel     | Hosting, environment variables, serverless API routes    |
+| Jitsi Meet | In-browser video rooms (self-hosted instance)            |
+| Twilio     | (PARKED — compliance pending) WhatsApp/SMS link delivery |
 
 ---
 
@@ -97,20 +97,20 @@ CLAUDE.md              assistant/codebase conventions
 
 ## Routes
 
-| Route | Purpose |
-|-------|---------|
-| `/` | Home — two cards: paciente / médico (no admin link) |
-| `/registro-paciente` | Patient request form (public; optional account + Google) |
-| `/sala-espera` | Patient confirmation; shows the video room link on screen |
-| `/registro-medico` | Doctor self-registration (email+password or Google) |
-| `/elegir-rol` | First-time Google role picker (patient vs doctor) |
-| `/mi-caso` | Patient login + read-only case status |
-| `/login-medico` | Doctor login |
-| `/panel-medico` | Doctor panel — queue, claim case, video, close/refer |
-| `/auth/callback` | OAuth redirect handler (routes by role / `role_chosen`) |
-| `/admin` (+ `/admin/login`) | Private admin login (unlinked, `noindex`) |
-| `/admin/dashboard` | Admin dashboard — metrics, doctor revoke, case oversight |
-| `/api/videoconsulta` | **Server** — creates/returns the Jitsi room for a consultation |
+| Route                       | Purpose                                                        |
+| --------------------------- | -------------------------------------------------------------- |
+| `/`                         | Home — two cards: paciente / médico (no admin link)            |
+| `/registro-paciente`        | Patient request form (public; optional account + Google)       |
+| `/sala-espera`              | Patient confirmation; shows the video room link on screen      |
+| `/registro-medico`          | Doctor self-registration (email+password or Google)            |
+| `/elegir-rol`               | First-time Google role picker (patient vs doctor)              |
+| `/mi-caso`                  | Patient login + read-only case status                          |
+| `/login-medico`             | Doctor login                                                   |
+| `/panel-medico`             | Doctor panel — queue, claim case, video, close/refer           |
+| `/auth/callback`            | OAuth redirect handler (routes by role / `role_chosen`)        |
+| `/admin` (+ `/admin/login`) | Private admin login (unlinked, `noindex`)                      |
+| `/admin/dashboard`          | Admin dashboard — metrics, doctor revoke, case oversight       |
+| `/api/videoconsulta`        | **Server** — creates/returns the Jitsi room for a consultation |
 
 ---
 
@@ -137,11 +137,11 @@ Defined entirely in [supabase_schema.sql](supabase_schema.sql) (idempotent — s
 `public` schema:
 
 - **`profiles`** — accounts linked to `auth.users`; roles `patient | doctor | specialist | admin |
-  super_admin`; `role_chosen` flags whether an OAuth account finalized its role.
+super_admin`; `role_chosen` flags whether an OAuth account finalized its role.
 - **`patients`** — minimal patient data; insert requires `consent = true`; optional `user_id`. Includes
   `cedula` (collected on the request form).
 - **`consultations`** — cases; status `waiting | in_progress | referred_to_specialist | urgent_in_person |
-  closed | cancelled | patient_no_show`; carries `video_room_url` and `patient_last_seen_at` (presence
+closed | cancelled | patient_no_show`; carries `video_room_url` and `patient_last_seen_at` (presence
   heartbeat).
 - **`consultation_events`** — audit trail of status changes.
 
@@ -159,7 +159,7 @@ own rows; staff read all; admins manage.
 
 When a doctor opens a case, the panel performs an **atomic claim**: the update only matches while the case is
 still `waiting` (`.eq('status','waiting')`) and verifies a row came back. If another doctor claimed it first
-the update affects 0 rows, the doctor sees *"Este paciente ya fue tomado por otro médico"*, and the video
+the update affects 0 rows, the doctor sees _"Este paciente ya fue tomado por otro médico"_, and the video
 room is **not** opened — preventing two doctors from landing in the same meeting. This complements the RLS
 policy, which already blocks reassigning an already-claimed case. See
 [pages/panel-medico.tsx](pages/panel-medico.tsx) (`openConsultation`).
@@ -177,7 +177,7 @@ Consequences:
 - At the end of a call the doctor can close a case as **"El paciente no estaba en la llamada"** → status
   `patient_no_show` (logged in `consultation_events`), distinct from a normal close.
 
-This is a presence *proxy* (it tracks the waiting-room tab, not literal Jitsi attendance). For exact in-call
+This is a presence _proxy_ (it tracks the waiting-room tab, not literal Jitsi attendance). For exact in-call
 presence, the Jitsi IFrame API would be needed.
 
 ### Specialty routing
@@ -185,7 +185,7 @@ presence, the Jitsi IFrame API would be needed.
 [lib/utils.ts](lib/utils.ts) maps doctor specialties to patient needs (`SPECIALTY_NEEDS`) and enforces a
 **two-way separation** for mental health (`canAttend` / `RESERVED_NEEDS`):
 
-- Psychology needs (*Apoyo emocional*, *Crisis de ansiedad*) only go to **Psicología / Psiquiatría** — never
+- Psychology needs (_Apoyo emocional_, _Crisis de ansiedad_) only go to **Psicología / Psiquiatría** — never
   fall back to a general doctor.
 - A **Psicología** doctor only ever attends psychology cases.
 
@@ -245,20 +245,20 @@ Set in `.env` for local dev and in Vercel for production. See [.env.example](.en
 
 **Browser-exposed (`NEXT_PUBLIC_*`) — safe; RLS enforces access:**
 
-| Var | Purpose |
-|-----|---------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key |
-| `NEXT_PUBLIC_JITSI_DOMAIN` | Self-hosted Jitsi host (empty = `meet.jit.si`) |
-| `NEXT_PUBLIC_SUPPORT_WHATSAPP` | Optional WhatsApp number shown on `/mi-caso` |
+| Var                             | Purpose                                        |
+| ------------------------------- | ---------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase project URL                           |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key                              |
+| `NEXT_PUBLIC_JITSI_DOMAIN`      | Self-hosted Jitsi host (empty = `meet.jit.si`) |
+| `NEXT_PUBLIC_SUPPORT_WHATSAPP`  | Optional WhatsApp number shown on `/mi-caso`   |
 
 **Server-only — NEVER prefix with `NEXT_PUBLIC`** (used by `/api/videoconsulta`):
 
-| Var | Purpose |
-|-----|---------|
-| `SUPABASE_SERVICE_ROLE_KEY` | Service-role key; lets the API route write video rooms |
-| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | Twilio creds (PARKED) |
-| `TWILIO_WHATSAPP_NUMBER` / `TWILIO_SMS_NUMBER` | Twilio senders (PARKED) |
+| Var                                            | Purpose                                                |
+| ---------------------------------------------- | ------------------------------------------------------ |
+| `SUPABASE_SERVICE_ROLE_KEY`                    | Service-role key; lets the API route write video rooms |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN`     | Twilio creds (PARKED)                                  |
+| `TWILIO_WHATSAPP_NUMBER` / `TWILIO_SMS_NUMBER` | Twilio senders (PARKED)                                |
 
 ---
 

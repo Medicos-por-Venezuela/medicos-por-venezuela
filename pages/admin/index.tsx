@@ -71,14 +71,23 @@ export default function AdminLogin() {
             <div className="grid">
               <div>
                 <label className="label">Email</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
               </div>
               <div>
                 <label className="label">Contraseña</label>
-                <input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') login() }} />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') login()
+                  }}
+                />
               </div>
               {error && <div className="notice notice-danger">{error}</div>}
-              <button className="btn btn-primary btn-full" onClick={login} disabled={loading}>{loading ? 'Entrando...' : 'Entrar'}</button>
+              <button className="btn btn-primary btn-full" onClick={login} disabled={loading}>
+                {loading ? 'Entrando...' : 'Entrar'}
+              </button>
               <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>
               <GoogleButton onClick={loginWithGoogle} disabled={loading} />
             </div>

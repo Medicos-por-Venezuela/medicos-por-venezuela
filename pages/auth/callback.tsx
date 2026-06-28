@@ -20,7 +20,11 @@ export default function AuthCallback() {
       // 1) Explicit OAuth error?
       const oErr = search.get('error') || hash.get('error')
       const oErrDesc = search.get('error_description') || hash.get('error_description')
-      if (oErr || oErrDesc) { setError(`Google: ${oErrDesc || oErr}`); setDebug(diag); return }
+      if (oErr || oErrDesc) {
+        setError(`Google: ${oErrDesc || oErr}`)
+        setDebug(diag)
+        return
+      }
 
       // 2) Establish the session from whatever was returned.
       const accessToken = hash.get('access_token')
@@ -28,17 +32,24 @@ export default function AuthCallback() {
       const code = search.get('code')
       try {
         if (accessToken && refreshToken) {
-          const { error: e } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
+          const { error: e } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          })
           if (e) throw e
         } else if (code) {
           const { error: e } = await supabase.auth.exchangeCodeForSession(code)
           if (e) throw e
         }
       } catch (e: any) {
-        setError(`No se pudo iniciar sesión: ${e?.message || e}`); setDebug(diag); return
+        setError(`No se pudo iniciar sesión: ${e?.message || e}`)
+        setDebug(diag)
+        return
       }
 
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session }
+      } = await supabase.auth.getSession()
       if (cancelled) return
       if (!session) {
         setError('No se pudo completar el inicio de sesión con Google. Vuelve a intentarlo.')
@@ -61,7 +72,10 @@ export default function AuthCallback() {
         setError(`No se pudo cargar tu perfil${profileError ? `: ${profileError.message}` : ''}.`)
         return
       }
-      if (!profile.role_chosen) { router.replace('/elegir-rol'); return }
+      if (!profile.role_chosen) {
+        router.replace('/elegir-rol')
+        return
+      }
       if (!profile.active) {
         await supabase.auth.signOut()
         setError('Tu cuenta está desactivada. Contacta a un administrador.')
@@ -73,20 +87,36 @@ export default function AuthCallback() {
     }
 
     run()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [router])
 
   return (
     <>
-      <Head><title>Acceso — Médicos por Venezuela</title></Head>
+      <Head>
+        <title>Acceso — Médicos por Venezuela</title>
+      </Head>
       <main className="page">
         <div className="narrow">
           <div className="card" style={{ marginTop: 14 }}>
             {error ? (
               <>
                 <div className="notice notice-danger">{error}</div>
-                {debug && <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 8, wordBreak: 'break-all' }}>Debug: {debug}</p>}
-                <Link href="/login-medico" className="link-button" style={{ marginTop: 12, display: 'inline-block' }}>← Volver al inicio de sesión</Link>
+                {debug && (
+                  <p
+                    style={{ fontSize: 12, color: '#94a3b8', marginTop: 8, wordBreak: 'break-all' }}
+                  >
+                    Debug: {debug}
+                  </p>
+                )}
+                <Link
+                  href="/login-medico"
+                  className="link-button"
+                  style={{ marginTop: 12, display: 'inline-block' }}
+                >
+                  ← Volver al inicio de sesión
+                </Link>
               </>
             ) : (
               <p style={{ color: '#64748b' }}>Iniciando sesión…</p>
