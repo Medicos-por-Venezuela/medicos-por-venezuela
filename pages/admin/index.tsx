@@ -1,9 +1,11 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useState } from 'react'
-import { supabase } from '../../lib/supabase'
-import { signInWithGoogle } from '../../lib/auth'
+import AuthField from '../../components/auth/AuthField'
+import AuthPanel from '../../components/auth/AuthPanel'
 import GoogleButton from '../../components/GoogleButton'
+import { signInWithGoogle } from '../../lib/auth'
+import { supabase } from '../../lib/supabase'
 
 // Private admin entrance. Not linked from anywhere public. Only admin/super_admin may pass;
 // any other account is signed out. Google sign-in routes through /auth/callback, which sends
@@ -64,26 +66,21 @@ export default function AdminLogin() {
         <meta name="robots" content="noindex" />
       </Head>
       <main className="page">
-        <div className="narrow">
-          <div className="card" style={{ marginTop: 14 }}>
-            <h1 style={{ marginTop: 0 }}>Administración</h1>
-            <p style={{ color: '#64748b' }}>Acceso restringido.</p>
-            <div className="grid">
-              <div>
-                <label className="label">Email</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} />
-              </div>
-              <div>
-                <label className="label">Contraseña</label>
-                <input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') login() }} />
-              </div>
-              {error && <div className="notice notice-danger">{error}</div>}
-              <button className="btn btn-primary btn-full" onClick={login} disabled={loading}>{loading ? 'Entrando...' : 'Entrar'}</button>
-              <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>
-              <GoogleButton onClick={loginWithGoogle} disabled={loading} />
-            </div>
+        <AuthPanel
+          title="Iniciar sesión de administrador"
+          description="Entra con una cuenta existente promovida como admin o super_admin. El registro de administradores no está disponible desde esta página."
+          backHref="/"
+          backLabel="Volver al sitio"
+        >
+          <div className="grid">
+            <AuthField label="Email" type="email" value={email} autoComplete="email" onChange={setEmail} />
+            <AuthField label="Contraseña" type="password" value={password} autoComplete="current-password" onChange={setPassword} onEnter={login} />
+            {error && <div className="notice notice-danger">{error}</div>}
+            <button className="btn btn-primary btn-full" onClick={login} disabled={loading}>{loading ? 'Entrando...' : 'Entrar al panel admin'}</button>
+            <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>También puedes usar Google si esa cuenta ya es admin.</div>
+            <GoogleButton onClick={loginWithGoogle} disabled={loading} />
           </div>
-        </div>
+        </AuthPanel>
       </main>
     </>
   )

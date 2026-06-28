@@ -88,6 +88,9 @@ export default function LoginMedico() {
               <button className="btn btn-primary btn-full" onClick={login} disabled={loading}>{loading ? 'Entrando...' : 'Entrar'}</button>
               <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>
               <GoogleButton onClick={loginWithGoogle} disabled={loading} />
+              <p style={{ textAlign: 'center', color: '#64748b', margin: 0 }}>
+                ¿No tienes cuenta? <Link href="/registro-medico" className="link-button">Crear cuenta</Link>
+              </p>
             </div>
           </div>
         </div>
