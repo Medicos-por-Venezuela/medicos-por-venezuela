@@ -21,30 +21,62 @@ export default function Home() {
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', width: '100%', maxWidth: '600px', marginBottom: '1.5rem' }}>
-          <button onClick={() => router.push('/registro-paciente')} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '16px', padding: '1.5rem 1rem', textAlign: 'center', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+        <div className="home-audience-grid">
+          <div className="home-audience-card">
             <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#e1f5ee', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px' }}>🤒</div>
             <h2 style={{ fontSize: '15px', fontWeight: 600 }}>Soy paciente</h2>
             <p style={{ fontSize: '13px', color: '#555', lineHeight: 1.4 }}>Necesito hablar con un médico o psicólogo</p>
-            <div style={{ marginTop: '8px', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, background: '#0f6e56', color: 'white', width: '100%' }}>
+            <button onClick={() => router.push('/registro-paciente')} style={{ marginTop: '8px', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, background: '#0f6e56', color: 'white', width: '100%', border: 0 }}>
               Solicitar consulta →
-            </div>
-          </button>
+            </button>
+          </div>
 
-          <button onClick={() => router.push('/registro-medico')} style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '16px', padding: '1.5rem 1rem', textAlign: 'center', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+          <div className="home-audience-card">
             <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#e6f1fb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px' }}>🩺</div>
             <h2 style={{ fontSize: '15px', fontWeight: 600 }}>Soy Médico/Psicólogo</h2>
             <p style={{ fontSize: '13px', color: '#555', lineHeight: 1.4 }}>Quiero ofrecer mi ayuda voluntaria</p>
-            <div style={{ marginTop: '8px', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, background: '#185fa5', color: 'white', width: '100%' }}>
+            <button onClick={() => router.push('/registro-medico')} style={{ marginTop: '8px', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, background: '#185fa5', color: 'white', width: '100%', border: 0 }}>
               Registrarme →
-            </div>
-          </button>
+            </button>
+            <button onClick={() => router.push('/login-medico')} className="link-button" style={{ marginTop: 4 }}>
+              Ya tengo cuenta
+            </button>
+          </div>
         </div>
 
         <p style={{ fontSize: '12px', color: '#888', textAlign: 'center' }}>
           Servicio gratuito · Confidencial · Disponible 24/7
         </p>
       </main>
+
+      <style jsx global>{`
+        .home-audience-grid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 1rem;
+          width: 100%;
+          max-width: 600px;
+          margin-bottom: 1.5rem;
+        }
+
+        .home-audience-card {
+          background: white;
+          border: 1px solid #e5e7eb;
+          border-radius: 16px;
+          padding: 1.5rem 1rem;
+          text-align: center;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+        }
+
+        @media (min-width: 640px) {
+          .home-audience-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+        }
+      `}</style>
     </>
   )
 }
