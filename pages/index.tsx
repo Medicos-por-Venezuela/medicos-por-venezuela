@@ -187,7 +187,7 @@ export default function Home() {
       </Head>
 
       <div className="lp">
-        {/* ---------- Floating trust banner ---------- */}
+        {/* ---------- Floating trust banner ---------- 
         <div className="float-banner" role="note" aria-label="Servicio confidencial y disponible 24/7">
           <span className="fb-item">
             <IconLock /> Confidencial
@@ -196,7 +196,7 @@ export default function Home() {
           <span className="fb-item">
             <IconHeartbeat /> Disponible 24/7
           </span>
-        </div>
+        </div>*/}
 
         {/* ---------- Header / Nav ---------- */}
         <header className="nav">
