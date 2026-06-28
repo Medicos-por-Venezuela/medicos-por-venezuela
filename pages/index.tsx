@@ -35,11 +35,11 @@ export default function Home() {
             <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#e6f1fb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px' }}>🩺</div>
             <h2 style={{ fontSize: '15px', fontWeight: 600 }}>Soy Médico/Psicólogo</h2>
             <p style={{ fontSize: '13px', color: '#555', lineHeight: 1.4 }}>Quiero ofrecer mi ayuda voluntaria</p>
-            <button onClick={() => router.push('/registro-medico')} style={{ marginTop: '8px', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, background: '#185fa5', color: 'white', width: '100%', border: 0 }}>
-              Registrarme →
+            <button onClick={() => router.push('/login-medico')} style={{ marginTop: '8px', padding: '8px 14px', borderRadius: '8px', fontSize: '13px', fontWeight: 500, background: '#185fa5', color: 'white', width: '100%', border: 0 }}>
+              Iniciar sesión →
             </button>
-            <button onClick={() => router.push('/login-medico')} className="link-button" style={{ marginTop: 4 }}>
-              Ya tengo cuenta
+            <button onClick={() => router.push('/registro-medico')} className="link-button" style={{ marginTop: 4 }}>
+              Crear cuenta
             </button>
           </div>
         </div>
