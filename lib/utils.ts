@@ -17,13 +17,20 @@ export const SPECIALTIES = [
   'Medicina general',
   'Pediatría',
   'Traumatología',
-  'Ginecología / obstetricia',
+  'Ginecología',
+  'Obstetricia',
   'Cardiología',
   'Medicina interna',
   'Psicología',
   'Psiquiatría',
   'Neurología',
   'Cirugía',
+  'Oncología',
+  'Oncología médica',
+  'Fisiatría',
+  'Cuidados paliativos y manejo del dolor',
+  'Geriatría',
+  'Reumatología',
   'Otra'
 ]
 
@@ -39,12 +46,19 @@ export const SPECIALTY_NEEDS: Record<string, string[]> = {
   ],
   Pediatría: ['Niño / pediatría'],
   Traumatología: ['Lesión física'],
-  'Ginecología / obstetricia': ['Embarazo'],
+  Ginecología: ['Embarazo'],
+  Obstetricia: ['Embarazo'],
   Cardiología: ['Enfermedad crónica'],
   Psicología: ['Apoyo emocional', 'Crisis de ansiedad'],
   Psiquiatría: ['Apoyo emocional', 'Crisis de ansiedad'],
   Neurología: ['Enfermedad crónica'],
   Cirugía: ['Lesión física'],
+  Oncología: ['Enfermedad crónica'],
+  'Oncología médica': ['Enfermedad crónica'],
+  Fisiatría: ['Lesión física'],
+  'Cuidados paliativos y manejo del dolor': ['Enfermedad crónica'],
+  Geriatría: ['Enfermedad crónica', 'Medicina general'],
+  Reumatología: ['Enfermedad crónica'],
   Otra: ['*']
 }
 
