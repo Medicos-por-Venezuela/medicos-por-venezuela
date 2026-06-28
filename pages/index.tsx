@@ -167,7 +167,9 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false)
 
   const goPaciente = () => router.push('/registro-paciente')
+  const goPacienteLogin = () => router.push('/mi-caso')
   const goMedico = () => router.push('/registro-medico')
+  const goMedicoLogin = () => router.push('/login-medico')
 
   const stepsReveal = useReveal<HTMLDivElement>()
   const whyReveal = useReveal<HTMLDivElement>()
@@ -220,6 +222,9 @@ export default function Home() {
               <a href="#como-funciona">Cómo funciona</a>
               <a href="#por-que">¿Por qué usarlo?</a>
               <a href="#contacto">Contacto</a>
+              <button className="nav-login" onClick={goPacienteLogin}>
+                Iniciar sesión
+              </button>
               <div className="nav-cta">
                 <button className="btn-pill btn-blue" onClick={goPaciente}>
                   Soy Paciente
@@ -253,6 +258,9 @@ export default function Home() {
                 <button className="btn-pill btn-blue btn-block" onClick={goPaciente}>
                   Solicitar consulta →
                 </button>
+                <button className="hcard-login" onClick={goPacienteLogin}>
+                  ¿Ya solicitaste? <strong>Inicia sesión</strong>
+                </button>
               </div>
 
               <div className="hcard">
@@ -263,6 +271,9 @@ export default function Home() {
                 <p>Quiero ofrecer mi ayuda voluntaria.</p>
                 <button className="btn-pill btn-gold-outline btn-block" onClick={goMedico}>
                   Registrarme →
+                </button>
+                <button className="hcard-login" onClick={goMedicoLogin}>
+                  ¿Ya eres voluntario? <strong>Inicia sesión</strong>
                 </button>
               </div>
             </div>
@@ -470,6 +481,19 @@ export default function Home() {
           display: flex;
           gap: 10px;
         }
+        .nav-login {
+          background: none;
+          border: none;
+          color: var(--blue);
+          font-size: 15px;
+          font-weight: 700;
+          cursor: pointer;
+          padding: 6px 2px;
+          transition: color 0.15s;
+        }
+        .nav-login:hover {
+          color: var(--gold);
+        }
         .nav-toggle {
           display: none;
           flex-direction: column;
@@ -610,6 +634,25 @@ export default function Home() {
           color: var(--muted);
           margin: 0 0 20px;
           min-height: 40px;
+        }
+        .hcard-login {
+          display: block;
+          width: 100%;
+          margin-top: 12px;
+          background: none;
+          border: none;
+          color: var(--muted);
+          font-size: 14px;
+          cursor: pointer;
+          transition: color 0.15s;
+        }
+        .hcard-login strong {
+          color: var(--blue);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+        }
+        .hcard-login:hover strong {
+          color: var(--gold);
         }
 
         /* Trust highlights */
@@ -932,6 +975,11 @@ export default function Home() {
             display: flex;
           }
           .nav-links a {
+            padding: 10px 4px;
+            border-bottom: 1px solid #f0f3f8;
+          }
+          .nav-login {
+            text-align: left;
             padding: 10px 4px;
             border-bottom: 1px solid #f0f3f8;
           }
