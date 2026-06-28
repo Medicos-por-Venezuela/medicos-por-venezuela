@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { SPECIALTIES, STATUS_LABELS } from '../../lib/utils'
+import Select from '../../components/ui/Select'
 
 type Profile = {
   id: string
@@ -10,6 +11,8 @@ type Profile = {
   full_name: string
   role: string
   specialty: string | null
+  country: string | null
+  did_article_8: boolean
   verified: boolean
   active: boolean
   last_seen_at: string | null
@@ -298,24 +301,24 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <label className="label">Médico asignado</label>
-                    <select value={caseDoctor} onChange={(e) => setCaseDoctor(e.target.value)}>
+                    <Select value={caseDoctor} onChange={(e) => setCaseDoctor(e.target.value)}>
                       <option value="">Sin asignar</option>
                       {activeDoctors.map((d) => (
                         <option key={d.id} value={d.id}>
                           {d.full_name} ({d.specialty || d.role})
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className="label">Estado</label>
-                    <select value={caseStatus} onChange={(e) => setCaseStatus(e.target.value)}>
+                    <Select value={caseStatus} onChange={(e) => setCaseStatus(e.target.value)}>
                       {STATUS_OPTIONS.map((s) => (
                         <option key={s} value={s}>
                           {STATUS_LABELS[s] || s}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className="label">Nota interna</label>
@@ -380,7 +383,7 @@ export default function AdminDashboard() {
                   value={userSearch}
                   onChange={(e) => setUserSearch(e.target.value)}
                 />
-                <select
+                <Select
                   style={{ flex: '0 1 130px' }}
                   value={userRole}
                   onChange={(e) => setUserRole(e.target.value)}
@@ -390,8 +393,8 @@ export default function AdminDashboard() {
                       {r === 'all' ? 'Todos los roles' : r}
                     </option>
                   ))}
-                </select>
-                <select
+                </Select>
+                <Select
                   style={{ flex: '0 1 130px' }}
                   value={userState}
                   onChange={(e) => setUserState(e.target.value)}
@@ -399,7 +402,7 @@ export default function AdminDashboard() {
                   <option value="all">Todos los estados</option>
                   <option value="active">Activos</option>
                   <option value="revoked">Revocados</option>
-                </select>
+                </Select>
                 <input
                   type="date"
                   style={{ flex: '0 1 140px' }}
@@ -422,6 +425,7 @@ export default function AdminDashboard() {
                       <th>Usuario</th>
                       <th>Rol</th>
                       <th>Estado</th>
+                      <th>Art. 8</th>
                       <th>Registrado</th>
                       <th>Online</th>
                       <th></th>
@@ -430,7 +434,7 @@ export default function AdminDashboard() {
                   <tbody>
                     {filteredProfiles.length === 0 ? (
                       <tr>
-                        <td colSpan={6} style={{ color: '#64748b' }}>
+                        <td colSpan={7} style={{ color: '#64748b' }}>
                           No hay usuarios que coincidan con el filtro.
                         </td>
                       </tr>
@@ -450,6 +454,17 @@ export default function AdminDashboard() {
                               <span className="badge badge-green">Activo</span>
                             ) : (
                               <span className="badge badge-red">Revocado</span>
+                            )}
+                          </td>
+                          <td>
+                            {['doctor', 'specialist'].includes(p.role) ? (
+                              p.did_article_8 ? (
+                                <span className="badge badge-green">Declarado</span>
+                              ) : (
+                                <span className="badge badge-red">No</span>
+                              )
+                            ) : (
+                              <span style={{ color: '#94a3b8', fontSize: 13 }}>—</span>
                             )}
                           </td>
                           <td>{fmtDate(p.created_at)}</td>
@@ -493,7 +508,7 @@ export default function AdminDashboard() {
                   value={caseSearch}
                   onChange={(e) => setCaseSearch(e.target.value)}
                 />
-                <select
+                <Select
                   style={{ flex: '0 1 160px' }}
                   value={caseStatusFilter}
                   onChange={(e) => setCaseStatusFilter(e.target.value)}
@@ -504,7 +519,7 @@ export default function AdminDashboard() {
                       {STATUS_LABELS[s] || s}
                     </option>
                   ))}
-                </select>
+                </Select>
                 <input
                   type="date"
                   style={{ flex: '0 1 140px' }}

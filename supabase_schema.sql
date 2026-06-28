@@ -14,6 +14,7 @@ create table if not exists public.profiles (
   medical_license text,
   country text,
   whatsapp_number text,
+  did_article_8 boolean not null default false, -- doctor declared they completed Art. 8 (required to practise in Venezuela)
   verified boolean not null default false,
   active boolean not null default true,
   role_chosen boolean not null default false, -- false = OAuth placeholder waiting for the user to pick a role
@@ -27,6 +28,7 @@ alter table public.profiles add column if not exists full_name text;
 alter table public.profiles add column if not exists role text default 'doctor';
 alter table public.profiles add column if not exists specialty text;
 alter table public.profiles add column if not exists medical_license text;
+alter table public.profiles add column if not exists did_article_8 boolean not null default false;
 alter table public.profiles add column if not exists country text;
 alter table public.profiles add column if not exists whatsapp_number text;
 alter table public.profiles add column if not exists verified boolean default false;
@@ -177,12 +179,16 @@ $$;
 
 -- Users finalize their OWN profile exactly once (used by /elegir-rol after Google sign-in).
 -- Cannot be used to escalate: only patient/doctor, only while role_chosen is still false.
+-- Drop the previous 5-arg signature so the widened overload below is unambiguous.
+drop function if exists public.set_my_role(text, text, text, text, text);
+
 create or replace function public.set_my_role(
   p_role text,
   p_specialty text default null,
   p_country text default null,
   p_medical_license text default null,
-  p_whatsapp_number text default null
+  p_whatsapp_number text default null,
+  p_did_article_8 boolean default false
 )
 returns void
 language plpgsql
@@ -201,6 +207,7 @@ begin
     country = case when p_role = 'doctor' then p_country else country end,
     medical_license = case when p_role = 'doctor' then p_medical_license else medical_license end,
     whatsapp_number = case when p_role = 'doctor' then p_whatsapp_number else whatsapp_number end,
+    did_article_8 = case when p_role = 'doctor' then p_did_article_8 else did_article_8 end,
     verified = true,
     active = true,
     role_chosen = true
@@ -208,7 +215,7 @@ begin
 end;
 $$;
 
-grant execute on function public.set_my_role(text, text, text, text, text) to authenticated;
+grant execute on function public.set_my_role(text, text, text, text, text, boolean) to authenticated;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created

@@ -1,8 +1,11 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useMountEffect } from '../lib/useMountEffect'
 import { SPECIALTIES } from '../lib/utils'
+import Select from '../components/ui/Select'
+import { elegirRolDoctorSchema, firstError } from '../lib/validation'
 
 const PAISES = [
   'Venezuela',
@@ -35,10 +38,11 @@ export default function ElegirRol() {
   const [country, setCountry] = useState('')
   const [license, setLicense] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
+  const [didArt8, setDidArt8] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
+  useMountEffect(() => {
     const run = async () => {
       const {
         data: { session }
@@ -74,8 +78,7 @@ export default function ElegirRol() {
       setChecking(false)
     }
     run()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  })
 
   function redirectByRole(role: string) {
     if (['admin', 'super_admin'].includes(role)) router.replace('/admin/dashboard')
@@ -99,18 +102,33 @@ export default function ElegirRol() {
 
   const confirmDoctor = async () => {
     setError('')
-    if (!specialty || !country || !whatsapp.trim()) {
-      setError('Completa especialidad, país y WhatsApp.')
+    const mppsLicense = license ? `MPPS-${license}` : ''
+    const parsed = elegirRolDoctorSchema.safeParse({
+      specialty,
+      country,
+      whatsapp,
+      medicalLicense: mppsLicense,
+      didArt8
+    })
+    if (!parsed.success) {
+      setError(firstError(parsed.error))
       return
     }
+    const {
+      specialty: vSpecialty,
+      country: vCountry,
+      whatsapp: vWhatsapp,
+      medicalLicense: vLicense
+    } = parsed.data
     setLoading(true)
     try {
       const { error: rpcError } = await supabase.rpc('set_my_role', {
         p_role: 'doctor',
-        p_specialty: specialty,
-        p_country: country,
-        p_medical_license: license.trim() || null,
-        p_whatsapp_number: whatsapp.trim()
+        p_specialty: vSpecialty,
+        p_country: vCountry,
+        p_medical_license: vLicense,
+        p_whatsapp_number: vWhatsapp,
+        p_did_article_8: didArt8
       })
       if (rpcError) throw rpcError
       router.replace('/panel-medico')
@@ -123,7 +141,7 @@ export default function ElegirRol() {
 
   if (checking)
     return (
-      <main className="page">
+      <main className="page auth">
         <div className="narrow">
           <div className="card">Cargando...</div>
         </div>
@@ -135,7 +153,7 @@ export default function ElegirRol() {
       <Head>
         <title>Elegir rol — Médicos por Venezuela</title>
       </Head>
-      <main className="page">
+      <main className="page auth">
         <div className="narrow">
           <div className="card" style={{ marginTop: 14 }}>
             <h1 style={{ marginTop: 0 }}>¿Cómo quieres usar la plataforma?</h1>
@@ -173,7 +191,7 @@ export default function ElegirRol() {
                 </div>
                 {error && <div className="notice notice-danger">{error}</div>}
                 <button
-                  className="btn btn-primary btn-full"
+                  className="btn btn-blue btn-full"
                   onClick={confirmPatient}
                   disabled={loading}
                 >
@@ -196,38 +214,58 @@ export default function ElegirRol() {
                 <div className="grid grid-2">
                   <div>
                     <label className="label">Especialidad *</label>
-                    <select value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
+                    <Select value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
                       <option value="">Selecciona...</option>
                       {SPECIALTIES.map((s) => (
                         <option key={s} value={s}>
                           {s}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className="label">País donde ejerces/resides *</label>
-                    <select value={country} onChange={(e) => setCountry(e.target.value)}>
+                    <Select value={country} onChange={(e) => setCountry(e.target.value)}>
                       <option value="">Selecciona...</option>
                       {PAISES.map((p) => (
                         <option key={p} value={p}>
                           {p}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 </div>
                 <div className="grid grid-2">
                   <div>
-                    <label className="label">Número de colegiatura/licencia</label>
-                    <input
-                      value={license}
-                      onChange={(e) => setLicense(e.target.value)}
-                      placeholder="Opcional, pero recomendado"
-                    />
+                    <label className="label">Matrícula MPPS *</label>
+                    <div style={{ display: 'flex', alignItems: 'stretch' }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '0 12px',
+                          background: '#f1f5f9',
+                          border: '1px solid var(--border)',
+                          borderRight: 'none',
+                          borderRadius: '10px 0 0 10px',
+                          color: '#64748b',
+                          fontWeight: 500,
+                          fontSize: 15
+                        }}
+                      >
+                        MPPS-
+                      </span>
+                      <input
+                        value={license}
+                        onChange={(e) => setLicense(e.target.value.replace(/\D/g, ''))}
+                        inputMode="numeric"
+                        placeholder="123456"
+                        style={{ flex: 1, minWidth: 0, borderRadius: '0 10px 10px 0' }}
+                      />
+                    </div>
                   </div>
                   <div>
-                    <label className="label">WhatsApp / teléfono (uso administrativo) *</label>
+                    <label className="label">Teléfono *</label>
                     <input
                       value={whatsapp}
                       onChange={(e) => setWhatsapp(e.target.value)}
@@ -238,9 +276,32 @@ export default function ElegirRol() {
                     </div>
                   </div>
                 </div>
+
+                <div className="card-flat" style={{ display: 'grid', gap: 10 }}>
+                  <h3 style={{ margin: 0 }}>Verificación — Artículo 8</h3>
+                  <p className="hint" style={{ margin: 0 }}>
+                    El Artículo 8 es el servicio obligatorio para ejercer la medicina en Venezuela.
+                    Es requerido para atender pacientes.
+                  </p>
+                  <label
+                    style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={didArt8}
+                      onChange={(e) => setDidArt8(e.target.checked)}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span>Declaro que realicé el Artículo 8.</span>
+                  </label>
+                  <p className="hint" style={{ margin: 0 }}>
+                    Verificamos tu matrícula MPPS manualmente en el registro oficial del SACS.
+                  </p>
+                </div>
+
                 {error && <div className="notice notice-danger">{error}</div>}
                 <button
-                  className="btn btn-primary btn-full"
+                  className="btn btn-blue btn-full"
                   onClick={confirmDoctor}
                   disabled={loading}
                 >
