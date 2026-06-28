@@ -93,6 +93,7 @@ export default function ConsultaDetalle() {
   const [consultation, setConsultation] = useState<Consultation | null>(null)
   const [events, setEvents] = useState<ConsultationEvent[]>([])
   const [eventAuthorsById, setEventAuthorsById] = useState<Record<string, EventAuthor>>({})
+  const [assignedDoctor, setAssignedDoctor] = useState<EventAuthor | null>(null)
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
@@ -153,7 +154,32 @@ export default function ConsultaDetalle() {
 
     setConsultation(row)
     setNote(row.internal_note || '')
-    await loadEvents(id)
+    await Promise.all([loadAssignedDoctor(row, currentProfile), loadEvents(id)])
+  }
+
+  async function loadAssignedDoctor(row: Consultation, currentProfile: Profile | null = profile) {
+    if (!row.assigned_doctor_id) {
+      setAssignedDoctor(null)
+      return
+    }
+
+    if (row.assigned_doctor_id === currentProfile?.id) {
+      setAssignedDoctor({ id: currentProfile.id, full_name: currentProfile.full_name, role: currentProfile.role })
+      return
+    }
+
+    if (!isAdminRole(currentProfile?.role)) {
+      setAssignedDoctor(null)
+      return
+    }
+
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name, role')
+      .eq('id', row.assigned_doctor_id)
+      .single()
+
+    setAssignedDoctor((data as EventAuthor | null) || null)
   }
 
   async function loadEvents(consultationId: string) {
@@ -291,6 +317,7 @@ export default function ConsultaDetalle() {
               <div className="detail-timeline">
                 <div className="notice">
                   <strong>Estado actual:</strong> {STATUS_LABELS[consultation.status] || consultation.status}<br />
+                  <strong>Médico asignado:</strong> {assignedDoctor?.full_name || (consultation.assigned_doctor_id ? 'Médico asignado' : 'Sin asignar')}<br />
                   <strong>Especialidad referida:</strong> {consultation.referred_specialty || '—'}
                   {events[0]?.note && <><br /><strong>Última nota:</strong> {events[0].note}</>}
                 </div>
