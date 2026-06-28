@@ -12,6 +12,9 @@ out/
 next-env.d.ts
 *.tsbuildinfo
 
+# ESLint cache
+.eslintcache
+
 # Local tooling
 .claude/
 

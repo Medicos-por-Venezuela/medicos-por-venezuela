@@ -5,6 +5,55 @@ MVP web app connecting volunteer doctors with patients in Venezuela. Self-servic
 a doctor panel (video consultations, closes/refers cases), and a private `/admin` section with metrics and
 case oversight.
 
+> **Sync rule:** CLAUDE.md and [AGENTS.md](AGENTS.md) must stay consistent. Any update to the stack,
+> testing capabilities, or SDD setup here must be reflected in AGENTS.md (and vice versa) in the
+> same change.
+
+## Testing capabilities (strict_tdd: false)
+
+**There is still no automated test harness (unit/integration/E2E) in this repo.** Lint and format
+ARE now enforced (ESLint + Prettier) — only `test` tooling is missing:
+
+- `package.json` scripts: `dev`, `build`, `start`, `lint`, `format`, `format:check` — no `test` script
+- Zero matches for `**/*.test.*` or `**/*.spec.*`
+- CI runs lint + build on PRs (`.github/workflows/ci.yml`) but has no test step
+
+| Layer        | Available | Tool / Command                                 |
+| ------------ | --------- | ---------------------------------------------- |
+| Unit         | ❌        | —                                              |
+| Integration  | ❌        | —                                              |
+| E2E          | ❌        | —                                              |
+| Linter       | ✅        | `pnpm lint` (ESLint, `eslint-config-next`)     |
+| Type checker | ✅ manual | `pnpm exec tsc --noEmit` (no dedicated script) |
+| Formatter    | ✅        | `pnpm format` / `pnpm format:check` (Prettier) |
+| Coverage     | ❌        | —                                              |
+
+Verification after a change means `pnpm build`, `pnpm exec tsc --noEmit`, `pnpm lint`, and manual
+QA in the browser — there is no automated test suite to run or extend. Recommendation (not yet
+actioned): add Vitest + React Testing Library and a `test` script before enabling Strict TDD mode.
+
+## Contribution standards
+
+Conventional Commits are **enforced** (not just documented) via commitlint + husky (`commit-msg`
+hook); a `pre-commit` hook runs `lint-staged` (ESLint --fix + Prettier) on staged files. Hooks
+install automatically on `pnpm install` via the `prepare` script. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, and
+[.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) for the PR format.
+
+## SDD (Spec-Driven Development) setup
+
+This project is initialized for SDD-based work via the `sdd-init` skill:
+
+- **Persistence backend:** `engram` (no `openspec/` directory — artifacts live in persistent memory)
+- **Skill registry:** `.atl/skill-registry.md` (+ cache)
+- **Strict TDD mode:** disabled (see Testing capabilities above)
+
+Engram topic keys: `sdd-init/medicos-por-venezuela` (project context),
+`sdd/medicos-por-venezuela/testing-capabilities`, and per-change keys
+`sdd/{change-name}/{explore|proposal|spec|design|tasks|apply-progress|verify-report|archive-report}`.
+Recover via `mem_search(query: "{topic_key}", project: "medicos-por-venezuela")` →
+`mem_get_observation(id)`.
+
 ## Auth model (current)
 
 - **Patients:** can submit a request **anonymously** (default). An account is **optional** — only for
@@ -51,12 +100,12 @@ There is **no separate backend server**. This is a **Next.js frontend + Supabase
 
 ## Services used
 
-| Service   | Role                                                              |
-|-----------|------------------------------------------------------------------|
-| Supabase  | Database (Postgres), authentication, RLS authorization           |
-| Vercel    | Hosting, environment variables, serverless API routes            |
-| Twilio    | (PARKED — compliance pending) would send video links via WhatsApp/SMS |
-| Jitsi Meet| Free in-browser video rooms (`meet.jit.si`, no server/keys)      |
+| Service    | Role                                                                  |
+| ---------- | --------------------------------------------------------------------- |
+| Supabase   | Database (Postgres), authentication, RLS authorization                |
+| Vercel     | Hosting, environment variables, serverless API routes                 |
+| Twilio     | (PARKED — compliance pending) would send video links via WhatsApp/SMS |
+| Jitsi Meet | Free in-browser video rooms (`meet.jit.si`, no server/keys)           |
 
 ## Project layout
 
@@ -70,6 +119,7 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `supabase_schema.sql` — **the backend**: tables, triggers, RLS policies, RPCs (run in Supabase)
 
 ### Routes (`pages/`)
+
 - `/` — home (two cards: paciente / médico; no admin link)
 - `/registro-paciente` — patient request form (public; optional account + Google)
 - `/sala-espera` — patient confirmation (anonymous submissions)
@@ -85,6 +135,7 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 ## Database (Supabase Postgres)
 
 Defined in [supabase_schema.sql](supabase_schema.sql). Tables (`public` schema):
+
 - `profiles` — accounts (linked to `auth.users`); roles: `patient | doctor | specialist | admin | super_admin`;
   `role_chosen` flags whether an OAuth account has finalized its role
 - `patients` — minimal patient data; insert requires `consent = true`; optional `user_id` links to an account
@@ -92,6 +143,7 @@ Defined in [supabase_schema.sql](supabase_schema.sql). Tables (`public` schema):
 - `consultation_events` — audit trail of status changes
 
 Postgres functions / RPCs:
+
 - `handle_new_auth_user()` — trigger; creates a `profiles` row from signup metadata (role-aware)
 - `set_my_role(...)` — RPC; lets a user finalize their own profile once (patient/doctor only)
 - `current_user_role()`, `is_admin()`, `is_staff()` — RLS helpers
@@ -125,21 +177,27 @@ The "backend" is provisioned entirely in Supabase — there is no local server t
 
 ```bash
 cp .env.example .env        # then fill in the values below
-npm install
-npm run dev                 # http://localhost:3000
+pnpm install
+pnpm dev                    # http://localhost:3000
 ```
 
-Other scripts: `npm run build`, `npm run start`.
+Other scripts: `pnpm build`, `pnpm start`, `pnpm lint`, `pnpm format`.
+
+> Pre-commit (husky + lint-staged) and commit-msg (commitlint) hooks install automatically via the
+> `prepare` script on `pnpm install`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the commit
+> convention and code-standards workflow.
 
 ### Environment variables
 
 Set in `.env` for local dev, and in Vercel for production:
 
 Browser-exposed (`NEXT_PUBLIC_*`, fine — RLS enforces access):
+
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
 Server-only (used by `pages/api/videoconsulta.ts`; **never** prefix with `NEXT_PUBLIC`):
+
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `TWILIO_*` (PARKED — see TODOs; not needed while link delivery is on-screen only)
 
@@ -154,7 +212,7 @@ compliance; see [.knowledge/TODOs.md](.knowledge/TODOs.md). No links are sent vi
 
 Doctors use **"Atender al siguiente paciente en cola"** in [panel-medico.tsx](pages/panel-medico.tsx),
 which assigns the next waiting case matching their specialty (`matchesSpecialty`) and opens the same Jitsi
-room. Reserved needs (psychology: *Apoyo emocional* / *Crisis de ansiedad*) only go to
+room. Reserved needs (psychology: _Apoyo emocional_ / _Crisis de ansiedad_) only go to
 Psicología/Psiquiatría and never fall back to general doctors (`canAttend` in [lib/utils.ts](lib/utils.ts)).
 The API route is idempotent (one room per consultation).
 
