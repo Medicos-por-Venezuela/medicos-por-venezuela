@@ -45,6 +45,9 @@ There is **no separate backend server**. This is a **Next.js frontend + Supabase
   for optional follow-up, the doctor's phone only for admin use (never shared)
 - **Vercel** — hosting/deploy target (env vars configured there)
 - No CSS framework — plain global CSS class names (`card`, `btn`, `kpi`, `table`, etc.)
+- **Mobile-first, always responsive** — design and build every screen for small viewports first,
+  then progressively enhance for larger ones. All UI must remain fully responsive across phones,
+  tablets, and desktops (fluid layouts, responsive breakpoints, touch-friendly targets).
 
 ## Services used
 
