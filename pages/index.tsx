@@ -185,6 +185,17 @@ export default function Home() {
       </Head>
 
       <div className="lp">
+        {/* ---------- Floating trust banner ---------- */}
+        <div className="float-banner" role="note" aria-label="Servicio confidencial y disponible 24/7">
+          <span className="fb-item">
+            <IconLock /> Confidencial
+          </span>
+          <span className="fb-divider" aria-hidden="true" />
+          <span className="fb-item">
+            <IconHeartbeat /> Disponible 24/7
+          </span>
+        </div>
+
         {/* ---------- Header / Nav ---------- */}
         <header className="nav">
           <div className="nav-inner">
@@ -279,6 +290,37 @@ export default function Home() {
           </div>
         </section>
 
+        {/* ---------- Trust highlights ---------- */}
+        <section className="trust">
+          <div className="trust-inner">
+            <div className="trust-card">
+              <div className="trust-icon trust-icon--lock">
+                <IconLock />
+              </div>
+              <div className="trust-body">
+                <h3>100% Confidencial</h3>
+                <p>
+                  Tu información y tu consulta son privadas y seguras. Solo el médico o
+                  psicólogo que te atiende puede verlas.
+                </p>
+              </div>
+            </div>
+
+            <div className="trust-card">
+              <div className="trust-icon trust-icon--clock">
+                <IconHeartbeat />
+              </div>
+              <div className="trust-body">
+                <h3>Disponible 24/7</h3>
+                <p>
+                  Solicita tu teleconsulta a cualquier hora, todos los días. Siempre hay
+                  voluntarios listos para ayudarte.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* ---------- Why use it ---------- */}
         <section id="por-que" className="section">
           <div ref={whyReveal.ref} className={`why ${whyReveal.className}`}>
@@ -344,6 +386,41 @@ export default function Home() {
           color: var(--ink);
           background: #fff;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Inter, Arial, sans-serif;
+        }
+
+        /* Floating trust banner */
+        .float-banner {
+          position: fixed;
+          bottom: 18px;
+          right: 18px;
+          z-index: 60;
+          display: inline-flex;
+          align-items: center;
+          gap: 12px;
+          background: var(--blue);
+          color: #fff;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          border-radius: 999px;
+          padding: 9px 16px;
+          font-size: 13px;
+          font-weight: 700;
+          box-shadow: 0 10px 28px rgba(8, 22, 48, 0.32);
+        }
+        .fb-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          white-space: nowrap;
+        }
+        .fb-item :global(svg) {
+          color: var(--gold);
+          width: 16px;
+          height: 16px;
+        }
+        .fb-divider {
+          width: 1px;
+          height: 16px;
+          background: rgba(255, 255, 255, 0.28);
         }
 
         /* Nav */
@@ -533,6 +610,62 @@ export default function Home() {
           color: var(--muted);
           margin: 0 0 20px;
           min-height: 40px;
+        }
+
+        /* Trust highlights */
+        .trust {
+          max-width: 1000px;
+          margin: 0 auto;
+          padding: 56px 20px 0;
+        }
+        .trust-inner {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 20px;
+        }
+        .trust-card {
+          display: flex;
+          align-items: flex-start;
+          gap: 18px;
+          background: #fff;
+          border: 1px solid #e8ecf3;
+          border-left: 5px solid var(--gold);
+          border-radius: 18px;
+          padding: 24px 26px;
+          box-shadow: 0 14px 34px rgba(8, 22, 48, 0.08);
+        }
+        .trust-icon {
+          flex-shrink: 0;
+          width: 54px;
+          height: 54px;
+          border-radius: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .trust-icon :global(svg) {
+          width: 26px;
+          height: 26px;
+        }
+        .trust-icon--lock {
+          background: #e8effb;
+          color: var(--blue);
+        }
+        .trust-icon--clock {
+          background: #fff5d1;
+          color: #b8870b;
+        }
+        .trust-body h3 {
+          margin: 0 0 6px;
+          font-size: 19px;
+          font-weight: 800;
+          color: var(--blue);
+        }
+        .trust-body p {
+          margin: 0;
+          font-size: 14.5px;
+          line-height: 1.5;
+          color: var(--muted);
         }
 
         /* Sections */
@@ -766,6 +899,17 @@ export default function Home() {
         }
 
         /* Responsive */
+        @media (max-width: 620px) {
+          .float-banner {
+            left: 50%;
+            right: auto;
+            transform: translateX(-50%);
+          }
+          .trust-inner {
+            grid-template-columns: 1fr;
+          }
+        }
+
         @media (max-width: 860px) {
           .nav-toggle {
             display: flex;
