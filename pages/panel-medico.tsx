@@ -314,12 +314,12 @@ export default function PanelMedico() {
       <Head><title>Panel médico — Médicos por Venezuela</title></Head>
       <main className="page">
         <div className="container">
-          <div className="topbar">
+          <div className="panel-topbar">
             <div>
               <h1 style={{ margin: 0 }}>{profile?.full_name}</h1>
               <p style={{ margin: 0, color: '#64748b' }}>{isCurrentUserAdmin ? 'Administrador' : (profile?.specialty || 'Sin especialidad')} · <span className="badge badge-green">Activo</span></p>
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div className="panel-actions">
               {isCurrentUserAdmin && <button className="btn btn-outline" onClick={() => router.push('/admin/dashboard')}>Panel admin</button>}
               <button className="btn btn-muted" onClick={logout}>Salir</button>
             </div>
@@ -327,7 +327,7 @@ export default function PanelMedico() {
 
           {message && <div className="notice notice-info" style={{ marginBottom: 16 }}>{message}</div>}
 
-          <div className="grid grid-3" style={{ marginBottom: 18 }}>
+          <div className="panel-kpis">
             {kpis.map(kpi => (
               <div key={kpi.label} className="kpi"><div className="kpi-value">{kpi.value}</div><div className="kpi-label">{kpi.label}</div></div>
             ))}
@@ -342,7 +342,7 @@ export default function PanelMedico() {
   {waiting.length ? `Atender al siguiente paciente · ${waiting.length} esperando` : 'No hay pacientes nuevos en cola'}
 </button>
 
-          <div className="grid grid-2">
+          <div className="panel-sections">
             <section className="card">
   <h2>Mis consultas abiertas</h2>
 
@@ -376,7 +376,7 @@ export default function PanelMedico() {
             </section>
 
             {isCurrentUserAdmin && (
-              <section className="card" style={{ gridColumn: '1 / -1' }}>
+              <section className="card panel-full-span">
                 <h2 style={{ marginTop: 0 }}>Casos activos del sistema</h2>
                 {activeSystemConsultations.length === 0 ? (
                   <p style={{ color: '#64748b' }}>No hay casos activos en progreso, derivados o marcados como urgentes presenciales.</p>
@@ -398,6 +398,75 @@ export default function PanelMedico() {
           </div>
         </div>
       </main>
+
+      <style jsx global>{`
+        .panel-topbar {
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+
+        .panel-actions {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+
+        .panel-kpis,
+        .panel-sections {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 16px;
+        }
+
+        .panel-kpis {
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+
+        .panel-full-span {
+          grid-column: 1 / -1;
+        }
+
+        .panel-card-header {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 10px;
+        }
+
+        @media (min-width: 640px) {
+          .panel-topbar {
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+          }
+
+          .panel-actions {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+          }
+
+          .panel-kpis {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+
+          .panel-card-header {
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: flex-start;
+          }
+        }
+
+        @media (min-width: 900px) {
+          .panel-sections {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+      `}</style>
     </>
   )
 }
@@ -405,7 +474,7 @@ export default function PanelMedico() {
 function AdminActiveCaseCard({ c, assignment, onSelect }: { c: Consultation; assignment: string; onSelect: () => void }) {
   return (
     <div className="card-flat">
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'start' }}>
+      <div className="panel-card-header">
         <div>
           <strong>{c.patients?.full_name || 'Paciente'}</strong>
           <div style={{ color: '#64748b', fontSize: 13 }}>
@@ -433,7 +502,7 @@ function AdminActiveCaseCard({ c, assignment, onSelect }: { c: Consultation; ass
 function ConsultationCard({ c, onOpen }: { c: Consultation; onOpen: () => void }) {
   return (
     <div className="card-flat">
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'start' }}>
+      <div className="panel-card-header">
         <div>
           <strong>{c.patients?.full_name || 'Paciente'}</strong>
           <div style={{ color: '#64748b', fontSize: 13 }}>{c.patients?.affected_zone} · hace {minutesSince(c.created_at)} min</div>

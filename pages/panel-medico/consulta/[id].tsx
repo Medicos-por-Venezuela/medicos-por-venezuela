@@ -189,7 +189,7 @@ export default function ConsultaDetalle() {
       <Head><title>Detalle de consulta — Médicos por Venezuela</title></Head>
       <main className="page">
         <div className="container">
-          <div className="topbar">
+          <div className="detail-topbar">
             <div>
               <button className="link-button" onClick={() => router.push('/panel-medico')}>← Volver al panel médico</button>
               <h1 style={{ margin: '8px 0 0' }}>Detalle de consulta</h1>
@@ -200,7 +200,7 @@ export default function ConsultaDetalle() {
 
           {message && <div className="notice notice-info" style={{ marginBottom: 16 }}>{message}</div>}
 
-          <div className="grid grid-2">
+          <div className="detail-grid">
             <section className="card">
               <h2 style={{ marginTop: 0 }}>Paciente</h2>
               <h3 style={{ marginBottom: 4 }}>{consultation.patients?.full_name || 'Paciente'}</h3>
@@ -227,9 +227,9 @@ export default function ConsultaDetalle() {
               )}
             </section>
 
-            <section className="card" style={{ gridColumn: '1 / -1' }}>
+            <section className="card detail-full-span">
               <h2 style={{ marginTop: 0 }}>Gestión de la consulta</h2>
-              <div className="grid">
+              <div className="detail-actions">
                 <div>
                   <label className="label">Nota operativa interna</label>
                   <textarea rows={6} value={note} onChange={e => setNote(e.target.value)} placeholder="Evita escribir historia clínica completa. Solo información necesaria para coordinación." />
@@ -247,6 +247,41 @@ export default function ConsultaDetalle() {
           </div>
         </div>
       </main>
+
+      <style jsx global>{`
+        .detail-topbar {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 12px;
+          margin-bottom: 18px;
+        }
+
+        .detail-grid,
+        .detail-actions {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 16px;
+        }
+
+        .detail-full-span {
+          grid-column: 1 / -1;
+        }
+
+        @media (min-width: 640px) {
+          .detail-topbar {
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+          }
+        }
+
+        @media (min-width: 900px) {
+          .detail-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+      `}</style>
     </>
   )
 }
