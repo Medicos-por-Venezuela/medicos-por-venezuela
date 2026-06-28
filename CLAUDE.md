@@ -74,7 +74,8 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `/elegir-rol` — first-time Google role picker (patient vs doctor)
 - `/mi-caso` — patient login + read-only case status
 - `/login-medico` — doctor login
-- `/panel-medico` — doctor panel
+- `/panel-medico` — doctor/admin panel (queue, active system cases for admin, counters)
+- `/panel-medico/consulta/[id]` — case detail page (patient details, video, note, close/no-show)
 - `/auth/callback` — OAuth redirect handler (routes by role / role_chosen)
 - `/admin` (+ `/admin/login` alias) — private admin login
 - `/admin/dashboard` — admin dashboard (metrics, doctor revoke, case oversight)
@@ -85,7 +86,7 @@ Defined in [supabase_schema.sql](supabase_schema.sql). Tables (`public` schema):
 - `profiles` — accounts (linked to `auth.users`); roles: `patient | doctor | specialist | admin | super_admin`;
   `role_chosen` flags whether an OAuth account has finalized its role
 - `patients` — minimal patient data; insert requires `consent = true`; optional `user_id` links to an account
-- `consultations` — cases; status `waiting|in_progress|referred_to_specialist|urgent_in_person|closed|cancelled`
+- `consultations` — cases; status `waiting|in_progress|referred_to_specialist|urgent_in_person|closed|cancelled|patient_no_show`
 - `consultation_events` — audit trail of status changes
 
 Postgres functions / RPCs:
@@ -93,6 +94,7 @@ Postgres functions / RPCs:
 - `set_my_role(...)` — RPC; lets a user finalize their own profile once (patient/doctor only)
 - `current_user_role()`, `is_admin()`, `is_staff()` — RLS helpers
 - `mark_myself_online()` — RPC doctors call to update `last_seen_at` (granted to `authenticated`)
+- `mark_patient_waiting(uuid)` — RPC called by `/sala-espera` to update `patient_last_seen_at`
 
 RLS is enabled on all tables. Anon can INSERT patients/consultations; account-holding patients read
 their own rows; staff read all; admins manage.
@@ -149,11 +151,18 @@ POSTs to [pages/api/videoconsulta.ts](pages/api/videoconsulta.ts), which generat
 doctor. (The route also contains a **parked** Twilio WhatsApp/SMS send — disabled pending Twilio
 compliance; see [.knowledge/TODOs.md](.knowledge/TODOs.md). No links are sent via WhatsApp today.)
 
-Doctors use **"Atender al siguiente paciente en cola"** in [panel-medico.tsx](pages/panel-medico.tsx),
-which assigns the next waiting case matching their specialty (`matchesSpecialty`) and opens the same Jitsi
-room. Reserved needs (psychology: *Apoyo emocional* / *Crisis de ansiedad*) only go to
-Psicología/Psiquiatría and never fall back to general doctors (`canAttend` in [lib/utils.ts](lib/utils.ts)).
-The API route is idempotent (one room per consultation).
+Doctors use **"Atender al siguiente paciente"** in [panel-medico.tsx](pages/panel-medico.tsx),
+which assigns the next eligible `waiting` case (preferring present patients; falling back to waiting cases if
+heartbeat failed), opens the same Jitsi room, and navigates to
+`/panel-medico/consulta/[id]` for details/actions. Reserved needs (psychology: *Apoyo emocional* / *Crisis de
+ansiedad*) only go to Psicología/Psiquiatría and never fall back to general doctors (`canAttend` in
+[lib/utils.ts](lib/utils.ts)). The API route is idempotent (one room per consultation).
+
+Admins/super_admins can also use `/panel-medico`: they keep a link back to `/admin/dashboard`, see admin
+counters plus an admin-only **Casos activos del sistema** section for `in_progress`, `urgent_in_person`, and
+`referred_to_specialist` cases (patient, status, motive, presence, assignment), and open those cases in the
+same `/panel-medico/consulta/[id]` detail page. Closing/no-show actions return to
+`/panel-medico?actualizado=1`; the panel refreshes counters on that flag, focus, and polling.
 
 ### Revoking a doctor (operational)
 
