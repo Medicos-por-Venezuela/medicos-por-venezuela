@@ -73,11 +73,28 @@ export default function AdminLogin() {
           backLabel="Volver al sitio"
         >
           <div className="grid">
-            <AuthField label="Email" type="email" value={email} autoComplete="email" onChange={setEmail} />
-            <AuthField label="Contraseña" type="password" value={password} autoComplete="current-password" onChange={setPassword} onEnter={login} />
+            <AuthField
+              label="Email"
+              type="email"
+              value={email}
+              autoComplete="email"
+              onChange={setEmail}
+            />
+            <AuthField
+              label="Contraseña"
+              type="password"
+              value={password}
+              autoComplete="current-password"
+              onChange={setPassword}
+              onEnter={login}
+            />
             {error && <div className="notice notice-danger">{error}</div>}
-            <button className="btn btn-primary btn-full" onClick={login} disabled={loading}>{loading ? 'Entrando...' : 'Entrar al panel admin'}</button>
-            <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>También puedes usar Google si esa cuenta ya es admin.</div>
+            <button className="btn btn-primary btn-full" onClick={login} disabled={loading}>
+              {loading ? 'Entrando...' : 'Entrar al panel admin'}
+            </button>
+            <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+              También puedes usar Google si esa cuenta ya es admin.
+            </div>
             <GoogleButton onClick={loginWithGoogle} disabled={loading} />
           </div>
         </AuthPanel>

@@ -54,14 +54,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   // Send the link via Twilio. Never fail the request if sending fails — the on-screen
   // link still works, which is the resilience the spec asks for.
-  const patient = Array.isArray(consultation.patients) ? consultation.patients[0] : consultation.patients
+  const patient = Array.isArray(consultation.patients)
+    ? consultation.patients[0]
+    : consultation.patients
   const phone = patient?.phone_whatsapp ? toE164(patient.phone_whatsapp) : ''
   let delivery: 'whatsapp' | 'sms' | 'none' = 'none'
 
   const sid = process.env.TWILIO_ACCOUNT_SID
   const token = process.env.TWILIO_AUTH_TOKEN
   const waFrom = process.env.TWILIO_WHATSAPP_NUMBER // e.g. 'whatsapp:+14155238886'
-  const smsFrom = process.env.TWILIO_SMS_NUMBER     // e.g. '+14155238886'
+  const smsFrom = process.env.TWILIO_SMS_NUMBER // e.g. '+14155238886'
 
   if (sid && token && phone) {
     const client = twilio(sid, token)

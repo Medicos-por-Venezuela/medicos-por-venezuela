@@ -4,7 +4,24 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { SPECIALTIES } from '../lib/utils'
 
-const PAISES = ['Venezuela', 'Colombia', 'España', 'Chile', 'Argentina', 'Perú', 'Ecuador', 'México', 'Estados Unidos', 'Panamá', 'República Dominicana', 'Uruguay', 'Italia', 'Portugal', 'Dinamarca', 'Otro']
+const PAISES = [
+  'Venezuela',
+  'Colombia',
+  'España',
+  'Chile',
+  'Argentina',
+  'Perú',
+  'Ecuador',
+  'México',
+  'Estados Unidos',
+  'Panamá',
+  'República Dominicana',
+  'Uruguay',
+  'Italia',
+  'Portugal',
+  'Dinamarca',
+  'Otro'
+]
 
 // First-time role picker for accounts created via Google (OAuth can't carry a trusted role).
 // Calls the set_my_role RPC, which finalizes the profile exactly once and can never grant admin.
@@ -23,24 +40,36 @@ export default function ElegirRol() {
 
   useEffect(() => {
     const run = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
+      const {
+        data: { session }
+      } = await supabase.auth.getSession()
       if (!session) {
         router.replace('/')
         return
       }
       // If the role was already chosen, don't show this screen again.
-      const { data: profile } = await supabase.from('profiles').select('role, role_chosen').eq('id', session.user.id).single()
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, role_chosen')
+        .eq('id', session.user.id)
+        .single()
       if (profile?.role_chosen) {
         redirectByRole(profile.role)
         return
       }
 
       // Pre-select the form when the intent is known (email redirect ?rol= or Google localStorage).
-      const intent = new URLSearchParams(window.location.search).get('rol')
-        || (typeof window !== 'undefined' ? localStorage.getItem('mpv_role') : null)
+      const intent =
+        new URLSearchParams(window.location.search).get('rol') ||
+        (typeof window !== 'undefined' ? localStorage.getItem('mpv_role') : null)
       if (typeof window !== 'undefined') localStorage.removeItem('mpv_role')
-      if (intent === 'medico' || intent === 'doctor') { setChoice('doctor'); setLocked(true) }
-      else if (intent === 'paciente' || intent === 'patient') { setChoice('patient'); setLocked(true) }
+      if (intent === 'medico' || intent === 'doctor') {
+        setChoice('doctor')
+        setLocked(true)
+      } else if (intent === 'paciente' || intent === 'patient') {
+        setChoice('patient')
+        setLocked(true)
+      }
 
       setChecking(false)
     }
@@ -92,24 +121,45 @@ export default function ElegirRol() {
     }
   }
 
-  if (checking) return <main className="page"><div className="narrow"><div className="card">Cargando...</div></div></main>
+  if (checking)
+    return (
+      <main className="page">
+        <div className="narrow">
+          <div className="card">Cargando...</div>
+        </div>
+      </main>
+    )
 
   return (
     <>
-      <Head><title>Elegir rol — Médicos por Venezuela</title></Head>
+      <Head>
+        <title>Elegir rol — Médicos por Venezuela</title>
+      </Head>
       <main className="page">
         <div className="narrow">
           <div className="card" style={{ marginTop: 14 }}>
             <h1 style={{ marginTop: 0 }}>¿Cómo quieres usar la plataforma?</h1>
-            <p style={{ color: '#64748b' }}>Elige una opción para terminar de configurar tu cuenta.</p>
+            <p style={{ color: '#64748b' }}>
+              Elige una opción para terminar de configurar tu cuenta.
+            </p>
 
             {choice === '' && (
               <div className="grid grid-2">
-                <button className="card-flat" style={{ textAlign: 'left', cursor: 'pointer' }} onClick={() => setChoice('patient')}>
+                <button
+                  className="card-flat"
+                  style={{ textAlign: 'left', cursor: 'pointer' }}
+                  onClick={() => setChoice('patient')}
+                >
                   <h2 style={{ marginTop: 0 }}>Soy paciente</h2>
-                  <p style={{ color: '#64748b' }}>Necesito orientación médica y quiero seguir mi caso.</p>
+                  <p style={{ color: '#64748b' }}>
+                    Necesito orientación médica y quiero seguir mi caso.
+                  </p>
                 </button>
-                <button className="card-flat" style={{ textAlign: 'left', cursor: 'pointer' }} onClick={() => setChoice('doctor')}>
+                <button
+                  className="card-flat"
+                  style={{ textAlign: 'left', cursor: 'pointer' }}
+                  onClick={() => setChoice('doctor')}
+                >
                   <h2 style={{ marginTop: 0 }}>Soy médico</h2>
                   <p style={{ color: '#64748b' }}>Quiero atender pacientes como voluntario.</p>
                 </button>
@@ -118,10 +168,26 @@ export default function ElegirRol() {
 
             {choice === 'patient' && (
               <div className="grid">
-                <div className="notice notice-info">Tu cuenta quedará como paciente. Luego podrás registrar tu solicitud.</div>
+                <div className="notice notice-info">
+                  Tu cuenta quedará como paciente. Luego podrás registrar tu solicitud.
+                </div>
                 {error && <div className="notice notice-danger">{error}</div>}
-                <button className="btn btn-primary btn-full" onClick={confirmPatient} disabled={loading}>{loading ? 'Guardando...' : 'Confirmar como paciente'}</button>
-                {!locked && <button className="btn btn-muted" onClick={() => setChoice('')} disabled={loading}>Volver</button>}
+                <button
+                  className="btn btn-primary btn-full"
+                  onClick={confirmPatient}
+                  disabled={loading}
+                >
+                  {loading ? 'Guardando...' : 'Confirmar como paciente'}
+                </button>
+                {!locked && (
+                  <button
+                    className="btn btn-muted"
+                    onClick={() => setChoice('')}
+                    disabled={loading}
+                  >
+                    Volver
+                  </button>
+                )}
               </div>
             )}
 
@@ -130,33 +196,65 @@ export default function ElegirRol() {
                 <div className="grid grid-2">
                   <div>
                     <label className="label">Especialidad *</label>
-                    <select value={specialty} onChange={e => setSpecialty(e.target.value)}>
+                    <select value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
                       <option value="">Selecciona...</option>
-                      {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+                      {SPECIALTIES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div>
                     <label className="label">País donde ejerces/resides *</label>
-                    <select value={country} onChange={e => setCountry(e.target.value)}>
+                    <select value={country} onChange={(e) => setCountry(e.target.value)}>
                       <option value="">Selecciona...</option>
-                      {PAISES.map(p => <option key={p} value={p}>{p}</option>)}
+                      {PAISES.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
                 <div className="grid grid-2">
                   <div>
                     <label className="label">Número de colegiatura/licencia</label>
-                    <input value={license} onChange={e => setLicense(e.target.value)} placeholder="Opcional, pero recomendado" />
+                    <input
+                      value={license}
+                      onChange={(e) => setLicense(e.target.value)}
+                      placeholder="Opcional, pero recomendado"
+                    />
                   </div>
                   <div>
                     <label className="label">WhatsApp / teléfono (uso administrativo) *</label>
-                    <input value={whatsapp} onChange={e => setWhatsapp(e.target.value)} placeholder="Ej. 584121234567" />
-                    <div className="hint">Solo para uso administrativo. Nunca se comparte con pacientes ni con terceros.</div>
+                    <input
+                      value={whatsapp}
+                      onChange={(e) => setWhatsapp(e.target.value)}
+                      placeholder="Ej. 584121234567"
+                    />
+                    <div className="hint">
+                      Solo para uso administrativo. Nunca se comparte con pacientes ni con terceros.
+                    </div>
                   </div>
                 </div>
                 {error && <div className="notice notice-danger">{error}</div>}
-                <button className="btn btn-primary btn-full" onClick={confirmDoctor} disabled={loading}>{loading ? 'Guardando...' : 'Confirmar como médico'}</button>
-                {!locked && <button className="btn btn-muted" onClick={() => setChoice('')} disabled={loading}>Volver</button>}
+                <button
+                  className="btn btn-primary btn-full"
+                  onClick={confirmDoctor}
+                  disabled={loading}
+                >
+                  {loading ? 'Guardando...' : 'Confirmar como médico'}
+                </button>
+                {!locked && (
+                  <button
+                    className="btn btn-muted"
+                    onClick={() => setChoice('')}
+                    disabled={loading}
+                  >
+                    Volver
+                  </button>
+                )}
               </div>
             )}
           </div>

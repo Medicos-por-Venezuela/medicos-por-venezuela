@@ -100,14 +100,18 @@ export default function PanelMedico() {
   // Poll the queue so patient presence (and cases claimed by other doctors) stay fresh.
   useEffect(() => {
     if (!profile?.id) return
-    const timer = window.setInterval(() => { loadConsultations(profile) }, 20000)
+    const timer = window.setInterval(() => {
+      loadConsultations(profile)
+    }, 20000)
     return () => window.clearInterval(timer)
   }, [profile])
 
   // Refresh when returning to this tab/page after actions performed in the detail page.
   useEffect(() => {
     if (!profile?.id) return
-    const refresh = () => { loadConsultations(profile) }
+    const refresh = () => {
+      loadConsultations(profile)
+    }
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
   }, [profile])
@@ -144,7 +148,9 @@ export default function PanelMedico() {
   async function loadConsultations(currentProfile: Profile | null = profile) {
     const { data, error } = await supabase
       .from('consultations')
-      .select('*, patients(id, full_name, cedula, phone_whatsapp, affected_zone, age_range, needs_tags, description)')
+      .select(
+        '*, patients(id, full_name, cedula, phone_whatsapp, affected_zone, age_range, needs_tags, description)'
+      )
       .in('status', ['waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person'])
       .order('created_at', { ascending: true })
 
@@ -157,7 +163,9 @@ export default function PanelMedico() {
     setConsultations(rows)
 
     if (isAdminRole(currentProfile?.role)) {
-      const assignedIds = Array.from(new Set(rows.map(c => c.assigned_doctor_id).filter((id): id is string => !!id)))
+      const assignedIds = Array.from(
+        new Set(rows.map((c) => c.assigned_doctor_id).filter((id): id is string => !!id))
+      )
       if (assignedIds.length > 0) {
         const { data: doctors, error: doctorsError } = await supabase
           .from('profiles')
@@ -168,7 +176,9 @@ export default function PanelMedico() {
           console.error(doctorsError)
           setAssignedDoctorsById({})
         } else {
-          setAssignedDoctorsById(Object.fromEntries(((doctors || []) as AssignedDoctor[]).map(d => [d.id, d])))
+          setAssignedDoctorsById(
+            Object.fromEntries(((doctors || []) as AssignedDoctor[]).map((d) => [d.id, d]))
+          )
         }
       } else {
         setAssignedDoctorsById({})
@@ -189,25 +199,35 @@ export default function PanelMedico() {
     }
   }
 
-  const waiting = useMemo(() => consultations.filter(c => c.status === 'waiting'), [consultations])
+  const waiting = useMemo(
+    () => consultations.filter((c) => c.status === 'waiting'),
+    [consultations]
+  )
   const activeSystemConsultations = useMemo(
-    () => consultations.filter(c => ['in_progress', 'urgent_in_person', 'referred_to_specialist'].includes(c.status)),
+    () =>
+      consultations.filter((c) =>
+        ['in_progress', 'urgent_in_person', 'referred_to_specialist'].includes(c.status)
+      ),
     [consultations]
   )
   const myOpenConsultations = useMemo(
-  () => consultations.filter(c => c.status === 'in_progress' && c.assigned_doctor_id === profile?.id),
-  [consultations, profile?.id]
-)
+    () =>
+      consultations.filter(
+        (c) => c.status === 'in_progress' && c.assigned_doctor_id === profile?.id
+      ),
+    [consultations, profile?.id]
+  )
   // Only patients whose waiting-room page is still pinging count as actually present in the queue.
   const waitingPresent = useMemo(() => waiting.filter(isPatientPresent), [waiting])
   // Present waiting patients that align with this doctor's specialty (and that they're allowed to take).
   const mySpecialtyWaiting = useMemo(
-    () => waitingPresent.filter(c =>
-      isCurrentUserAdmin || (
-        canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null) &&
-        matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)
-      )
-    ),
+    () =>
+      waitingPresent.filter(
+        (c) =>
+          isCurrentUserAdmin ||
+          (canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null) &&
+            matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null))
+      ),
     [waitingPresent, profile?.specialty, isCurrentUserAdmin]
   )
   const kpis = isCurrentUserAdmin
@@ -277,100 +297,136 @@ export default function PanelMedico() {
 
   // Take the next waiting patient: prefer one matching the doctor's specialty (oldest first),
   // otherwise fall back to the oldest waiting patient so nobody is left unattended.
- async function attendNext() {
-  setMessage('')
+  async function attendNext() {
+    setMessage('')
 
-  const eligible = waiting.filter(c =>
-    isCurrentUserAdmin || canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null)
-  )
+    const eligible = waiting.filter(
+      (c) =>
+        isCurrentUserAdmin ||
+        canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null)
+    )
 
-  if (eligible.length === 0) {
-    setMessage(waiting.length ? 'No hay pacientes para tu especialidad ahora.' : waitingEmptyMessage)
-    return
+    if (eligible.length === 0) {
+      setMessage(
+        waiting.length ? 'No hay pacientes para tu especialidad ahora.' : waitingEmptyMessage
+      )
+      return
+    }
+
+    // Preferimos pacientes detectados como presentes, pero si el heartbeat falló,
+    // igual permitimos atender casos que están en waiting.
+    const presentEligible = eligible.filter(isPatientPresent)
+    const pool = presentEligible.length > 0 ? presentEligible : eligible
+
+    const next = isCurrentUserAdmin
+      ? pool[0]
+      : pool.find((c) =>
+          matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)
+        ) || pool[0]
+
+    await openConsultation(next)
   }
-
-  // Preferimos pacientes detectados como presentes, pero si el heartbeat falló,
-  // igual permitimos atender casos que están en waiting.
-  const presentEligible = eligible.filter(isPatientPresent)
-  const pool = presentEligible.length > 0 ? presentEligible : eligible
-
-  const next = isCurrentUserAdmin
-    ? pool[0]
-    : pool.find(c => matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)) || pool[0]
-
-  await openConsultation(next)
-}
   async function logout() {
     await supabase.auth.signOut()
     router.push('/')
   }
 
   if (loading) {
-    return <main className="page"><div className="container"><div className="card">Cargando...</div></div></main>
+    return (
+      <main className="page">
+        <div className="container">
+          <div className="card">Cargando...</div>
+        </div>
+      </main>
+    )
   }
 
   return (
     <>
-      <Head><title>Panel médico — Médicos por Venezuela</title></Head>
+      <Head>
+        <title>Panel médico — Médicos por Venezuela</title>
+      </Head>
       <main className="page">
         <div className="container">
           <div className="panel-topbar">
             <div>
               <h1 style={{ margin: 0 }}>{profile?.full_name}</h1>
-              <p style={{ margin: 0, color: '#64748b' }}>{isCurrentUserAdmin ? 'Administrador' : (profile?.specialty || 'Sin especialidad')} · <span className="badge badge-green">Activo</span></p>
+              <p style={{ margin: 0, color: '#64748b' }}>
+                {isCurrentUserAdmin ? 'Administrador' : profile?.specialty || 'Sin especialidad'} ·{' '}
+                <span className="badge badge-green">Activo</span>
+              </p>
             </div>
             <div className="panel-actions">
-              {isCurrentUserAdmin && <button className="btn btn-outline" onClick={() => router.push('/admin/dashboard')}>Panel admin</button>}
-              <button className="btn btn-muted" onClick={logout}>Salir</button>
+              {isCurrentUserAdmin && (
+                <button className="btn btn-outline" onClick={() => router.push('/admin/dashboard')}>
+                  Panel admin
+                </button>
+              )}
+              <button className="btn btn-muted" onClick={logout}>
+                Salir
+              </button>
             </div>
           </div>
 
-          {message && <div className="notice notice-info" style={{ marginBottom: 16 }}>{message}</div>}
+          {message && (
+            <div className="notice notice-info" style={{ marginBottom: 16 }}>
+              {message}
+            </div>
+          )}
 
           <div className="panel-kpis">
-            {kpis.map(kpi => (
-              <div key={kpi.label} className="kpi"><div className="kpi-value">{kpi.value}</div><div className="kpi-label">{kpi.label}</div></div>
+            {kpis.map((kpi) => (
+              <div key={kpi.label} className="kpi">
+                <div className="kpi-value">{kpi.value}</div>
+                <div className="kpi-label">{kpi.label}</div>
+              </div>
             ))}
           </div>
 
           <button
-  className="btn btn-primary btn-full"
-  style={{ marginBottom: 18, fontSize: 16, padding: '15px 18px' }}
-  onClick={attendNext}
-  disabled={waiting.length === 0}
->
-  {waiting.length ? `Atender al siguiente paciente · ${waiting.length} esperando` : 'No hay pacientes nuevos en cola'}
-</button>
+            className="btn btn-primary btn-full"
+            style={{ marginBottom: 18, fontSize: 16, padding: '15px 18px' }}
+            onClick={attendNext}
+            disabled={waiting.length === 0}
+          >
+            {waiting.length
+              ? `Atender al siguiente paciente · ${waiting.length} esperando`
+              : 'No hay pacientes nuevos en cola'}
+          </button>
 
           <div className="panel-sections">
             <section className="card">
-  <h2>Mis consultas abiertas</h2>
+              <h2>Mis consultas abiertas</h2>
 
-  {myOpenConsultations.length === 0 ? (
-    <p style={{ color: '#64748b' }}>No tienes consultas abiertas.</p>
-  ) : (
-    <div className="grid">
-      {myOpenConsultations.map(c => (
-        <div key={c.id} className="card-flat">
-          <strong>{c.patients?.full_name || 'Paciente'}</strong>
-          <p>{c.chief_complaint || c.patients?.description || 'Sin descripción'}</p>
+              {myOpenConsultations.length === 0 ? (
+                <p style={{ color: '#64748b' }}>No tienes consultas abiertas.</p>
+              ) : (
+                <div className="grid">
+                  {myOpenConsultations.map((c) => (
+                    <div key={c.id} className="card-flat">
+                      <strong>{c.patients?.full_name || 'Paciente'}</strong>
+                      <p>{c.chief_complaint || c.patients?.description || 'Sin descripción'}</p>
 
-          <button
-            className="btn btn-primary btn-full"
-            onClick={() => router.push(`/panel-medico/consulta/${c.id}`)}
-          >
-            Continuar / cerrar consulta
-          </button>
-        </div>
-      ))}
-    </div>
-  )}
-</section>
+                      <button
+                        className="btn btn-primary btn-full"
+                        onClick={() => router.push(`/panel-medico/consulta/${c.id}`)}
+                      >
+                        Continuar / cerrar consulta
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
             <section className="card">
               <h2 style={{ marginTop: 0 }}>Consultas disponibles</h2>
-              {waiting.length === 0 ? <p style={{ color: '#64748b' }}>{waitingEmptyMessage}</p> : (
+              {waiting.length === 0 ? (
+                <p style={{ color: '#64748b' }}>{waitingEmptyMessage}</p>
+              ) : (
                 <div className="grid">
-                  {waiting.map(c => <ConsultationCard key={c.id} c={c} onOpen={() => openConsultation(c)} />)}
+                  {waiting.map((c) => (
+                    <ConsultationCard key={c.id} c={c} onOpen={() => openConsultation(c)} />
+                  ))}
                 </div>
               )}
             </section>
@@ -379,10 +435,13 @@ export default function PanelMedico() {
               <section className="card panel-full-span">
                 <h2 style={{ marginTop: 0 }}>Casos activos del sistema</h2>
                 {activeSystemConsultations.length === 0 ? (
-                  <p style={{ color: '#64748b' }}>No hay casos activos en progreso, derivados o marcados como urgentes presenciales.</p>
+                  <p style={{ color: '#64748b' }}>
+                    No hay casos activos en progreso, derivados o marcados como urgentes
+                    presenciales.
+                  </p>
                 ) : (
                   <div className="grid">
-                    {activeSystemConsultations.map(c => (
+                    {activeSystemConsultations.map((c) => (
                       <AdminActiveCaseCard
                         key={c.id}
                         c={c}
@@ -394,7 +453,6 @@ export default function PanelMedico() {
                 )}
               </section>
             )}
-
           </div>
         </div>
       </main>
@@ -471,30 +529,49 @@ export default function PanelMedico() {
   )
 }
 
-function AdminActiveCaseCard({ c, assignment, onSelect }: { c: Consultation; assignment: string; onSelect: () => void }) {
+function AdminActiveCaseCard({
+  c,
+  assignment,
+  onSelect
+}: {
+  c: Consultation
+  assignment: string
+  onSelect: () => void
+}) {
   return (
     <div className="card-flat">
       <div className="panel-card-header">
         <div>
           <strong>{c.patients?.full_name || 'Paciente'}</strong>
           <div style={{ color: '#64748b', fontSize: 13 }}>
-            {c.patients?.affected_zone || 'Zona no indicada'} · hace {minutesSince(c.created_at)} min
+            {c.patients?.affected_zone || 'Zona no indicada'} · hace {minutesSince(c.created_at)}{' '}
+            min
           </div>
         </div>
-        <span className={`badge ${statusBadgeClass(c.status)}`}>{STATUS_LABELS[c.status] || c.status}</span>
+        <span className={`badge ${statusBadgeClass(c.status)}`}>
+          {STATUS_LABELS[c.status] || c.status}
+        </span>
       </div>
 
       <p>{c.chief_complaint || c.patients?.description || 'Sin descripción'}</p>
 
       <div className="tag-row" style={{ marginBottom: 12 }}>
         <span className="badge">{assignment}</span>
-        {isPatientPresent(c)
-          ? <span className="badge badge-green">● En sala</span>
-          : <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>○ Sin conexión</span>}
-        {c.referred_specialty && <span className="badge badge-blue">Derivado a {c.referred_specialty}</span>}
+        {isPatientPresent(c) ? (
+          <span className="badge badge-green">● En sala</span>
+        ) : (
+          <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>
+            ○ Sin conexión
+          </span>
+        )}
+        {c.referred_specialty && (
+          <span className="badge badge-blue">Derivado a {c.referred_specialty}</span>
+        )}
       </div>
 
-      <button className="btn btn-secondary btn-full" onClick={onSelect}>Ver / gestionar caso</button>
+      <button className="btn btn-secondary btn-full" onClick={onSelect}>
+        Ver / gestionar caso
+      </button>
     </div>
   )
 }
@@ -505,19 +582,39 @@ function ConsultationCard({ c, onOpen }: { c: Consultation; onOpen: () => void }
       <div className="panel-card-header">
         <div>
           <strong>{c.patients?.full_name || 'Paciente'}</strong>
-          <div style={{ color: '#64748b', fontSize: 13 }}>{c.patients?.affected_zone} · hace {minutesSince(c.created_at)} min</div>
+          <div style={{ color: '#64748b', fontSize: 13 }}>
+            {c.patients?.affected_zone} · hace {minutesSince(c.created_at)} min
+          </div>
           <div style={{ marginTop: 4 }}>
-            {isPatientPresent(c)
-              ? <span className="badge badge-green">● En sala</span>
-              : <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>○ Sin conexión</span>}
+            {isPatientPresent(c) ? (
+              <span className="badge badge-green">● En sala</span>
+            ) : (
+              <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>
+                ○ Sin conexión
+              </span>
+            )}
           </div>
         </div>
-        <span className={`badge ${statusBadgeClass(c.status)}`}>{STATUS_LABELS[c.status] || c.status}</span>
+        <span className={`badge ${statusBadgeClass(c.status)}`}>
+          {STATUS_LABELS[c.status] || c.status}
+        </span>
       </div>
       <p>{c.chief_complaint || c.patients?.description || 'Sin descripción'}</p>
-      {c.referred_specialty && <p><span className="badge badge-blue">{c.referred_specialty}</span></p>}
-      <div className="tag-row" style={{ marginBottom: 12 }}>{c.patients?.needs_tags?.slice(0, 4).map(t => <span key={t} className="tag">{t}</span>)}</div>
-      <button className="btn btn-primary btn-full" onClick={onOpen}>Atender</button>
+      {c.referred_specialty && (
+        <p>
+          <span className="badge badge-blue">{c.referred_specialty}</span>
+        </p>
+      )}
+      <div className="tag-row" style={{ marginBottom: 12 }}>
+        {c.patients?.needs_tags?.slice(0, 4).map((t) => (
+          <span key={t} className="tag">
+            {t}
+          </span>
+        ))}
+      </div>
+      <button className="btn btn-primary btn-full" onClick={onOpen}>
+        Atender
+      </button>
     </div>
   )
 }

@@ -7,7 +7,14 @@ type AuthFieldProps = {
   onEnter?: () => void
 }
 
-export default function AuthField({ label, type = 'text', value, autoComplete, onChange, onEnter }: AuthFieldProps) {
+export default function AuthField({
+  label,
+  type = 'text',
+  value,
+  autoComplete,
+  onChange,
+  onEnter
+}: AuthFieldProps) {
   return (
     <div>
       <label className="label">{label}</label>
@@ -15,8 +22,10 @@ export default function AuthField({ label, type = 'text', value, autoComplete, o
         type={type}
         value={value}
         autoComplete={autoComplete}
-        onChange={e => onChange(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter') onEnter?.() }}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onEnter?.()
+        }}
       />
     </div>
   )

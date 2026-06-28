@@ -27,24 +27,28 @@ Para garantizar la máxima velocidad de entrega y el menor consumo de datos en z
 ## 2. Configuración en Twilio
 
 ### Paso A: Creación de la Cuenta y Consola
+
 1. Regístrate en [Twilio](https://www.twilio.com/). En entornos de emergencia, puedes iniciar con la capa de prueba de inmediato.
 2. En tu consola principal, localiza y guarda las credenciales maestras:
-   * **Account SID**
-   * **Auth Token**
+   - **Account SID**
+   - **Auth Token**
 
 ### Paso B: Configuración del Canal de WhatsApp
+
 Para desarrollo inmediato o contingencias donde no se dispone de una cuenta de Meta Business verificada, se utilizará el Sandbox. Para producción masiva, se migrará a la API oficial.
 
 #### Opción Rápida: Twilio Sandbox para WhatsApp (Ideal para validación/salida rápida)
+
 1. Ve a **Messaging > Try it Out > Send a WhatsApp Message**.
 2. Conecta tu número de prueba enviando el código de activación (`join <palabra-clave>`) al número asignado por Twilio.
 3. Configura el **Webhook** de entrada en la sección de configuración del Sandbox si necesitas procesar respuestas automáticas.
 
 #### Opción Producción: Registro de WhatsApp Business API (Alineado con Meta)
+
 1. En la consola de Twilio, ve a **Messaging > Senders > WhatsApp Senders**.
 2. Vincula tu cuenta de **Meta Business Manager**.
 3. **Creación de Plantillas (Utility Templates):** Meta prohíbe enviar enlaces abiertos en mensajes iniciados por la aplicación sin una plantilla pre-aprobada. Debes registrar una plantilla de "Utilidad" con la siguiente estructura exacta:
-   > *"Hola, somos el equipo de asistencia médica. Haz clic en el siguiente enlace para conectarte con un médico voluntario ahora mismo: {{1}}"*
+   > _"Hola, somos el equipo de asistencia médica. Haz clic en el siguiente enlace para conectarte con un médico voluntario ahora mismo: {{1}}"_
 
 ---
 
@@ -53,11 +57,12 @@ Para desarrollo inmediato o contingencias donde no se dispone de una cuenta de M
 Jitsi Meet no requiere configuración de servidores, creación de credenciales ni APIs del lado del proveedor para instancias públicas.
 
 ### Lógica de Generación de Enlaces
+
 Para evitar colisiones entre salas de pacientes distintos, los enlaces deben ser dinámicos, impredecibles y únicos. No utilices incrementos secuenciales (ej. `sala1`, `sala2`).
 
-* **Estructura base:** `https://meet.jit.si/`
-* **Esquema de nombrado seguro:** `vamed-[UUIDv4]` o `vamed-[Timestamp]-[HashCorto]`
-* **Ejemplo de URL final:** `https://meet.jit.si/vamed-7f9a2b8c-1e3d-4f56-a7b8-c9d0e1f2a3b4`
+- **Estructura base:** `https://meet.jit.si/`
+- **Esquema de nombrado seguro:** `vamed-[UUIDv4]` o `vamed-[Timestamp]-[HashCorto]`
+- **Ejemplo de URL final:** `https://meet.jit.si/vamed-7f9a2b8c-1e3d-4f56-a7b8-c9d0e1f2a3b4`
 
 ---
 
@@ -75,17 +80,17 @@ def enviar_enlace_emergencia(numero_paciente):
     account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
     auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
     numero_twilio_wa = os.environ.get('TWILIO_WHATSAPP_NUMBER') # Ej: 'whatsapp:+14155238886'
-    
+
     client = Client(account_sid, auth_token)
-    
+
     # 2. Generar identificador único para la videollamada Jitsi
     id_sala = str(uuid.uuid4())
     url_jitsi = f"https://meet.jit.si/vamed-{id_sala}"
-    
+
     # 3. Formatear número del paciente (Debe incluir código de país, ej: 'whatsapp:+584120000000')
     if not numero_paciente.startswith('whatsapp:'):
         numero_paciente = f"whatsapp:{numero_paciente}"
-        
+
     # 4. Disparar el mensaje a través de la API
     try:
         mensaje = client.messages.create(

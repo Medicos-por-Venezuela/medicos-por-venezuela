@@ -68,28 +68,44 @@ export default function LoginMedico() {
 
   return (
     <>
-      <Head><title>Acceso médico — Médicos por Venezuela</title></Head>
+      <Head>
+        <title>Acceso médico — Médicos por Venezuela</title>
+      </Head>
       <main className="page">
         <div className="narrow">
-          <Link href="/" className="link-button">← Volver</Link>
+          <Link href="/" className="link-button">
+            ← Volver
+          </Link>
           <div className="card" style={{ marginTop: 14 }}>
             <h1 style={{ marginTop: 0 }}>Acceso médico</h1>
             <p style={{ color: '#64748b' }}>Entra con tu email y contraseña, o con Google.</p>
             <div className="grid">
               <div>
                 <label className="label">Email</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
               </div>
               <div>
                 <label className="label">Contraseña</label>
-                <input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') login() }} />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') login()
+                  }}
+                />
               </div>
               {error && <div className="notice notice-danger">{error}</div>}
-              <button className="btn btn-primary btn-full" onClick={login} disabled={loading}>{loading ? 'Entrando...' : 'Entrar'}</button>
+              <button className="btn btn-primary btn-full" onClick={login} disabled={loading}>
+                {loading ? 'Entrando...' : 'Entrar'}
+              </button>
               <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>
               <GoogleButton onClick={loginWithGoogle} disabled={loading} />
               <p style={{ textAlign: 'center', color: '#64748b', margin: 0 }}>
-                ¿No tienes cuenta? <Link href="/registro-medico" className="link-button">Crear cuenta</Link>
+                ¿No tienes cuenta?{' '}
+                <Link href="/registro-medico" className="link-button">
+                  Crear cuenta
+                </Link>
               </p>
             </div>
           </div>

@@ -41,7 +41,9 @@ export default function RegistroMedico() {
       router.push('/elegir-rol?rol=medico')
     } catch (e) {
       console.error(e)
-      setError('No se pudo crear la cuenta. Puede que este email ya esté registrado o haya un error de conexión.')
+      setError(
+        'No se pudo crear la cuenta. Puede que este email ya esté registrado o haya un error de conexión.'
+      )
     } finally {
       setLoading(false)
     }
@@ -61,10 +63,14 @@ export default function RegistroMedico() {
 
   return (
     <>
-      <Head><title>Registro médico — Médicos por Venezuela</title></Head>
+      <Head>
+        <title>Registro médico — Médicos por Venezuela</title>
+      </Head>
       <main className="page">
         <div className="narrow">
-          <Link href="/" className="link-button">← Volver</Link>
+          <Link href="/" className="link-button">
+            ← Volver
+          </Link>
           <div className="card" style={{ marginTop: 14 }}>
             <h1 style={{ marginTop: 0 }}>Crea tu cuenta de Médico/Psicólogo</h1>
             <p style={{ color: '#64748b' }}>
@@ -74,26 +80,36 @@ export default function RegistroMedico() {
             <div className="grid">
               <div>
                 <label className="label">Nombre completo *</label>
-                <input value={fullName} onChange={e => setFullName(e.target.value)} />
+                <input value={fullName} onChange={(e) => setFullName(e.target.value)} />
               </div>
               <div className="grid grid-2">
                 <div>
                   <label className="label">Email *</label>
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
                 </div>
                 <div>
                   <label className="label">Contraseña *</label>
-                  <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                  />
                 </div>
               </div>
               {error && <div className="notice notice-danger">{error}</div>}
-              <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>{loading ? 'Creando cuenta...' : 'Continuar'}</button>
+              <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>
+                {loading ? 'Creando cuenta...' : 'Continuar'}
+              </button>
               <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>
               <GoogleButton onClick={googleSignup} disabled={loading} />
             </div>
 
             <p style={{ marginTop: 18, color: '#64748b' }}>
-              ¿Ya tienes cuenta? <Link href="/login-medico" style={{ color: '#0f6e56', fontWeight: 800 }}>Entrar al panel médico</Link>
+              ¿Ya tienes cuenta?{' '}
+              <Link href="/login-medico" style={{ color: '#0f6e56', fontWeight: 800 }}>
+                Entrar al panel médico
+              </Link>
             </p>
           </div>
         </div>

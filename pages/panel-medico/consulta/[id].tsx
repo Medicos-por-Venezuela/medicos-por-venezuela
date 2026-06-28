@@ -135,7 +135,9 @@ export default function ConsultaDetalle() {
   async function loadConsultation(id: string, currentProfile: Profile | null = profile) {
     const { data, error } = await supabase
       .from('consultations')
-      .select('*, patients(id, full_name, cedula, phone_whatsapp, affected_zone, age_range, needs_tags, description)')
+      .select(
+        '*, patients(id, full_name, cedula, phone_whatsapp, affected_zone, age_range, needs_tags, description)'
+      )
       .eq('id', id)
       .single()
 
@@ -146,7 +148,8 @@ export default function ConsultaDetalle() {
     }
 
     const row = data as Consultation
-    const canView = isAdminRole(currentProfile?.role) || row.assigned_doctor_id === currentProfile?.id
+    const canView =
+      isAdminRole(currentProfile?.role) || row.assigned_doctor_id === currentProfile?.id
     if (!canView) {
       router.replace('/panel-medico')
       return
@@ -164,7 +167,11 @@ export default function ConsultaDetalle() {
     }
 
     if (row.assigned_doctor_id === currentProfile?.id) {
-      setAssignedDoctor({ id: currentProfile.id, full_name: currentProfile.full_name, role: currentProfile.role })
+      setAssignedDoctor({
+        id: currentProfile.id,
+        full_name: currentProfile.full_name,
+        role: currentProfile.role
+      })
       return
     }
 
@@ -199,7 +206,9 @@ export default function ConsultaDetalle() {
     const rows = (data || []) as ConsultationEvent[]
     setEvents(rows)
 
-    const authorIds = Array.from(new Set(rows.map(e => e.created_by).filter((id): id is string => !!id)))
+    const authorIds = Array.from(
+      new Set(rows.map((e) => e.created_by).filter((id): id is string => !!id))
+    )
     if (authorIds.length === 0) {
       setEventAuthorsById({})
       return
@@ -210,7 +219,9 @@ export default function ConsultaDetalle() {
       .select('id, full_name, role')
       .in('id', authorIds)
 
-    setEventAuthorsById(Object.fromEntries(((authors || []) as EventAuthor[]).map(a => [a.id, a])))
+    setEventAuthorsById(
+      Object.fromEntries(((authors || []) as EventAuthor[]).map((a) => [a.id, a]))
+    )
   }
 
   async function addEvent(consultationId: string, eventType: string, eventNote?: string) {
@@ -224,7 +235,10 @@ export default function ConsultaDetalle() {
   async function saveNote() {
     if (!consultation) return
     setMessage('')
-    const { error } = await supabase.from('consultations').update({ internal_note: note }).eq('id', consultation.id)
+    const { error } = await supabase
+      .from('consultations')
+      .update({ internal_note: note })
+      .eq('id', consultation.id)
     if (error) setMessage('No se pudo guardar la nota.')
     else setMessage('Nota guardada.')
   }
@@ -246,13 +260,21 @@ export default function ConsultaDetalle() {
     await addEvent(
       consultation.id,
       noShow ? 'patient_no_show' : 'closed',
-      noShow ? `Paciente no estaba en la sala de espera (${profile.full_name})` : `Cerrada por ${profile.full_name}`
+      noShow
+        ? `Paciente no estaba en la sala de espera (${profile.full_name})`
+        : `Cerrada por ${profile.full_name}`
     )
     router.push('/panel-medico?actualizado=1')
   }
 
   if (loading) {
-    return <main className="page"><div className="container"><div className="card">Cargando...</div></div></main>
+    return (
+      <main className="page">
+        <div className="container">
+          <div className="card">Cargando...</div>
+        </div>
+      </main>
+    )
   }
 
   if (!consultation) {
@@ -261,7 +283,9 @@ export default function ConsultaDetalle() {
         <div className="container">
           <div className="card">
             <p>{message || 'Consulta no encontrada.'}</p>
-            <button className="btn btn-muted" onClick={() => router.push('/panel-medico')}>Volver al panel</button>
+            <button className="btn btn-muted" onClick={() => router.push('/panel-medico')}>
+              Volver al panel
+            </button>
           </div>
         </div>
       </main>
@@ -270,45 +294,80 @@ export default function ConsultaDetalle() {
 
   return (
     <>
-      <Head><title>Detalle de consulta — Médicos por Venezuela</title></Head>
+      <Head>
+        <title>Detalle de consulta — Médicos por Venezuela</title>
+      </Head>
       <main className="page">
         <div className="container">
           <div className="detail-topbar">
             <div>
-              <button className="link-button" onClick={() => router.push('/panel-medico')}>← Volver al panel médico</button>
+              <button className="link-button" onClick={() => router.push('/panel-medico')}>
+                ← Volver al panel médico
+              </button>
               <h1 style={{ margin: '8px 0 0' }}>Detalle de consulta</h1>
-              <p style={{ margin: 0, color: '#64748b' }}>Caso {consultation.code} · hace {minutesSince(consultation.created_at)} min</p>
+              <p style={{ margin: 0, color: '#64748b' }}>
+                Caso {consultation.code} · hace {minutesSince(consultation.created_at)} min
+              </p>
             </div>
-            <span className={`badge ${statusBadgeClass(consultation.status)}`}>{STATUS_LABELS[consultation.status] || consultation.status}</span>
+            <span className={`badge ${statusBadgeClass(consultation.status)}`}>
+              {STATUS_LABELS[consultation.status] || consultation.status}
+            </span>
           </div>
 
-          {message && <div className="notice notice-info" style={{ marginBottom: 16 }}>{message}</div>}
+          {message && (
+            <div className="notice notice-info" style={{ marginBottom: 16 }}>
+              {message}
+            </div>
+          )}
 
           <div className="detail-grid">
             <section className="card">
               <h2 style={{ marginTop: 0 }}>Paciente</h2>
               <h3 style={{ marginBottom: 4 }}>{consultation.patients?.full_name || 'Paciente'}</h3>
-              <p style={{ marginTop: 0, color: '#64748b' }}>{consultation.patients?.affected_zone || 'Zona no indicada'} · {consultation.patients?.age_range || 'Edad no indicada'}</p>
-              <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>Cédula: {consultation.patients?.cedula || '—'}</p>
-              <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>Tel. (solo seguimiento): {consultation.patients?.phone_whatsapp || '—'}</p>
+              <p style={{ marginTop: 0, color: '#64748b' }}>
+                {consultation.patients?.affected_zone || 'Zona no indicada'} ·{' '}
+                {consultation.patients?.age_range || 'Edad no indicada'}
+              </p>
+              <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
+                Cédula: {consultation.patients?.cedula || '—'}
+              </p>
+              <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
+                Tel. (solo seguimiento): {consultation.patients?.phone_whatsapp || '—'}
+              </p>
               <div style={{ marginTop: 10 }}>
-                {isPatientPresent(consultation)
-                  ? <span className="badge badge-green">● En sala</span>
-                  : <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>○ Sin conexión</span>}
+                {isPatientPresent(consultation) ? (
+                  <span className="badge badge-green">● En sala</span>
+                ) : (
+                  <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>
+                    ○ Sin conexión
+                  </span>
+                )}
               </div>
               <div className="tag-row" style={{ marginTop: 12 }}>
-                {consultation.patients?.needs_tags?.map(t => <span key={t} className="tag">{t}</span>)}
+                {consultation.patients?.needs_tags?.map((t) => (
+                  <span key={t} className="tag">
+                    {t}
+                  </span>
+                ))}
               </div>
             </section>
 
             <section className="card">
               <h2 style={{ marginTop: 0 }}>Motivo</h2>
               <div className="notice">
-                {consultation.chief_complaint || consultation.patients?.description || 'Sin descripción'}
+                {consultation.chief_complaint ||
+                  consultation.patients?.description ||
+                  'Sin descripción'}
               </div>
-              {consultation.category && <p style={{ color: '#64748b' }}>Tipo de ayuda: {consultation.category}</p>}
+              {consultation.category && (
+                <p style={{ color: '#64748b' }}>Tipo de ayuda: {consultation.category}</p>
+              )}
               {consultation.referred_specialty && (
-                <p><span className="badge badge-blue">Derivado a {consultation.referred_specialty}</span></p>
+                <p>
+                  <span className="badge badge-blue">
+                    Derivado a {consultation.referred_specialty}
+                  </span>
+                </p>
               )}
             </section>
 
@@ -316,26 +375,48 @@ export default function ConsultaDetalle() {
               <h2 style={{ marginTop: 0 }}>Referencia y trazabilidad</h2>
               <div className="detail-timeline">
                 <div className="notice">
-                  <strong>Estado actual:</strong> {STATUS_LABELS[consultation.status] || consultation.status}<br />
-                  <strong>Médico asignado:</strong> {assignedDoctor?.full_name || (consultation.assigned_doctor_id ? 'Médico asignado' : 'Sin asignar')}<br />
+                  <strong>Estado actual:</strong>{' '}
+                  {STATUS_LABELS[consultation.status] || consultation.status}
+                  <br />
+                  <strong>Médico asignado:</strong>{' '}
+                  {assignedDoctor?.full_name ||
+                    (consultation.assigned_doctor_id ? 'Médico asignado' : 'Sin asignar')}
+                  <br />
                   <strong>Especialidad referida:</strong> {consultation.referred_specialty || '—'}
-                  {events[0]?.note && <><br /><strong>Última nota:</strong> {events[0].note}</>}
+                  {events[0]?.note && (
+                    <>
+                      <br />
+                      <strong>Última nota:</strong> {events[0].note}
+                    </>
+                  )}
                 </div>
 
                 {events.length === 0 ? (
-                  <p style={{ color: '#64748b', margin: 0 }}>Todavía no hay historial registrado para este caso.</p>
+                  <p style={{ color: '#64748b', margin: 0 }}>
+                    Todavía no hay historial registrado para este caso.
+                  </p>
                 ) : (
                   <div className="grid">
-                    {events.map(event => {
+                    {events.map((event) => {
                       const author = event.created_by ? eventAuthorsById[event.created_by] : null
                       return (
                         <div key={event.id} className="card-flat">
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              gap: 10,
+                              flexWrap: 'wrap'
+                            }}
+                          >
                             <strong>{eventLabel(event.event_type)}</strong>
-                            <span style={{ color: '#64748b', fontSize: 13 }}>{fmtDateTime(event.created_at)}</span>
+                            <span style={{ color: '#64748b', fontSize: 13 }}>
+                              {fmtDateTime(event.created_at)}
+                            </span>
                           </div>
                           <p style={{ color: '#64748b', margin: '4px 0 0', fontSize: 13 }}>
-                            Por {author?.full_name || 'usuario del sistema'}{author?.role ? ` · ${author.role}` : ''}
+                            Por {author?.full_name || 'usuario del sistema'}
+                            {author?.role ? ` · ${author.role}` : ''}
                           </p>
                           {event.note && <p style={{ marginBottom: 0 }}>{event.note}</p>}
                         </div>
@@ -351,16 +432,38 @@ export default function ConsultaDetalle() {
               <div className="detail-actions">
                 <div>
                   <label className="label">Nota operativa interna</label>
-                  <textarea rows={6} value={note} onChange={e => setNote(e.target.value)} placeholder="Evita escribir historia clínica completa. Solo información necesaria para coordinación." />
+                  <textarea
+                    rows={6}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Evita escribir historia clínica completa. Solo información necesaria para coordinación."
+                  />
                 </div>
                 {consultation.video_room_url && (
-                  <a className="btn btn-primary" href={consultation.video_room_url} target="_blank" rel="noreferrer">
+                  <a
+                    className="btn btn-primary"
+                    href={consultation.video_room_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     Unirse a videoconsulta
                   </a>
                 )}
-                <button className="btn btn-secondary" onClick={saveNote}>Guardar nota</button>
-                <button className="btn btn-primary btn-full" onClick={() => closeConsultation('closed')}>Cerrar consulta</button>
-                <button className="btn btn-outline btn-full" onClick={() => closeConsultation('patient_no_show')}>Paciente no estaba en la sala de espera</button>
+                <button className="btn btn-secondary" onClick={saveNote}>
+                  Guardar nota
+                </button>
+                <button
+                  className="btn btn-primary btn-full"
+                  onClick={() => closeConsultation('closed')}
+                >
+                  Cerrar consulta
+                </button>
+                <button
+                  className="btn btn-outline btn-full"
+                  onClick={() => closeConsultation('patient_no_show')}
+                >
+                  Paciente no estaba en la sala de espera
+                </button>
               </div>
             </section>
           </div>
