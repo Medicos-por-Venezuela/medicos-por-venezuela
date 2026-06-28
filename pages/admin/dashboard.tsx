@@ -31,6 +31,7 @@ type Consultation = {
 
 const STATUS_OPTIONS = ['waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show']
 const ROLE_OPTIONS = ['all', 'doctor', 'specialist', 'admin', 'super_admin', 'patient']
+const PAGE_SIZE = 5
 
 const fmtDate = (s?: string | null) => (s ? new Date(s).toLocaleDateString('es-VE') : '—')
 
@@ -71,7 +72,12 @@ export default function AdminDashboard() {
   const [caseFrom, setCaseFrom] = useState('')
   const [caseTo, setCaseTo] = useState('')
 
+  const [userPage, setUserPage] = useState(1)
+  const [casePage, setCasePage] = useState(1)
+
   useEffect(() => { init() }, [])
+  useEffect(() => { setUserPage(1) }, [userSearch, userRole, userState, userFrom, userTo])
+  useEffect(() => { setCasePage(1) }, [caseSearch, caseStatusFilter, caseFrom, caseTo])
 
   async function init() {
     const { data: sessionData } = await supabase.auth.getSession()
@@ -145,6 +151,13 @@ export default function AdminDashboard() {
       return true
     })
   }, [consultations, caseSearch, caseStatusFilter, caseFrom, caseTo])
+
+  const userTotalPages = Math.max(1, Math.ceil(filteredProfiles.length / PAGE_SIZE))
+  const caseTotalPages = Math.max(1, Math.ceil(filteredConsultations.length / PAGE_SIZE))
+  const safeUserPage = Math.min(userPage, userTotalPages)
+  const safeCasePage = Math.min(casePage, caseTotalPages)
+  const paginatedProfiles = filteredProfiles.slice((safeUserPage - 1) * PAGE_SIZE, safeUserPage * PAGE_SIZE)
+  const paginatedConsultations = filteredConsultations.slice((safeCasePage - 1) * PAGE_SIZE, safeCasePage * PAGE_SIZE)
 
   function selectCase(c: Consultation) {
     setSelected(c)
@@ -266,10 +279,12 @@ export default function AdminDashboard() {
             <section className="card">
               <h2 style={{ marginTop: 0 }}>Derivaciones por especialidad</h2>
               {bySpecialty.length === 0 ? <p style={{ color: '#64748b' }}>No hay derivaciones pendientes.</p> : (
-                <table className="table">
-                  <thead><tr><th>Especialidad</th><th>Cantidad</th></tr></thead>
-                  <tbody>{bySpecialty.map(([s, count]) => <tr key={s}><td>{s}</td><td>{count}</td></tr>)}</tbody>
-                </table>
+                <div className="admin-table-wrap">
+                  <table className="table admin-responsive-table">
+                    <thead><tr><th>Especialidad</th><th>Cantidad</th></tr></thead>
+                    <tbody>{bySpecialty.map(([s, count]) => <tr key={s}><td data-label="Especialidad">{s}</td><td data-label="Cantidad">{count}</td></tr>)}</tbody>
+                  </table>
+                </div>
               )}
               <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 12 }}>Especialidades disponibles para derivar: {SPECIALTIES.length}.</p>
             </section>
@@ -278,33 +293,33 @@ export default function AdminDashboard() {
           <div className="grid grid-2" style={{ marginTop: 18 }}>
             <section className="card">
               <h2 style={{ marginTop: 0 }}>Médicos y administradores <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 14 }}>({filteredProfiles.length} de {profiles.length})</span></h2>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-                <input style={{ flex: '1 1 160px' }} placeholder="Buscar nombre o email" value={userSearch} onChange={e => setUserSearch(e.target.value)} />
-                <select style={{ flex: '0 1 130px' }} value={userRole} onChange={e => setUserRole(e.target.value)}>
+              <div className="admin-filters">
+                <input placeholder="Buscar nombre o email" value={userSearch} onChange={e => setUserSearch(e.target.value)} />
+                <select value={userRole} onChange={e => setUserRole(e.target.value)}>
                   {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r === 'all' ? 'Todos los roles' : r}</option>)}
                 </select>
-                <select style={{ flex: '0 1 130px' }} value={userState} onChange={e => setUserState(e.target.value)}>
+                <select value={userState} onChange={e => setUserState(e.target.value)}>
                   <option value="all">Todos los estados</option>
                   <option value="active">Activos</option>
                   <option value="revoked">Revocados</option>
                 </select>
-                <input type="date" style={{ flex: '0 1 140px' }} value={userFrom} onChange={e => setUserFrom(e.target.value)} title="Registrado desde" />
-                <input type="date" style={{ flex: '0 1 140px' }} value={userTo} onChange={e => setUserTo(e.target.value)} title="Registrado hasta" />
+                <input type="date" value={userFrom} onChange={e => setUserFrom(e.target.value)} title="Registrado desde" />
+                <input type="date" value={userTo} onChange={e => setUserTo(e.target.value)} title="Registrado hasta" />
               </div>
-              <div style={{ overflowX: 'auto' }}>
-                <table className="table">
+              <div className="admin-table-wrap">
+                <table className="table admin-responsive-table">
                   <thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Registrado</th><th>Online</th><th></th></tr></thead>
                   <tbody>
                     {filteredProfiles.length === 0 ? (
                       <tr><td colSpan={6} style={{ color: '#64748b' }}>No hay usuarios que coincidan con el filtro.</td></tr>
-                    ) : filteredProfiles.map(p => (
+                    ) : paginatedProfiles.map(p => (
                       <tr key={p.id}>
-                        <td><strong>{p.full_name}</strong><br /><span style={{ color: '#64748b' }}>{p.email}</span><br />{p.specialty || ''}</td>
-                        <td>{p.role}</td>
-                        <td>{p.active ? <span className="badge badge-green">Activo</span> : <span className="badge badge-red">Revocado</span>}</td>
-                        <td>{fmtDate(p.created_at)}</td>
-                        <td>{p.last_seen_at && now - new Date(p.last_seen_at).getTime() < 3 * 60 * 1000 ? 'Sí' : 'No'}</td>
-                        <td>
+                        <td data-label="Usuario"><strong>{p.full_name}</strong><br /><span style={{ color: '#64748b' }}>{p.email}</span><br />{p.specialty || ''}</td>
+                        <td data-label="Rol">{p.role}</td>
+                        <td data-label="Estado">{p.active ? <span className="badge badge-green">Activo</span> : <span className="badge badge-red">Revocado</span>}</td>
+                        <td data-label="Registrado">{fmtDate(p.created_at)}</td>
+                        <td data-label="Online">{p.last_seen_at && now - new Date(p.last_seen_at).getTime() < 3 * 60 * 1000 ? 'Sí' : 'No'}</td>
+                        <td data-label="Acciones">
                           {['admin', 'super_admin'].includes(p.role)
                             ? <span style={{ color: '#94a3b8', fontSize: 13 }}>—</span>
                             : <button className="btn btn-muted" onClick={() => toggleDoctor(p.id, p.active)}>{p.active ? 'Revocar acceso' : 'Reactivar'}</button>}
@@ -314,45 +329,224 @@ export default function AdminDashboard() {
                   </tbody>
                 </table>
               </div>
+              <Pagination
+                page={safeUserPage}
+                totalPages={userTotalPages}
+                totalItems={filteredProfiles.length}
+                pageSize={PAGE_SIZE}
+                onPageChange={setUserPage}
+              />
             </section>
 
             <section className="card">
               <h2 style={{ marginTop: 0 }}>Consultas recientes <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 14 }}>({filteredConsultations.length} de {consultations.length})</span></h2>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-                <input style={{ flex: '1 1 160px' }} placeholder="Buscar paciente, código o zona" value={caseSearch} onChange={e => setCaseSearch(e.target.value)} />
-                <select style={{ flex: '0 1 160px' }} value={caseStatusFilter} onChange={e => setCaseStatusFilter(e.target.value)}>
+              <div className="admin-filters">
+                <input placeholder="Buscar paciente, código o zona" value={caseSearch} onChange={e => setCaseSearch(e.target.value)} />
+                <select value={caseStatusFilter} onChange={e => setCaseStatusFilter(e.target.value)}>
                   <option value="all">Todos los estados</option>
                   {STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
                 </select>
-                <input type="date" style={{ flex: '0 1 140px' }} value={caseFrom} onChange={e => setCaseFrom(e.target.value)} title="Creada desde" />
-                <input type="date" style={{ flex: '0 1 140px' }} value={caseTo} onChange={e => setCaseTo(e.target.value)} title="Creada hasta" />
+                <input type="date" value={caseFrom} onChange={e => setCaseFrom(e.target.value)} title="Creada desde" />
+                <input type="date" value={caseTo} onChange={e => setCaseTo(e.target.value)} title="Creada hasta" />
               </div>
-              <div style={{ overflowX: 'auto' }}>
-                <table className="table">
+              <div className="admin-table-wrap">
+                <table className="table admin-responsive-table">
                   <thead><tr><th>Paciente</th><th>Estado</th><th>Médico</th><th>Creada</th><th></th></tr></thead>
                   <tbody>
                     {filteredConsultations.length === 0 ? (
                       <tr><td colSpan={5} style={{ color: '#64748b' }}>No hay consultas que coincidan con el filtro.</td></tr>
-                    ) : filteredConsultations.map(c => (
+                    ) : paginatedConsultations.map(c => (
                       <tr key={c.id}>
-                        <td>{c.patients?.full_name || 'Paciente'}<br /><span style={{ color: '#64748b' }}>{c.code}</span></td>
-                        <td>{STATUS_LABELS[c.status] || c.status}</td>
-                        <td>{doctorName(c.assigned_doctor_id)}</td>
-                        <td>{fmtDate(c.created_at)}</td>
-                        <td><button className="btn btn-secondary" onClick={() => selectCase(c)}>Gestionar</button></td>
+                        <td data-label="Paciente">{c.patients?.full_name || 'Paciente'}<br /><span style={{ color: '#64748b' }}>{c.code}</span></td>
+                        <td data-label="Estado">{STATUS_LABELS[c.status] || c.status}</td>
+                        <td data-label="Médico">{doctorName(c.assigned_doctor_id)}</td>
+                        <td data-label="Creada">{fmtDate(c.created_at)}</td>
+                        <td data-label="Acciones">
+                          <div className="admin-row-actions">
+                            <button className="btn btn-secondary" onClick={() => router.push(`/panel-medico/consulta/${c.id}`)}>Gestionar</button>
+                            <button className="btn btn-muted" onClick={() => selectCase(c)}>Editar rápido</button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              <Pagination
+                page={safeCasePage}
+                totalPages={caseTotalPages}
+                totalItems={filteredConsultations.length}
+                pageSize={PAGE_SIZE}
+                onPageChange={setCasePage}
+              />
             </section>
           </div>
         </div>
       </main>
+
+      <style jsx global>{`
+        .admin-filters {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+
+        .admin-table-wrap {
+          width: 100%;
+        }
+
+        .admin-responsive-table thead {
+          display: none;
+        }
+
+        .admin-responsive-table,
+        .admin-responsive-table tbody,
+        .admin-responsive-table tr,
+        .admin-responsive-table td {
+          display: block;
+          width: 100%;
+        }
+
+        .admin-responsive-table tr {
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          padding: 12px;
+          margin-bottom: 12px;
+          background: var(--white);
+        }
+
+        .admin-responsive-table td {
+          border-bottom: 0;
+          padding: 8px 0;
+        }
+
+        .admin-responsive-table td::before {
+          content: attr(data-label);
+          display: block;
+          color: var(--muted);
+          font-size: 12px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          margin-bottom: 2px;
+        }
+
+        .admin-responsive-table td[colspan]::before {
+          content: none;
+        }
+
+        .admin-row-actions {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+
+        .admin-pagination {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 8px;
+          margin-top: 12px;
+          color: var(--muted);
+          font-size: 13px;
+        }
+
+        .admin-pagination-actions {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+        }
+
+        @media (min-width: 640px) {
+          .admin-filters {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
+          .admin-pagination {
+            grid-template-columns: 1fr auto;
+            align-items: center;
+          }
+
+          .admin-pagination-actions {
+            display: flex;
+            justify-content: flex-end;
+          }
+        }
+
+        @media (min-width: 900px) {
+          .admin-filters {
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+          }
+
+          .admin-row-actions {
+            display: flex;
+            flex-wrap: wrap;
+          }
+
+          .admin-table-wrap {
+            overflow-x: auto;
+          }
+
+          .admin-responsive-table {
+            display: table;
+          }
+
+          .admin-responsive-table thead {
+            display: table-header-group;
+          }
+
+          .admin-responsive-table tbody {
+            display: table-row-group;
+          }
+
+          .admin-responsive-table tr {
+            display: table-row;
+            border: 0;
+            border-radius: 0;
+            padding: 0;
+            margin-bottom: 0;
+            background: transparent;
+          }
+
+          .admin-responsive-table td {
+            display: table-cell;
+            width: auto;
+            border-bottom: 1px solid var(--border);
+            padding: 10px 8px;
+          }
+
+          .admin-responsive-table td::before {
+            content: none;
+          }
+        }
+      `}</style>
     </>
   )
 }
 
 function Kpi({ value, label }: { value: number; label: string }) {
   return <div className="kpi"><div className="kpi-value">{value}</div><div className="kpi-label">{label}</div></div>
+}
+
+function Pagination({ page, totalPages, totalItems, pageSize, onPageChange }: {
+  page: number
+  totalPages: number
+  totalItems: number
+  pageSize: number
+  onPageChange: (page: number) => void
+}) {
+  if (totalItems === 0) return null
+
+  const from = (page - 1) * pageSize + 1
+  const to = Math.min(page * pageSize, totalItems)
+
+  return (
+    <div className="admin-pagination">
+      <span>Mostrando {from}-{to} de {totalItems}</span>
+      <div className="admin-pagination-actions">
+        <button className="btn btn-muted" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>Anterior</button>
+        <button className="btn btn-muted" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>Siguiente</button>
+      </div>
+    </div>
+  )
 }
