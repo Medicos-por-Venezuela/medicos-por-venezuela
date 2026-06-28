@@ -223,7 +223,7 @@ export default function Home() {
               <a href="#por-que">¿Por qué usarlo?</a>
               <a href="#contacto">Contacto</a>
               <button className="nav-login" onClick={goPacienteLogin}>
-                Iniciar sesión
+                Seguir mi caso
               </button>
               <div className="nav-cta">
                 <button className="btn-pill btn-blue" onClick={goPaciente}>
