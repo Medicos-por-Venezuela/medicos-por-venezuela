@@ -42,6 +42,16 @@ type Profile = {
   active: boolean
 }
 
+type ConsultationEvent = {
+  id: string
+  event_type: string
+  created_by: string | null
+  note: string | null
+  created_at: string
+}
+
+type EventAuthor = Pick<Profile, 'id' | 'full_name' | 'role'>
+
 const ADMIN_ROLES = ['admin', 'super_admin'] as const
 const PANEL_ALLOWED_ROLES = ['doctor', 'specialist', ...ADMIN_ROLES] as const
 const PRESENCE_WINDOW_MS = 5 * 60 * 1000
@@ -62,11 +72,27 @@ function statusBadgeClass(status: string): string {
   return 'badge-green'
 }
 
+function eventLabel(type: string): string {
+  const labels: Record<string, string> = {
+    opened: 'Consulta abierta',
+    closed: 'Consulta cerrada',
+    patient_no_show: 'Paciente ausente',
+    admin_update: 'Actualización administrativa'
+  }
+  return labels[type] || type
+}
+
+function fmtDateTime(value: string): string {
+  return new Date(value).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' })
+}
+
 export default function ConsultaDetalle() {
   const router = useRouter()
   const consultationId = typeof router.query.id === 'string' ? router.query.id : null
   const [profile, setProfile] = useState<Profile | null>(null)
   const [consultation, setConsultation] = useState<Consultation | null>(null)
+  const [events, setEvents] = useState<ConsultationEvent[]>([])
+  const [eventAuthorsById, setEventAuthorsById] = useState<Record<string, EventAuthor>>({})
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
@@ -127,6 +153,38 @@ export default function ConsultaDetalle() {
 
     setConsultation(row)
     setNote(row.internal_note || '')
+    await loadEvents(id)
+  }
+
+  async function loadEvents(consultationId: string) {
+    const { data, error } = await supabase
+      .from('consultation_events')
+      .select('id, event_type, created_by, note, created_at')
+      .eq('consultation_id', consultationId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error(error)
+      setEvents([])
+      setEventAuthorsById({})
+      return
+    }
+
+    const rows = (data || []) as ConsultationEvent[]
+    setEvents(rows)
+
+    const authorIds = Array.from(new Set(rows.map(e => e.created_by).filter((id): id is string => !!id)))
+    if (authorIds.length === 0) {
+      setEventAuthorsById({})
+      return
+    }
+
+    const { data: authors } = await supabase
+      .from('profiles')
+      .select('id, full_name, role')
+      .in('id', authorIds)
+
+    setEventAuthorsById(Object.fromEntries(((authors || []) as EventAuthor[]).map(a => [a.id, a])))
   }
 
   async function addEvent(consultationId: string, eventType: string, eventNote?: string) {
@@ -222,9 +280,43 @@ export default function ConsultaDetalle() {
               <div className="notice">
                 {consultation.chief_complaint || consultation.patients?.description || 'Sin descripción'}
               </div>
+              {consultation.category && <p style={{ color: '#64748b' }}>Tipo de ayuda: {consultation.category}</p>}
               {consultation.referred_specialty && (
                 <p><span className="badge badge-blue">Derivado a {consultation.referred_specialty}</span></p>
               )}
+            </section>
+
+            <section className="card detail-full-span">
+              <h2 style={{ marginTop: 0 }}>Referencia y trazabilidad</h2>
+              <div className="detail-timeline">
+                <div className="notice">
+                  <strong>Estado actual:</strong> {STATUS_LABELS[consultation.status] || consultation.status}<br />
+                  <strong>Especialidad referida:</strong> {consultation.referred_specialty || '—'}
+                  {events[0]?.note && <><br /><strong>Última nota:</strong> {events[0].note}</>}
+                </div>
+
+                {events.length === 0 ? (
+                  <p style={{ color: '#64748b', margin: 0 }}>Todavía no hay historial registrado para este caso.</p>
+                ) : (
+                  <div className="grid">
+                    {events.map(event => {
+                      const author = event.created_by ? eventAuthorsById[event.created_by] : null
+                      return (
+                        <div key={event.id} className="card-flat">
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                            <strong>{eventLabel(event.event_type)}</strong>
+                            <span style={{ color: '#64748b', fontSize: 13 }}>{fmtDateTime(event.created_at)}</span>
+                          </div>
+                          <p style={{ color: '#64748b', margin: '4px 0 0', fontSize: 13 }}>
+                            Por {author?.full_name || 'usuario del sistema'}{author?.role ? ` · ${author.role}` : ''}
+                          </p>
+                          {event.note && <p style={{ marginBottom: 0 }}>{event.note}</p>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             </section>
 
             <section className="card detail-full-span">
@@ -258,7 +350,8 @@ export default function ConsultaDetalle() {
         }
 
         .detail-grid,
-        .detail-actions {
+        .detail-actions,
+        .detail-timeline {
           display: grid;
           grid-template-columns: 1fr;
           gap: 16px;
