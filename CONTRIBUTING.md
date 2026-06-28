@@ -4,6 +4,8 @@ Guía de contribución para Médicos por Venezuela. Para entender la arquitectur
 primero [CLAUDE.md](CLAUDE.md) y [AGENTS.md](AGENTS.md) (este último orientado a agentes de IA, pero
 útil para cualquier persona que quiera entender el setup de testing/SDD).
 
+Toda contribución debe respetar el [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
 ## Entorno local
 
 ```bash
