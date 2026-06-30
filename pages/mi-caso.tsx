@@ -103,7 +103,7 @@ export default function MiCaso() {
 
   if (loading)
     return (
-      <main className="page auth">
+      <main className="page">
         <div className="narrow">
           <div className="card">Cargando...</div>
         </div>
@@ -116,7 +116,7 @@ export default function MiCaso() {
         <Head>
           <title>Seguir mi caso — Médicos por Venezuela</title>
         </Head>
-        <main className="page auth">
+        <main className="page">
           <div className="narrow">
             <Link href="/" className="link-button">
               ← Volver
@@ -141,7 +141,7 @@ export default function MiCaso() {
                   />
                 </div>
                 {error && <div className="notice notice-danger">{error}</div>}
-                <button className="btn btn-blue btn-full" onClick={login}>
+                <button className="btn btn-primary btn-full" onClick={login}>
                   Entrar
                 </button>
                 <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>
@@ -157,10 +157,7 @@ export default function MiCaso() {
                 />
                 <p style={{ textAlign: 'center', color: '#64748b', fontSize: 13, margin: 0 }}>
                   ¿No tienes cuenta?{' '}
-                  <Link
-                    href="/registro-paciente"
-                    style={{ color: 'var(--blue-brand)', fontWeight: 700 }}
-                  >
+                  <Link href="/registro-paciente" style={{ color: '#0f6e56', fontWeight: 700 }}>
                     Solicitar consulta
                   </Link>
                 </p>
@@ -177,7 +174,7 @@ export default function MiCaso() {
       <Head>
         <title>Seguir mi caso — Médicos por Venezuela</title>
       </Head>
-      <main className="page auth">
+      <main className="page">
         <div className="narrow">
           <div className="topbar">
             <div>
@@ -194,7 +191,7 @@ export default function MiCaso() {
               <p style={{ color: '#64748b' }}>
                 Todavía no tienes solicitudes registradas con esta cuenta.
               </p>
-              <Link className="btn btn-blue" href="/registro-paciente">
+              <Link className="btn btn-primary" href="/registro-paciente">
                 Solicitar consulta
               </Link>
             </div>

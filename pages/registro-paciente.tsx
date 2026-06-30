@@ -1,9 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { useState } from 'react'
-import { useMountEffect } from '../lib/useMountEffect'
-import Select from '../components/ui/Select'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { signInWithGoogle } from '../lib/auth'
 import GoogleButton from '../components/GoogleButton'
@@ -45,7 +43,6 @@ export default function RegistroPaciente() {
   const [nombre, setNombre] = useState('')
   const [cedula, setCedula] = useState('')
   const [telefono, setTelefono] = useState('')
-  const [contactEmail, setContactEmail] = useState('')
   const [zona, setZona] = useState('')
   const [edad, setEdad] = useState('')
   const [descripcion, setDescripcion] = useState('')
@@ -61,11 +58,11 @@ export default function RegistroPaciente() {
   // True when the patient is already logged in (e.g. arrived from the Google role-picker).
   const [authedPatient, setAuthedPatient] = useState(false)
 
-  useMountEffect(() => {
+  useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) setAuthedPatient(true)
     })
-  })
+  }, [])
 
   const toggleTag = (tag: string) => {
     setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
@@ -121,7 +118,6 @@ export default function RegistroPaciente() {
           full_name: nombre.trim(),
           cedula: cedula.trim(),
           phone_whatsapp: telefono.trim(),
-          email: contactEmail.trim() || null,
           affected_zone: zona,
           age_range: edad || null,
           needs_tags: tags,
@@ -185,7 +181,7 @@ export default function RegistroPaciente() {
       <Head>
         <title>Solicitar consulta — Médicos por Venezuela</title>
       </Head>
-      <main className="page auth">
+      <main className="page">
         <div className="narrow">
           <Link href="/" className="link-button">
             ← Volver
@@ -231,31 +227,21 @@ export default function RegistroPaciente() {
                 />
                 <div className="hint">Solo lo usaremos si tu caso necesita seguimiento.</div>
               </div>
-              <div>
-                <label className="label">Correo electrónico (opcional)</label>
-                <input
-                  type="email"
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
-                  placeholder="Ej. tucorreo@gmail.com"
-                />
-                <div className="hint">Opcional. Útil si no podemos contactarte por teléfono.</div>
-              </div>
               <div className="grid grid-2">
                 <div>
                   <label className="label">Zona afectada *</label>
-                  <Select value={zona} onChange={(e) => setZona(e.target.value)}>
+                  <select value={zona} onChange={(e) => setZona(e.target.value)}>
                     <option value="">Selecciona...</option>
                     {ZONAS.map((z) => (
                       <option key={z} value={z}>
                         {z}
                       </option>
                     ))}
-                  </Select>
+                  </select>
                 </div>
                 <div>
                   <label className="label">Edad aproximada</label>
-                  <Select value={edad} onChange={(e) => setEdad(e.target.value)}>
+                  <select value={edad} onChange={(e) => setEdad(e.target.value)}>
                     <option value="">Selecciona...</option>
                     <option value="0-2">0-2 años</option>
                     <option value="3-12">3-12 años</option>
@@ -263,7 +249,7 @@ export default function RegistroPaciente() {
                     <option value="18-40">18-40 años</option>
                     <option value="41-65">41-65 años</option>
                     <option value="65+">65+ años</option>
-                  </Select>
+                  </select>
                 </div>
               </div>
               <div>
@@ -354,7 +340,7 @@ export default function RegistroPaciente() {
                 </span>
               </label>
               {error && <div className="notice notice-danger">{error}</div>}
-              <button className="btn btn-blue btn-full" onClick={submit} disabled={loading}>
+              <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>
                 {loading ? 'Enviando...' : 'Solicitar consulta gratuita'}
               </button>
 
@@ -378,7 +364,7 @@ export default function RegistroPaciente() {
                   />
                   <p style={{ textAlign: 'center', color: '#64748b', fontSize: 13, margin: 0 }}>
                     ¿Ya tienes cuenta?{' '}
-                    <Link href="/mi-caso" style={{ color: 'var(--blue-brand)', fontWeight: 700 }}>
+                    <Link href="/mi-caso" style={{ color: '#0f6e56', fontWeight: 700 }}>
                       Seguir mi caso
                     </Link>
                   </p>

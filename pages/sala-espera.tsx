@@ -1,7 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
 export default function SalaEspera() {
@@ -10,14 +10,6 @@ export default function SalaEspera() {
   const room = typeof router.query.room === 'string' ? router.query.room : ''
   const code = typeof router.query.code === 'string' ? router.query.code : ''
   const cid = typeof router.query.cid === 'string' ? router.query.cid : ''
-  const [showWarning, setShowWarning] = useState(false)
-
-  // Open the Jitsi room. Triggered from the "Entendido" button inside the warning modal, so the
-  // window.open() call still runs inside a user gesture and isn't blocked as a pop-up.
-  const openRoom = () => {
-    setShowWarning(false)
-    if (room) window.open(room, '_blank', 'noopener,noreferrer')
-  }
 
   // Waiting-room heartbeat: while this page is open, tell the backend the patient is present every
   // ~20s so the doctor panel can distinguish people actually waiting from those who submitted and left.
@@ -69,13 +61,15 @@ export default function SalaEspera() {
                 <div className="notice notice-info" style={{ marginTop: 8 }}>
                   ℹ️ Funciona mejor desde el navegador, no hay necesidad de bajarse la app.
                 </div>
-                <button
+                <a
                   className="btn btn-primary btn-full"
-                  onClick={() => setShowWarning(true)}
+                  href={room}
+                  target="_blank"
+                  rel="noreferrer"
                   style={{ marginTop: 8 }}
                 >
                   Entrar a la videoconsulta
-                </button>
+                </a>
                 <div className="notice notice-warning" style={{ marginTop: 12 }}>
                   Una vez dentro, <strong>espera a que tu médico asignado se conecte</strong>. Puede
                   tardar varios minutos. Mantén esta página abierta.
@@ -122,79 +116,6 @@ export default function SalaEspera() {
           </div>
         </div>
       </main>
-
-      {showWarning && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="warning-title"
-          onClick={() => setShowWarning(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.55)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            zIndex: 1000
-          }}
-        >
-          <div
-            className="card"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: 440,
-              width: '100%',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              position: 'relative'
-            }}
-          >
-            <button
-              type="button"
-              aria-label="Cerrar"
-              onClick={() => setShowWarning(false)}
-              style={{
-                position: 'absolute',
-                top: 12,
-                right: 12,
-                border: 'none',
-                background: 'transparent',
-                fontSize: 22,
-                lineHeight: 1,
-                cursor: 'pointer',
-                color: '#64748b'
-              }}
-            >
-              ✕
-            </button>
-            <h2 id="warning-title" style={{ marginTop: 0, paddingRight: 24 }}>
-              Antes de entrar a la videoconsulta
-            </h2>
-            <ul style={{ margin: '0 0 16px', paddingLeft: 18, lineHeight: 1.6 }}>
-              <li style={{ color: '#dc2626', fontWeight: 700 }}>
-                Escribe tu nombre completo cuando la videollamada te lo pida.
-              </li>
-              <li style={{ color: '#dc2626', fontWeight: 700 }}>
-                No cierres la videollamada: espera ahí a que tu médico se conecte (puede tardar
-                varios minutos).
-              </li>
-              <li>
-                Al abrir el enlace, elige <strong>“Continuar en el navegador”</strong> (no necesitas
-                descargar la app).
-              </li>
-              <li>
-                Pulsa <strong>“Permitir”</strong> cuando te pida cámara y micrófono.
-              </li>
-              <li>Mantén también esta página abierta en otra pestaña.</li>
-            </ul>
-            <button className="btn btn-primary btn-full" onClick={openRoom}>
-              Entendido, entrar a la videoconsulta
-            </button>
-          </div>
-        </div>
-      )}
     </>
   )
 }

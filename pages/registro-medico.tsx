@@ -5,7 +5,6 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { signInWithGoogle } from '../lib/auth'
 import GoogleButton from '../components/GoogleButton'
-import { registroMedicoSchema, firstError } from '../lib/validation'
 
 // Step 1 of doctor registration: create the account (email+password or Google).
 // Step 2 (specialty/country/WhatsApp) happens on /elegir-rol, so email and Google
@@ -21,9 +20,8 @@ export default function RegistroMedico() {
 
   const submit = async () => {
     setError('')
-    const parsed = registroMedicoSchema.safeParse({ fullName, email, password })
-    if (!parsed.success) {
-      setError(firstError(parsed.error))
+    if (!fullName.trim() || !email.trim() || password.length < 6) {
+      setError('Completa nombre, email y una contraseña de al menos 6 caracteres.')
       return
     }
     setLoading(true)
@@ -31,9 +29,9 @@ export default function RegistroMedico() {
       // No role in metadata → trigger creates an unfinalized profile (role_chosen=false),
       // so the next step (/elegir-rol) can set role=doctor + details via set_my_role.
       const { data, error } = await supabase.auth.signUp({
-        email: parsed.data.email,
-        password: parsed.data.password,
-        options: { data: { full_name: parsed.data.fullName } }
+        email: email.trim().toLowerCase(),
+        password,
+        options: { data: { full_name: fullName.trim() } }
       })
       if (error) throw error
       if (!data.session) {
@@ -68,7 +66,7 @@ export default function RegistroMedico() {
       <Head>
         <title>Registro médico — Médicos por Venezuela</title>
       </Head>
-      <main className="page auth">
+      <main className="page">
         <div className="narrow">
           <Link href="/" className="link-button">
             ← Volver
@@ -100,7 +98,7 @@ export default function RegistroMedico() {
                 </div>
               </div>
               {error && <div className="notice notice-danger">{error}</div>}
-              <button className="btn btn-blue btn-full" onClick={submit} disabled={loading}>
+              <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>
                 {loading ? 'Creando cuenta...' : 'Continuar'}
               </button>
               <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>
@@ -109,7 +107,7 @@ export default function RegistroMedico() {
 
             <p style={{ marginTop: 18, color: '#64748b' }}>
               ¿Ya tienes cuenta?{' '}
-              <Link href="/login-medico" style={{ color: 'var(--blue-brand)', fontWeight: 800 }}>
+              <Link href="/login-medico" style={{ color: '#0f6e56', fontWeight: 800 }}>
                 Entrar al panel médico
               </Link>
             </p>
