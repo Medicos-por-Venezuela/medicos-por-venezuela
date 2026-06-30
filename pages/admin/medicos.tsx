@@ -81,6 +81,7 @@ export default function AdminMedicosPorEspecialidad() {
 
       setLoading(false)
     })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const now = Date.now()

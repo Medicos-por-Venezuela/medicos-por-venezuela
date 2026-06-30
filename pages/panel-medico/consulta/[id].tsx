@@ -101,6 +101,7 @@ export default function ConsultaDetalle() {
   useEffect(() => {
     if (!consultationId) return
     init(consultationId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consultationId])
 
   async function init(id: string) {

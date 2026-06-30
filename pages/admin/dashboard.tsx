@@ -81,6 +81,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     init()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function init() {

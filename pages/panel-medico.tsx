@@ -78,6 +78,7 @@ export default function PanelMedico() {
 
   useEffect(() => {
     init()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -85,6 +86,7 @@ export default function PanelMedico() {
     loadConsultations(profile)
     setMessage('Panel actualizado.')
     router.replace('/panel-medico', undefined, { shallow: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady, router.query.actualizado, profile?.id])
 
   useEffect(() => {
@@ -104,6 +106,7 @@ export default function PanelMedico() {
       loadConsultations(profile)
     }, 20000)
     return () => window.clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile])
 
   // Refresh when returning to this tab/page after actions performed in the detail page.
@@ -114,6 +117,7 @@ export default function PanelMedico() {
     }
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile])
 
   async function init() {
