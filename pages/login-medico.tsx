@@ -71,7 +71,7 @@ export default function LoginMedico() {
       <Head>
         <title>Acceso médico — Médicos por Venezuela</title>
       </Head>
-      <main className="page">
+      <main className="page auth">
         <div className="narrow">
           <Link href="/" className="link-button">
             ← Volver
@@ -96,7 +96,7 @@ export default function LoginMedico() {
                 />
               </div>
               {error && <div className="notice notice-danger">{error}</div>}
-              <button className="btn btn-primary btn-full" onClick={login} disabled={loading}>
+              <button className="btn btn-blue btn-full" onClick={login} disabled={loading}>
                 {loading ? 'Entrando...' : 'Entrar'}
               </button>
               <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>

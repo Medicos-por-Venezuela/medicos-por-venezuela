@@ -8,6 +8,8 @@
   --orange-light: #fef3c7;
   --blue: #1d4ed8;
   --blue-light: #dbeafe;
+  --blue-brand: #1a3a6b;
+  --blue-brand-deep: #122a4f;
   --text: #17202a;
   --muted: #64748b;
   --border: #e5e7eb;
@@ -129,6 +131,51 @@ textarea:focus,
 select:focus {
   border-color: var(--green);
 }
+.page.auth input:focus,
+.page.auth select:focus,
+.page.auth textarea:focus {
+  border-color: var(--blue-brand);
+}
+/* Checkboxes/radios must NOT inherit the full-width text-input styling above,
+   or they stretch and break inline label layouts. */
+input[type='checkbox'],
+input[type='radio'] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  margin: 0;
+  flex: none;
+  accent-color: var(--green);
+  cursor: pointer;
+}
+.page.auth input[type='checkbox'],
+.page.auth input[type='radio'] {
+  accent-color: var(--blue-brand);
+}
+/* Custom select: hide the native arrow and overlay a consistent chevron. */
+.select-wrap {
+  position: relative;
+  display: block;
+}
+.select-wrap select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 38px;
+  cursor: pointer;
+}
+.select-wrap select option {
+  background-color: #fff;
+  color: var(--text);
+}
+.select-chevron {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+  pointer-events: none;
+}
 .btn {
   border: none;
   border-radius: 10px;
@@ -168,6 +215,19 @@ select:focus {
   background: white;
   color: var(--green);
   border: 1px solid var(--green);
+}
+.btn-outline-dark {
+  background: white;
+  color: #1a1a1a;
+  border: 1px solid #1a1a1a;
+}
+.btn-blue {
+  background: var(--blue-brand);
+  color: white;
+}
+.btn-blue:hover {
+  background: var(--blue-brand-deep);
+  opacity: 1;
 }
 .btn-full {
   width: 100%;

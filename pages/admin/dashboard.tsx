@@ -13,6 +13,7 @@ type Profile = {
   medical_license: string | null
   country: string | null
   whatsapp_number: string | null
+  did_article_8: boolean
   verified: boolean
   active: boolean
   last_seen_at: string | null
@@ -902,6 +903,7 @@ export default function AdminDashboard() {
                         <th>Usuario</th>
                         <th>Rol</th>
                         <th>Estado</th>
+                        <th>Art. 8</th>
                         <th>Registrado</th>
                         <th>Online</th>
                         <th></th>
@@ -910,7 +912,7 @@ export default function AdminDashboard() {
                     <tbody>
                       {usersRows.length === 0 ? (
                         <tr>
-                          <td colSpan={6} style={{ color: '#64748b' }}>
+                          <td colSpan={7} style={{ color: '#64748b' }}>
                             {usersLoading
                               ? 'Cargando...'
                               : 'No hay usuarios que coincidan con el filtro.'}
@@ -946,6 +948,17 @@ export default function AdminDashboard() {
                                   </span>
                                 )}
                               </div>
+                            </td>
+                            <td>
+                              {['doctor', 'specialist'].includes(p.role) ? (
+                                p.did_article_8 ? (
+                                  <span className="badge badge-green">Declarado</span>
+                                ) : (
+                                  <span className="badge badge-red">No</span>
+                                )
+                              ) : (
+                                <span style={{ color: '#94a3b8', fontSize: 13 }}>—</span>
+                              )}
                             </td>
                             <td>{fmtDate(p.created_at)}</td>
                             <td>{isOnline(p.last_seen_at) ? 'Sí' : 'No'}</td>
