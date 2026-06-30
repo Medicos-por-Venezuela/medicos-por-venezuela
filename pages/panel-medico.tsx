@@ -33,9 +33,11 @@ type Consultation = {
   patients: Patient | null
 }
 
-// A patient counts as "in the waiting room" if their /sala-espera page pinged within this window
-// (it pings every ~20s, so we allow a couple of missed beats before treating them as gone).
-const PRESENCE_WINDOW_MS = 5 * 60 * 1000
+// A patient counts as "in the waiting room" if their /sala-espera page pinged within this window.
+// It's generous (30 min) on purpose: once a patient enters the Jitsi call the /sala-espera tab is
+// backgrounded/suspended and stops pinging, so a short window would grey out patients who are
+// actually in the call waiting for a doctor.
+const PRESENCE_WINDOW_MS = 30 * 60 * 1000
 function isPatientPresent(c: Consultation): boolean {
   if (!c.patient_last_seen_at) return false
   return Date.now() - new Date(c.patient_last_seen_at).getTime() < PRESENCE_WINDOW_MS
