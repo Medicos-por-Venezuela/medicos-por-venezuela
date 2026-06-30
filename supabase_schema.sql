@@ -74,6 +74,8 @@ alter table public.patients add column if not exists description text;
 alter table public.patients add column if not exists consent boolean default false;
 alter table public.patients add column if not exists consent_at timestamptz;
 alter table public.patients add column if not exists created_at timestamptz default now();
+-- Optional contact email — a fallback when the phone number doesn't work.
+alter table public.patients add column if not exists email text;
 
 -- 4) Consultations/cases. WhatsApp messages are not stored here.
 create table if not exists public.consultations (
@@ -92,7 +94,7 @@ create table if not exists public.consultations (
   opened_at timestamptz,
   closed_at timestamptz,
   created_at timestamptz not null default now(),
-  constraint consultations_status_check check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show'))
+  constraint consultations_status_check check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show', 'closed_by_admin'))
 );
 
 alter table public.consultations add column if not exists category text;
@@ -105,11 +107,14 @@ alter table public.consultations add column if not exists patient_last_seen_at t
 alter table public.consultations add column if not exists opened_at timestamptz;
 alter table public.consultations add column if not exists closed_at timestamptz;
 alter table public.consultations add column if not exists created_at timestamptz default now();
+-- Admin follow-up flag: whether an admin has contacted the patient about this case (set from the
+-- admin dashboard, independent of status).
+alter table public.consultations add column if not exists contacted boolean not null default false;
 
--- Allow the 'patient_no_show' status on existing databases (idempotent).
+-- Allow the 'patient_no_show' and 'closed_by_admin' statuses on existing databases (idempotent).
 alter table public.consultations drop constraint if exists consultations_status_check;
 alter table public.consultations add constraint consultations_status_check
-  check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show'));
+  check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show', 'closed_by_admin'));
 
 -- 5) Events/audit trail for status changes.
 create table if not exists public.consultation_events (
@@ -120,6 +125,21 @@ create table if not exists public.consultation_events (
   note text,
   created_at timestamptz not null default now()
 );
+
+-- Ensure cascading deletes on EXISTING databases. `create table if not exists` never alters a
+-- foreign key that was first created without ON DELETE CASCADE, so older databases keep the default
+-- NO ACTION and block deleting a patient (you'd get a foreign-key violation from `consultations`).
+-- Re-applying the constraints idempotently makes "delete a patient" also remove their consultations
+-- and the related audit events. (Constraint names are Postgres' defaults: <table>_<column>_fkey.)
+alter table public.consultations drop constraint if exists consultations_patient_id_fkey;
+alter table public.consultations
+  add constraint consultations_patient_id_fkey
+  foreign key (patient_id) references public.patients(id) on delete cascade;
+
+alter table public.consultation_events drop constraint if exists consultation_events_consultation_id_fkey;
+alter table public.consultation_events
+  add constraint consultation_events_consultation_id_fkey
+  foreign key (consultation_id) references public.consultations(id) on delete cascade;
 
 create index if not exists idx_profiles_role on public.profiles(role);
 create index if not exists idx_profiles_last_seen on public.profiles(last_seen_at);
@@ -285,6 +305,33 @@ end;
 $$;
 
 grant execute on function public.mark_patient_waiting(uuid) to anon, authenticated;
+
+-- Hard-delete a patient and everything tied to them (consultations + their audit events). Reserved
+-- for super_admins (used by the admin dashboard to remove test/junk records). Security definer so it
+-- can delete across tables regardless of RLS; it deletes children explicitly, so it does not rely on
+-- the FK ON DELETE CASCADE being applied. Irreversible.
+create or replace function public.admin_delete_patient(p_patient_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role = 'super_admin' and active = true
+  ) then
+    raise exception 'Only an active super_admin may delete patients';
+  end if;
+
+  delete from public.consultation_events
+    where consultation_id in (select id from public.consultations where patient_id = p_patient_id);
+  delete from public.consultations where patient_id = p_patient_id;
+  delete from public.patients where id = p_patient_id;
+end;
+$$;
+
+grant execute on function public.admin_delete_patient(uuid) to authenticated;
 
 -- Enable Row Level Security
 alter table public.profiles enable row level security;

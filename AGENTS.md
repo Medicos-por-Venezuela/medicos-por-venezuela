@@ -69,6 +69,13 @@ install automatically on `pnpm install` via the `prepare` script. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, and
 [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) for the PR format.
 
+### Change log protocol
+
+**Every time a task is finished, update [changeslog.md](changeslog.md)** as
+the final step. Add a short entry at the top (newest first) — one or two lines on what changed and
+why, plus the key files/areas touched — grouping same-day work under a single `## YYYY-MM-DD`
+heading. This is the running history of the project; keep entries concise and factual.
+
 ## SDD (Spec-Driven Development) setup
 
 This project has been initialized for SDD-based work:

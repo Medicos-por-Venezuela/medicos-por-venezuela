@@ -45,6 +45,7 @@ export default function RegistroPaciente() {
   const [nombre, setNombre] = useState('')
   const [cedula, setCedula] = useState('')
   const [telefono, setTelefono] = useState('')
+  const [contactEmail, setContactEmail] = useState('')
   const [zona, setZona] = useState('')
   const [edad, setEdad] = useState('')
   const [descripcion, setDescripcion] = useState('')
@@ -120,6 +121,7 @@ export default function RegistroPaciente() {
           full_name: nombre.trim(),
           cedula: cedula.trim(),
           phone_whatsapp: telefono.trim(),
+          email: contactEmail.trim() || null,
           affected_zone: zona,
           age_range: edad || null,
           needs_tags: tags,
@@ -228,6 +230,16 @@ export default function RegistroPaciente() {
                   placeholder="Ej. 584121234567"
                 />
                 <div className="hint">Solo lo usaremos si tu caso necesita seguimiento.</div>
+              </div>
+              <div>
+                <label className="label">Correo electrónico (opcional)</label>
+                <input
+                  type="email"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  placeholder="Ej. tucorreo@gmail.com"
+                />
+                <div className="hint">Opcional. Útil si no podemos contactarte por teléfono.</div>
               </div>
               <div className="grid grid-2">
                 <div>

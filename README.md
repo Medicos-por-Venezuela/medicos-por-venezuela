@@ -157,6 +157,14 @@ Functions / RPCs:
 RLS is enabled on every table: anon can INSERT patients/consultations; account-holding patients read their
 own rows; staff read all; admins manage.
 
+**Cascading deletes:** the schema declares `consultations.patient_id` and
+`consultation_events.consultation_id` as `ON DELETE CASCADE`, so deleting a `patients` row also removes its
+consultations and audit events. **Note for existing databases:** `create table if not exists` does **not**
+fix a foreign key that was first created without cascade, so older DBs may still have `NO ACTION` and reject
+a patient delete with a `consultations_patient_id_fkey` violation. The schema now re-applies these
+constraints idempotently — **re-run [supabase_schema.sql](supabase_schema.sql)** to bring an existing
+database in line, after which patient deletes cascade automatically.
+
 ### Case claiming (concurrency)
 
 When a doctor opens a case, the panel performs an **atomic claim**: the update only matches while the case is
@@ -173,7 +181,8 @@ sent to the dedicated case detail page (`/panel-medico/consulta/[id]`) to manage
 A submitted request is not the same as a patient actually waiting. While `/sala-espera` is open it calls the
 `mark_patient_waiting` RPC every ~20s, updating `consultations.patient_last_seen_at`. The doctor/admin panel
 polls the queue every ~20s and treats a patient as **present** only if seen within `PRESENCE_WINDOW_MS`
-(currently 5 minutes). Consequences:
+(currently 30 minutes — generous, because the heartbeat stops once the patient enters the Jitsi call and
+the waiting-room tab is backgrounded). Consequences:
 
 - The "En sala esperando" KPIs count only **present** patients. Each queue card shows **● En sala** or
   **○ Sin conexión**.
@@ -291,6 +300,59 @@ Set in `.env` for local dev and in Vercel for production. See [.env.example](.en
 - **Panel counters:** doctors see personal/specialty counters; admins see waiting/present/active-system
   counters. Returning from close/no-show actions refreshes the panel via `/panel-medico?actualizado=1`, and
   the panel also refreshes on focus and polling.
+
+### Jitsi troubleshooting — "calls don't connect with 2+ people"
+
+**Symptom:** patient and doctor can each open/join the room, but a 2-person call never connects (one person
+alone looks fine). This is **not** an app bug — the app gives both sides the same `video_room_url`. It is the
+self-hosted Jitsi server (DigitalOcean droplet) failing to allocate a media bridge.
+
+**Diagnose (SSH into the droplet):**
+
+```bash
+# The decisive log: if you see "There are no operational bridges" / "Can not invite participant",
+# jicofo has lost the videobridge.
+sudo grep -iE "no operational|lost a bridge|added new videobridge" /var/log/jitsi/jicofo.log | tail -n 3
+```
+
+A healthy result ends with **`Added new videobridge`** (no `Lost a bridge` after it). Joining the room is
+signaling (prosody/jicofo) and works even when broken; only **media allocation** needs the bridge, which is
+why one person alone seems OK.
+
+**Root cause we hit (2026-06):** a **boot-ordering race** — the videobridge connects to prosody before
+prosody has finished loading, gets stuck, and never re-registers (`jvb.log` shows
+`XMLStreamException: XML document structures must start and end within the same entity`, which is just the
+XMPP stream being cut). _Ruled out_ along the way: resources (droplet is idle, no swap), media/NAT/TURN
+(public IP is advertised and ICE-nominated correctly), and package version mismatch.
+
+**Immediate fix — ordered restart on the droplet:**
+
+```bash
+sudo systemctl restart prosody;             sleep 4
+sudo systemctl restart jicofo;              sleep 4
+sudo systemctl restart jitsi-videobridge2
+```
+
+Then re-run the health check above (expect `Added`) and confirm with a real 2-person call.
+
+**Permanent fix (applied):** a systemd drop-in makes the bridge wait for prosody on boot —
+`/etc/systemd/system/jitsi-videobridge2.service.d/override.conf`:
+
+```ini
+[Unit]
+After=prosody.service network-online.target
+Wants=prosody.service network-online.target
+
+[Service]
+ExecStartPre=/bin/sleep 15
+```
+
+After `sudo systemctl daemon-reload`, this survives `sudo reboot` (the bridge re-registers automatically).
+
+**Emergency stopgap:** set `NEXT_PUBLIC_JITSI_DOMAIN` empty in Vercel and redeploy to fall back to public
+`meet.jit.si` — but only **new** patient requests get a jit.si room (existing cases keep their stored
+self-hosted URL, since `/api/videoconsulta` is idempotent). jit.si is a third-party public server, so it's a
+temporary measure only, not a home for patient PII.
 
 ---
 
