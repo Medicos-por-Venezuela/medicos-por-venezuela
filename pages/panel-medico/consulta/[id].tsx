@@ -9,6 +9,7 @@ type Patient = {
   full_name: string
   cedula: string | null
   phone_whatsapp: string
+  email: string | null
   affected_zone: string
   age_range: string | null
   needs_tags: string[] | null
@@ -54,7 +55,7 @@ type EventAuthor = Pick<Profile, 'id' | 'full_name' | 'role'>
 
 const ADMIN_ROLES = ['admin', 'super_admin'] as const
 const PANEL_ALLOWED_ROLES = ['doctor', 'specialist', ...ADMIN_ROLES] as const
-const PRESENCE_WINDOW_MS = 5 * 60 * 1000
+const PRESENCE_WINDOW_MS = 30 * 60 * 1000 // generous; see note in panel-medico.tsx
 
 function isAdminRole(role?: string | null): boolean {
   return !!role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])
@@ -101,7 +102,6 @@ export default function ConsultaDetalle() {
   useEffect(() => {
     if (!consultationId) return
     init(consultationId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consultationId])
 
   async function init(id: string) {
@@ -137,7 +137,7 @@ export default function ConsultaDetalle() {
     const { data, error } = await supabase
       .from('consultations')
       .select(
-        '*, patients(id, full_name, cedula, phone_whatsapp, affected_zone, age_range, needs_tags, description)'
+        '*, patients(id, full_name, cedula, phone_whatsapp, email, affected_zone, age_range, needs_tags, description)'
       )
       .eq('id', id)
       .single()
@@ -334,6 +334,9 @@ export default function ConsultaDetalle() {
               </p>
               <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
                 Tel. (solo seguimiento): {consultation.patients?.phone_whatsapp || '—'}
+              </p>
+              <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
+                Email (opcional): {consultation.patients?.email || '—'}
               </p>
               <div style={{ marginTop: 10 }}>
                 {isPatientPresent(consultation) ? (

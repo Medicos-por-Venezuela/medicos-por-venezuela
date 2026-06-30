@@ -10,7 +10,8 @@ export const STATUS_LABELS: Record<string, string> = {
   urgent_in_person: 'Debe ir a atención presencial urgente',
   closed: 'Cerrada',
   cancelled: 'Cancelada',
-  patient_no_show: 'Paciente no se presentó'
+  patient_no_show: 'Paciente no se presentó',
+  closed_by_admin: 'Cerrada por admin'
 }
 
 export const SPECIALTIES = [
