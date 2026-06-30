@@ -58,7 +58,10 @@ const STATUS_OPTIONS = [
   'patient_no_show',
   'closed_by_admin'
 ]
-const ROLE_OPTIONS = ['all', 'doctor', 'specialist', 'admin', 'super_admin', 'patient']
+const ROLE_OPTIONS = ['all', 'doctor', 'specialist', 'admin', 'super_admin']
+// The "Médicos y administradores" table is staff-only — patients never appear there.
+const STAFF_ROLES = ['doctor', 'specialist', 'admin', 'super_admin']
+const USERS_PAGE_SIZE = 50
 
 // Sortable columns of the cases table, with fixed widths so the table distributes space evenly
 // (table-layout: fixed). The trailing "Acciones" column is not sortable.
@@ -101,6 +104,8 @@ export default function AdminDashboard() {
     referred: 0,
     urgent: 0
   })
+  // Specialties of the currently-online doctors, as [specialty, count] sorted desc.
+  const [onlineBySpecialty, setOnlineBySpecialty] = useState<[string, number][]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
 
@@ -125,6 +130,12 @@ export default function AdminDashboard() {
   const [userState, setUserState] = useState('all') // all | active | revoked
   const [userFrom, setUserFrom] = useState('')
   const [userTo, setUserTo] = useState('')
+  // Server-side paginated staff list for the Médicos y administradores table (no 1000-row cap).
+  const [usersRows, setUsersRows] = useState<Profile[]>([])
+  const [usersTotal, setUsersTotal] = useState(0)
+  const [usersPage, setUsersPage] = useState(0)
+  const [usersLoading, setUsersLoading] = useState(false)
+  const [debouncedUserSearch, setDebouncedUserSearch] = useState('')
 
   // Consultations table filters
   const [caseSearch, setCaseSearch] = useState('')
@@ -138,6 +149,23 @@ export default function AdminDashboard() {
   useEffect(() => {
     init()
   }, [])
+
+  // Debounce the user search box so typing doesn't fire a query per keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedUserSearch(userSearch), 300)
+    return () => clearTimeout(t)
+  }, [userSearch])
+
+  // Any filter change resets to the first page.
+  useEffect(() => {
+    setUsersPage(0)
+  }, [debouncedUserSearch, userRole, userState, userFrom, userTo])
+
+  // (Re)load the current page of staff users when the profile is ready or filters/page change.
+  useEffect(() => {
+    if (profile) loadUsers()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, debouncedUserSearch, userRole, userState, userFrom, userTo, usersPage])
 
   async function init() {
     const { data: sessionData } = await supabase.auth.getSession()
@@ -164,13 +192,14 @@ export default function AdminDashboard() {
   async function loadAll() {
     const staffRoles = ['doctor', 'specialist']
     const onlineThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString()
-    const consCount = () => supabase.from('consultations').select('id', { count: 'exact', head: true })
+    const consCount = () =>
+      supabase.from('consultations').select('id', { count: 'exact', head: true })
     const [
       profilesRes,
       consultationsRes,
       patientsRes,
       doctorsCnt,
-      onlineCnt,
+      onlineDocsRes,
       totalConsCnt,
       waitingCnt,
       openCnt,
@@ -190,7 +219,7 @@ export default function AdminDashboard() {
       supabase.from('profiles').select('id', { count: 'exact', head: true }).in('role', staffRoles),
       supabase
         .from('profiles')
-        .select('id', { count: 'exact', head: true })
+        .select('specialty')
         .in('role', staffRoles)
         .gte('last_seen_at', onlineThreshold),
       consCount(),
@@ -206,7 +235,7 @@ export default function AdminDashboard() {
     setPatientsCount(patientsRes.count || 0)
     setCounts({
       doctors: doctorsCnt.count || 0,
-      onlineDoctors: onlineCnt.count || 0,
+      onlineDoctors: onlineDocsRes.data?.length || 0,
       consultations: totalConsCnt.count || 0,
       waiting: waitingCnt.count || 0,
       open: openCnt.count || 0,
@@ -214,6 +243,15 @@ export default function AdminDashboard() {
       referred: referredCnt.count || 0,
       urgent: urgentCnt.count || 0
     })
+
+    // Group the online doctors by specialty for the "connected specialties" list.
+    const bySpec: Record<string, number> = {}
+    const onlineDocs = (onlineDocsRes.data || []) as { specialty: string | null }[]
+    onlineDocs.forEach((d) => {
+      const key = d.specialty || 'Sin especialidad'
+      bySpec[key] = (bySpec[key] || 0) + 1
+    })
+    setOnlineBySpecialty(Object.entries(bySpec).sort((a, b) => b[1] - a[1]))
   }
 
   const now = Date.now()
@@ -237,18 +275,31 @@ export default function AdminDashboard() {
   const doctorName = (id: string | null) =>
     doctors.find((d) => d.id === id)?.full_name || (id ? 'Médico' : 'Sin asignar')
 
-  const filteredProfiles = useMemo(() => {
-    const q = userSearch.trim().toLowerCase()
-    return profiles.filter((p) => {
-      if (userRole !== 'all' && p.role !== userRole) return false
-      if (userState === 'active' && !p.active) return false
-      if (userState === 'revoked' && p.active) return false
-      if (!inDateRange(p.created_at, userFrom, userTo)) return false
-      if (q && !`${p.full_name} ${p.email} ${p.specialty || ''}`.toLowerCase().includes(q))
-        return false
-      return true
-    })
-  }, [profiles, userSearch, userRole, userState, userFrom, userTo])
+  // Staff-only, server-side filtered + paginated list for the Médicos y administradores table.
+  async function loadUsers() {
+    setUsersLoading(true)
+    let q = supabase
+      .from('profiles')
+      .select('*', { count: 'exact' })
+      .in('role', userRole === 'all' ? STAFF_ROLES : [userRole])
+      .order('created_at', { ascending: false })
+    const term = debouncedUserSearch.trim().replace(/[(),]/g, ' ')
+    if (term) q = q.or(`full_name.ilike.%${term}%,email.ilike.%${term}%,specialty.ilike.%${term}%`)
+    if (userState === 'active') q = q.eq('active', true)
+    if (userState === 'revoked') q = q.eq('active', false)
+    if (userFrom) q = q.gte('created_at', `${userFrom}T00:00:00`)
+    if (userTo) q = q.lte('created_at', `${userTo}T23:59:59.999`)
+    const start = usersPage * USERS_PAGE_SIZE
+    const { data, count, error } = await q.range(start, start + USERS_PAGE_SIZE - 1)
+    if (error) {
+      console.error(error)
+      setMessage('No se pudieron cargar los usuarios.')
+    } else {
+      setUsersRows((data || []) as Profile[])
+      setUsersTotal(count || 0)
+    }
+    setUsersLoading(false)
+  }
 
   const filteredConsultations = useMemo(() => {
     const q = caseSearch.trim().toLowerCase()
@@ -391,7 +442,9 @@ export default function AdminDashboard() {
       setMessage('No se pudo guardar la nota.')
       return
     }
-    setConsultations((prev) => prev.map((x) => (x.id === c.id ? { ...x, internal_note: draft } : x)))
+    setConsultations((prev) =>
+      prev.map((x) => (x.id === c.id ? { ...x, internal_note: draft } : x))
+    )
     setNoteDrafts((d) => {
       const rest = { ...d }
       delete rest[c.id]
@@ -488,8 +541,8 @@ export default function AdminDashboard() {
                   <h2 style={{ marginTop: 0 }}>Gestionar caso</h2>
                   {!selected ? (
                     <p style={{ color: '#64748b' }}>
-                      Selecciona una consulta de la lista para reasignar el médico, cambiar el estado
-                      o editar la nota.
+                      Selecciona una consulta de la lista para reasignar el médico, cambiar el
+                      estado o editar la nota.
                     </p>
                   ) : (
                     <div className="grid">
@@ -773,126 +826,184 @@ export default function AdminDashboard() {
           )}
 
           {tab === 'medicos' && (
-            <section className="card">
-              <h2 style={{ marginTop: 0 }}>
-                Médicos y administradores{' '}
-                <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 14 }}>
-                  ({filteredProfiles.length} de {profiles.length})
-                </span>
-              </h2>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-                <input
-                  style={{ flex: '1 1 160px' }}
-                  placeholder="Buscar nombre o email"
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                />
-                <select
-                  style={{ flex: '0 1 130px' }}
-                  value={userRole}
-                  onChange={(e) => setUserRole(e.target.value)}
-                >
-                  {ROLE_OPTIONS.map((r) => (
-                    <option key={r} value={r}>
-                      {r === 'all' ? 'Todos los roles' : r}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  style={{ flex: '0 1 130px' }}
-                  value={userState}
-                  onChange={(e) => setUserState(e.target.value)}
-                >
-                  <option value="all">Todos los estados</option>
-                  <option value="active">Activos</option>
-                  <option value="revoked">Revocados</option>
-                </select>
-                <input
-                  type="date"
-                  style={{ flex: '0 1 140px' }}
-                  value={userFrom}
-                  onChange={(e) => setUserFrom(e.target.value)}
-                  title="Registrado desde"
-                />
-                <input
-                  type="date"
-                  style={{ flex: '0 1 140px' }}
-                  value={userTo}
-                  onChange={(e) => setUserTo(e.target.value)}
-                  title="Registrado hasta"
-                />
-              </div>
-              <div style={{ overflowX: 'auto' }}>
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Usuario</th>
-                      <th>Rol</th>
-                      <th>Estado</th>
-                      <th>Registrado</th>
-                      <th>Online</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredProfiles.length === 0 ? (
+            <>
+              <section className="card" style={{ marginBottom: 18 }}>
+                <h2 style={{ marginTop: 0 }}>
+                  Especialidades conectadas ahora{' '}
+                  <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 14 }}>
+                    ({counts.onlineDoctors} médicos online)
+                  </span>
+                </h2>
+                {onlineBySpecialty.length === 0 ? (
+                  <p style={{ color: '#64748b' }}>No hay médicos conectados en este momento.</p>
+                ) : (
+                  <div className="tag-row">
+                    {onlineBySpecialty.map(([spec, n]) => (
+                      <span key={spec} className="badge badge-green">
+                        {spec}: {n}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </section>
+              <section className="card">
+                <h2 style={{ marginTop: 0 }}>
+                  Médicos y administradores{' '}
+                  <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 14 }}>
+                    ({usersTotal})
+                  </span>
+                </h2>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                  <input
+                    style={{ flex: '1 1 160px' }}
+                    placeholder="Buscar nombre o email"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                  />
+                  <select
+                    style={{ flex: '0 1 130px' }}
+                    value={userRole}
+                    onChange={(e) => setUserRole(e.target.value)}
+                  >
+                    {ROLE_OPTIONS.map((r) => (
+                      <option key={r} value={r}>
+                        {r === 'all' ? 'Todos los roles' : r}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    style={{ flex: '0 1 130px' }}
+                    value={userState}
+                    onChange={(e) => setUserState(e.target.value)}
+                  >
+                    <option value="all">Todos los estados</option>
+                    <option value="active">Activos</option>
+                    <option value="revoked">Revocados</option>
+                  </select>
+                  <input
+                    type="date"
+                    style={{ flex: '0 1 140px' }}
+                    value={userFrom}
+                    onChange={(e) => setUserFrom(e.target.value)}
+                    title="Registrado desde"
+                  />
+                  <input
+                    type="date"
+                    style={{ flex: '0 1 140px' }}
+                    value={userTo}
+                    onChange={(e) => setUserTo(e.target.value)}
+                    title="Registrado hasta"
+                  />
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="table">
+                    <thead>
                       <tr>
-                        <td colSpan={6} style={{ color: '#64748b' }}>
-                          No hay usuarios que coincidan con el filtro.
-                        </td>
+                        <th>Usuario</th>
+                        <th>Rol</th>
+                        <th>Estado</th>
+                        <th>Registrado</th>
+                        <th>Online</th>
+                        <th></th>
                       </tr>
-                    ) : (
-                      filteredProfiles.map((p) => (
-                        <tr key={p.id}>
-                          <td>
-                            <strong>{p.full_name}</strong>
-                            <div style={{ fontSize: 12, color: '#64748b' }}>{p.email}</div>
-                            <Line label="Especialidad" value={p.specialty} />
-                            <Line label="País" value={p.country} />
-                            <Line label="WhatsApp" value={p.whatsapp_number} />
-                            <Line label="Licencia" value={p.medical_license} />
-                          </td>
-                          <td>{p.role}</td>
-                          <td>
-                            {p.active ? (
-                              <span className="badge badge-green">Activo</span>
-                            ) : (
-                              <span className="badge badge-red">Revocado</span>
-                            )}
-                            <div style={{ marginTop: 4 }}>
-                              {p.verified ? (
-                                <span className="badge badge-green">Verificado</span>
-                              ) : (
-                                <span
-                                  className="badge"
-                                  style={{ background: '#e2e8f0', color: '#64748b' }}
-                                >
-                                  No verificado
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td>{fmtDate(p.created_at)}</td>
-                          <td>{isOnline(p.last_seen_at) ? 'Sí' : 'No'}</td>
-                          <td>
-                            {['admin', 'super_admin'].includes(p.role) ? (
-                              <span style={{ color: '#94a3b8', fontSize: 13 }}>—</span>
-                            ) : (
-                              <button
-                                className="btn btn-muted"
-                                onClick={() => toggleDoctor(p.id, p.active)}
-                              >
-                                {p.active ? 'Revocar acceso' : 'Reactivar'}
-                              </button>
-                            )}
+                    </thead>
+                    <tbody>
+                      {usersRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} style={{ color: '#64748b' }}>
+                            {usersLoading
+                              ? 'Cargando...'
+                              : 'No hay usuarios que coincidan con el filtro.'}
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+                      ) : (
+                        usersRows.map((p) => (
+                          <tr key={p.id}>
+                            <td>
+                              <strong>{p.full_name}</strong>
+                              <div style={{ fontSize: 12, color: '#64748b' }}>{p.email}</div>
+                              <Line label="Especialidad" value={p.specialty} />
+                              <Line label="País" value={p.country} />
+                              <Line label="WhatsApp" value={p.whatsapp_number} />
+                              <Line label="Licencia" value={p.medical_license} />
+                            </td>
+                            <td>{p.role}</td>
+                            <td>
+                              {p.active ? (
+                                <span className="badge badge-green">Activo</span>
+                              ) : (
+                                <span className="badge badge-red">Revocado</span>
+                              )}
+                              <div style={{ marginTop: 4 }}>
+                                {p.verified ? (
+                                  <span className="badge badge-green">Verificado</span>
+                                ) : (
+                                  <span
+                                    className="badge"
+                                    style={{ background: '#e2e8f0', color: '#64748b' }}
+                                  >
+                                    No verificado
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td>{fmtDate(p.created_at)}</td>
+                            <td>{isOnline(p.last_seen_at) ? 'Sí' : 'No'}</td>
+                            <td>
+                              {['admin', 'super_admin'].includes(p.role) ? (
+                                <span style={{ color: '#94a3b8', fontSize: 13 }}>—</span>
+                              ) : (
+                                <button
+                                  className="btn btn-muted"
+                                  onClick={() => toggleDoctor(p.id, p.active)}
+                                >
+                                  {p.active ? 'Revocar acceso' : 'Reactivar'}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: 8,
+                    marginTop: 12,
+                    flexWrap: 'wrap'
+                  }}
+                >
+                  <span style={{ color: '#64748b', fontSize: 13 }}>
+                    {usersTotal === 0
+                      ? 'Sin resultados'
+                      : `Mostrando ${usersPage * USERS_PAGE_SIZE + 1}–${Math.min(
+                          (usersPage + 1) * USERS_PAGE_SIZE,
+                          usersTotal
+                        )} de ${usersTotal}`}
+                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      className="btn btn-muted"
+                      disabled={usersPage === 0 || usersLoading}
+                      onClick={() => setUsersPage((p) => Math.max(0, p - 1))}
+                    >
+                      Anterior
+                    </button>
+                    <button
+                      className="btn btn-muted"
+                      disabled={(usersPage + 1) * USERS_PAGE_SIZE >= usersTotal || usersLoading}
+                      onClick={() => setUsersPage((p) => p + 1)}
+                    >
+                      Siguiente
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </>
           )}
         </div>
       </main>

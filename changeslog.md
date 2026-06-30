@@ -7,6 +7,15 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-06-30
 
+- **Médicos table: server-side pagination + staff-only** — replaced the client-side filter over the
+  capped 1000-row profiles array with a server-side query (`count: 'exact'` + `.range()`, 50/page,
+  debounced search, role/state/date filters applied in the DB), so all ~2386 doctors are reachable.
+  The table is now **staff-only** (`role in doctor/specialist/admin/super_admin`) — patients never
+  appear — and `patient` was removed from the role filter. File: `pages/admin/dashboard.tsx`.
+- **"Especialidades conectadas ahora" on the admin panel** — added a small list in the Médicos tab
+  showing the specialties of the currently-online doctors (specialty → count, green badges), so
+  admins can see at a glance which specialties have doctors connected right now. Also fixed a
+  Prettier line-length violation in `loadAll` that was failing CI. File: `pages/admin/dashboard.tsx`.
 - **Admin dashboard KPIs now use exact counts** — the doctor/consultation KPIs were derived from
   fetched arrays capped at PostgREST's 1000/200-row limits, so with ~2667 profiles "Médicos
   registrados" showed 863 instead of the real ~2386. Replaced them with `count: 'exact'` queries
