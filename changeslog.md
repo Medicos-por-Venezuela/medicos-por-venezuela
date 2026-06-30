@@ -7,6 +7,15 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-06-30
 
+- **Cases table: even space distribution + sortable columns** — switched the Pacientes/Casos table
+  to `table-layout: fixed` with per-column widths (colgroup) so it distributes horizontal space
+  evenly and wraps instead of overflowing; made every column header click-to-sort (asc/desc with a
+  ▲/▼ indicator, defaults to newest-first). File: `pages/admin/dashboard.tsx`.
+- **Cases table: "Contactado" flag, inline note editing, less duplication** — added an admin
+  follow-up toggle (`consultations.contacted` column) with a checkbox/badge in the Pacientes/Casos
+  table; made "Nota interna" editable inline (save per row); removed the redundant "Descripción"
+  line (it duplicated "Motivo"). Files: `pages/admin/dashboard.tsx`, `supabase_schema.sql`. Needs a
+  one-line prod migration to add the `contacted` column.
 - **Moved the change log to a root `changeslog.md`** (previously `.knowledge/lastchanges.md`).
   Files: `changeslog.md`, `CLAUDE.md`, `AGENTS.md`.
 - **Admin dashboard reorganized into two tabs + full info + patient deletion** — split

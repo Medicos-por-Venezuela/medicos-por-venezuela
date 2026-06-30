@@ -103,6 +103,9 @@ alter table public.consultations add column if not exists patient_last_seen_at t
 alter table public.consultations add column if not exists opened_at timestamptz;
 alter table public.consultations add column if not exists closed_at timestamptz;
 alter table public.consultations add column if not exists created_at timestamptz default now();
+-- Admin follow-up flag: whether an admin has contacted the patient about this case (set from the
+-- admin dashboard, independent of status).
+alter table public.consultations add column if not exists contacted boolean not null default false;
 
 -- Allow the 'patient_no_show' status on existing databases (idempotent).
 alter table public.consultations drop constraint if exists consultations_status_check;

@@ -43,6 +43,7 @@ type Consultation = {
   created_at: string
   opened_at: string | null
   closed_at: string | null
+  contacted: boolean
   patients: Patient | null
 }
 
@@ -56,6 +57,18 @@ const STATUS_OPTIONS = [
   'patient_no_show'
 ]
 const ROLE_OPTIONS = ['all', 'doctor', 'specialist', 'admin', 'super_admin', 'patient']
+
+// Sortable columns of the cases table, with fixed widths so the table distributes space evenly
+// (table-layout: fixed). The trailing "Acciones" column is not sortable.
+const CASE_COLS: { key: string; label: string; width: string }[] = [
+  { key: 'patient', label: 'Paciente', width: '17%' },
+  { key: 'need', label: 'Necesidad / motivo', width: '17%' },
+  { key: 'status', label: 'Estado', width: '10%' },
+  { key: 'contacted', label: 'Contactado', width: '10%' },
+  { key: 'doctor', label: 'Médico', width: '11%' },
+  { key: 'dates', label: 'Fechas', width: '11%' },
+  { key: 'note', label: 'Nota interna', width: '14%' }
+]
 
 const fmtDate = (s?: string | null) => (s ? new Date(s).toLocaleDateString('es-VE') : '—')
 
@@ -89,6 +102,8 @@ export default function AdminDashboard() {
   // set from the manage panel or from a row's trash button, so it's its own piece of state.
   const [deleteTarget, setDeleteTarget] = useState<Consultation | null>(null)
   const [deleting, setDeleting] = useState(false)
+  // Per-row inline edits of the internal note in the cases table (keyed by consultation id).
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
 
   // Users (doctors/admins) table filters
   const [userSearch, setUserSearch] = useState('')
@@ -102,6 +117,9 @@ export default function AdminDashboard() {
   const [caseStatusFilter, setCaseStatusFilter] = useState('all')
   const [caseFrom, setCaseFrom] = useState('')
   const [caseTo, setCaseTo] = useState('')
+  // Cases table sorting (defaults to newest-first, matching the query order).
+  const [sortKey, setSortKey] = useState('dates')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
   useEffect(() => {
     init()
@@ -201,6 +219,48 @@ export default function AdminDashboard() {
     })
   }, [consultations, caseSearch, caseStatusFilter, caseFrom, caseTo])
 
+  const sortedConsultations = useMemo(() => {
+    const value = (c: Consultation): string | number => {
+      switch (sortKey) {
+        case 'patient':
+          return c.patients?.full_name || ''
+        case 'need':
+          return c.category || c.chief_complaint || ''
+        case 'status':
+          return STATUS_LABELS[c.status] || c.status
+        case 'contacted':
+          return c.contacted ? 1 : 0
+        case 'doctor':
+          return doctorName(c.assigned_doctor_id)
+        case 'dates':
+          return new Date(c.created_at).getTime()
+        case 'note':
+          return c.internal_note || ''
+        default:
+          return ''
+      }
+    }
+    return [...filteredConsultations].sort((a, b) => {
+      const av = value(a)
+      const bv = value(b)
+      const cmp =
+        typeof av === 'number' && typeof bv === 'number'
+          ? av - bv
+          : String(av).localeCompare(String(bv), 'es')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    // doctorName derives from `profiles`; include it so re-sort happens when doctors load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredConsultations, sortKey, sortDir, profiles])
+
+  function toggleSort(key: string) {
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
   function selectCase(c: Consultation) {
     setSelected(c)
     setCaseStatus(c.status)
@@ -256,6 +316,41 @@ export default function AdminDashboard() {
     if (selected?.id === deleteTarget.id) setSelected(null)
     setDeleteTarget(null)
     await loadAll()
+  }
+
+  async function toggleContacted(c: Consultation) {
+    const next = !c.contacted
+    // Optimistic: flip locally, then persist; revert on error.
+    setConsultations((prev) => prev.map((x) => (x.id === c.id ? { ...x, contacted: next } : x)))
+    const { error } = await supabase
+      .from('consultations')
+      .update({ contacted: next })
+      .eq('id', c.id)
+    if (error) {
+      console.error(error)
+      setMessage('No se pudo actualizar "Contactado".')
+      setConsultations((prev) => prev.map((x) => (x.id === c.id ? { ...x, contacted: !next } : x)))
+    }
+  }
+
+  async function saveNote(c: Consultation) {
+    const draft = noteDrafts[c.id] ?? ''
+    const { error } = await supabase
+      .from('consultations')
+      .update({ internal_note: draft })
+      .eq('id', c.id)
+    if (error) {
+      console.error(error)
+      setMessage('No se pudo guardar la nota.')
+      return
+    }
+    setConsultations((prev) => prev.map((x) => (x.id === c.id ? { ...x, internal_note: draft } : x)))
+    setNoteDrafts((d) => {
+      const rest = { ...d }
+      delete rest[c.id]
+      return rest
+    })
+    setMessage('Nota actualizada.')
   }
 
   async function toggleDoctor(id: string, active: boolean) {
@@ -479,27 +574,38 @@ export default function AdminDashboard() {
                   />
                 </div>
                 <div style={{ overflowX: 'auto' }}>
-                  <table className="table">
+                  <table className="table cases-table" style={{ tableLayout: 'fixed' }}>
+                    <colgroup>
+                      {CASE_COLS.map((col) => (
+                        <col key={col.key} style={{ width: col.width }} />
+                      ))}
+                      <col style={{ width: '10%' }} />
+                    </colgroup>
                     <thead>
                       <tr>
-                        <th>Paciente</th>
-                        <th>Necesidad / motivo</th>
-                        <th>Estado</th>
-                        <th>Médico</th>
-                        <th>Fechas</th>
-                        <th>Nota interna</th>
+                        {CASE_COLS.map((col) => (
+                          <th
+                            key={col.key}
+                            onClick={() => toggleSort(col.key)}
+                            style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}
+                            title="Ordenar"
+                          >
+                            {col.label}
+                            {sortKey === col.key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                          </th>
+                        ))}
                         <th>Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredConsultations.length === 0 ? (
+                      {sortedConsultations.length === 0 ? (
                         <tr>
-                          <td colSpan={7} style={{ color: '#64748b' }}>
+                          <td colSpan={8} style={{ color: '#64748b' }}>
                             No hay consultas que coincidan con el filtro.
                           </td>
                         </tr>
                       ) : (
-                        filteredConsultations.map((c) => (
+                        sortedConsultations.map((c) => (
                           <tr key={c.id}>
                             <td>
                               <strong>{c.patients?.full_name || 'Paciente'}</strong>
@@ -516,12 +622,38 @@ export default function AdminDashboard() {
                               />
                               <Line label="Categoría" value={c.category} />
                               <Line label="Motivo" value={c.chief_complaint} />
-                              <Line label="Descripción" value={c.patients?.description} />
                             </td>
                             <td>
                               {STATUS_LABELS[c.status] || c.status}
                               <Line label="Prioridad" value={c.priority} />
                               <Line label="Derivado a" value={c.referred_specialty} />
+                            </td>
+                            <td>
+                              <label
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={c.contacted}
+                                  onChange={() => toggleContacted(c)}
+                                  style={{ width: 'auto' }}
+                                />
+                                {c.contacted ? (
+                                  <span className="badge badge-green">Contactado</span>
+                                ) : (
+                                  <span
+                                    className="badge"
+                                    style={{ background: '#e2e8f0', color: '#64748b' }}
+                                  >
+                                    Sin contactar
+                                  </span>
+                                )}
+                              </label>
                             </td>
                             <td>{doctorName(c.assigned_doctor_id)}</td>
                             <td>
@@ -529,11 +661,32 @@ export default function AdminDashboard() {
                               {c.opened_at && <Line label="Abierta" value={fmtDate(c.opened_at)} />}
                               {c.closed_at && <Line label="Cerrada" value={fmtDate(c.closed_at)} />}
                             </td>
-                            <td>{c.internal_note || '—'}</td>
+                            <td>
+                              <textarea
+                                rows={2}
+                                style={{ width: '100%', fontSize: 12, padding: '4px 6px' }}
+                                placeholder="Sin nota"
+                                value={noteDrafts[c.id] ?? (c.internal_note || '')}
+                                onChange={(e) =>
+                                  setNoteDrafts((d) => ({ ...d, [c.id]: e.target.value }))
+                                }
+                              />
+                              {(noteDrafts[c.id] ?? (c.internal_note || '')) !==
+                                (c.internal_note || '') && (
+                                <button
+                                  className="btn btn-secondary"
+                                  style={{ marginTop: 4, padding: '4px 10px', fontSize: 12 }}
+                                  onClick={() => saveNote(c)}
+                                >
+                                  Guardar nota
+                                </button>
+                              )}
+                            </td>
                             <td>
                               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                                 <button
                                   className="btn btn-secondary"
+                                  style={{ padding: '4px 10px', fontSize: 13 }}
                                   onClick={() => selectCase(c)}
                                 >
                                   Gestionar
@@ -546,7 +699,8 @@ export default function AdminDashboard() {
                                     style={{
                                       background: '#fee2e2',
                                       color: '#dc2626',
-                                      padding: '8px 12px'
+                                      padding: '4px 10px',
+                                      fontSize: 13
                                     }}
                                     onClick={() => setDeleteTarget(c)}
                                   >
@@ -560,6 +714,11 @@ export default function AdminDashboard() {
                       )}
                     </tbody>
                   </table>
+                  <style jsx>{`
+                    .cases-table td {
+                      overflow-wrap: anywhere;
+                    }
+                  `}</style>
                 </div>
               </section>
             </>
