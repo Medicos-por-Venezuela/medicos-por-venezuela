@@ -23,6 +23,7 @@ type Patient = {
   full_name: string
   cedula: string | null
   phone_whatsapp: string | null
+  email: string | null
   affected_zone: string | null
   age_range: string | null
   needs_tags: string[] | null
@@ -54,7 +55,8 @@ const STATUS_OPTIONS = [
   'urgent_in_person',
   'closed',
   'cancelled',
-  'patient_no_show'
+  'patient_no_show',
+  'closed_by_admin'
 ]
 const ROLE_OPTIONS = ['all', 'doctor', 'specialist', 'admin', 'super_admin', 'patient']
 
@@ -153,7 +155,7 @@ export default function AdminDashboard() {
       supabase
         .from('consultations')
         .select(
-          '*, patients(full_name, cedula, phone_whatsapp, affected_zone, age_range, needs_tags, description)'
+          '*, patients(full_name, cedula, phone_whatsapp, email, affected_zone, age_range, needs_tags, description)'
         )
         .order('created_at', { ascending: false })
         .limit(200),
@@ -276,7 +278,7 @@ export default function AdminDashboard() {
       assigned_doctor_id: caseDoctor || null,
       internal_note: caseNote
     }
-    if (caseStatus === 'closed' || caseStatus === 'patient_no_show')
+    if (['closed', 'patient_no_show', 'closed_by_admin'].includes(caseStatus))
       update.closed_at = new Date().toISOString()
     if (caseStatus === 'in_progress' && !selected.assigned_doctor_id && !caseDoctor) {
       setMessage('Asigna un médico para poner el caso en progreso.')
@@ -612,6 +614,7 @@ export default function AdminDashboard() {
                               <div style={{ fontSize: 12, color: '#64748b' }}>{c.code}</div>
                               <Line label="Cédula" value={c.patients?.cedula} />
                               <Line label="Tel" value={c.patients?.phone_whatsapp} />
+                              <Line label="Email" value={c.patients?.email} />
                               <Line label="Zona" value={c.patients?.affected_zone} />
                               <Line label="Edad" value={c.patients?.age_range} />
                             </td>

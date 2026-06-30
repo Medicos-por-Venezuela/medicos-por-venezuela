@@ -72,6 +72,8 @@ alter table public.patients add column if not exists description text;
 alter table public.patients add column if not exists consent boolean default false;
 alter table public.patients add column if not exists consent_at timestamptz;
 alter table public.patients add column if not exists created_at timestamptz default now();
+-- Optional contact email — a fallback when the phone number doesn't work.
+alter table public.patients add column if not exists email text;
 
 -- 4) Consultations/cases. WhatsApp messages are not stored here.
 create table if not exists public.consultations (
@@ -90,7 +92,7 @@ create table if not exists public.consultations (
   opened_at timestamptz,
   closed_at timestamptz,
   created_at timestamptz not null default now(),
-  constraint consultations_status_check check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show'))
+  constraint consultations_status_check check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show', 'closed_by_admin'))
 );
 
 alter table public.consultations add column if not exists category text;
@@ -107,10 +109,10 @@ alter table public.consultations add column if not exists created_at timestamptz
 -- admin dashboard, independent of status).
 alter table public.consultations add column if not exists contacted boolean not null default false;
 
--- Allow the 'patient_no_show' status on existing databases (idempotent).
+-- Allow the 'patient_no_show' and 'closed_by_admin' statuses on existing databases (idempotent).
 alter table public.consultations drop constraint if exists consultations_status_check;
 alter table public.consultations add constraint consultations_status_check
-  check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show'));
+  check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show', 'closed_by_admin'));
 
 -- 5) Events/audit trail for status changes.
 create table if not exists public.consultation_events (

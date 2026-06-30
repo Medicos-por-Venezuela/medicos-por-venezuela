@@ -7,10 +7,18 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-06-30
 
+- **Optional patient email + "Cerrada por admin" status** — added an optional contact email on the
+  patient form (`patients.email`), shown in the admin cases table and the doctor's case-detail page
+  as a fallback when the phone fails. Added a new admin-only `closed_by_admin` status ("Cerrada por
+  admin") selectable from the dashboard (sets `closed_at`); doctors' active views are unaffected
+  since closed cases already drop out. Files: `pages/registro-paciente.tsx`,
+  `pages/admin/dashboard.tsx`, `pages/panel-medico/consulta/[id].tsx`, `lib/utils.ts`,
+  `supabase_schema.sql`. Needs two additive prod migrations (email column + status constraint).
 - **Cases table: even space distribution + sortable columns** — switched the Pacientes/Casos table
   to `table-layout: fixed` with per-column widths (colgroup) so it distributes horizontal space
   evenly and wraps instead of overflowing; made every column header click-to-sort (asc/desc with a
-  ▲/▼ indicator, defaults to newest-first). File: `pages/admin/dashboard.tsx`.
+  ▲/▼ indicator, defaults to newest-first). Also tightened the inline note field (smaller text +
+  padding) and shrank the row action buttons. File: `pages/admin/dashboard.tsx`.
 - **Cases table: "Contactado" flag, inline note editing, less duplication** — added an admin
   follow-up toggle (`consultations.contacted` column) with a checkbox/badge in the Pacientes/Casos
   table; made "Nota interna" editable inline (save per row); removed the redundant "Descripción"
