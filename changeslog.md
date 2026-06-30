@@ -7,6 +7,11 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-06-30
 
+- **Admin dashboard KPIs now use exact counts** — the doctor/consultation KPIs were derived from
+  fetched arrays capped at PostgREST's 1000/200-row limits, so with ~2667 profiles "Médicos
+  registrados" showed 863 instead of the real ~2386. Replaced them with `count: 'exact'` queries
+  (doctors, online doctors, total/ waiting/open/closed/referred/urgent consultations). Tables are
+  still capped (pagination is the planned follow-up). File: `pages/admin/dashboard.tsx`.
 - **Optional patient email + "Cerrada por admin" status** — added an optional contact email on the
   patient form (`patients.email`), shown in the admin cases table and the doctor's case-detail page
   as a fallback when the phone fails. Added a new admin-only `closed_by_admin` status ("Cerrada por

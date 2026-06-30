@@ -89,6 +89,18 @@ export default function AdminDashboard() {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [consultations, setConsultations] = useState<Consultation[]>([])
   const [patientsCount, setPatientsCount] = useState(0)
+  // Exact totals via count queries — the profiles/consultations arrays are capped (1000/200 rows),
+  // so deriving KPI numbers from them undercounts. These come straight from the DB.
+  const [counts, setCounts] = useState({
+    doctors: 0,
+    onlineDoctors: 0,
+    consultations: 0,
+    waiting: 0,
+    open: 0,
+    closed: 0,
+    referred: 0,
+    urgent: 0
+  })
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
 
@@ -150,8 +162,23 @@ export default function AdminDashboard() {
   }
 
   async function loadAll() {
-    const [profilesRes, consultationsRes, patientsRes] = await Promise.all([
-      supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+    const staffRoles = ['doctor', 'specialist']
+    const onlineThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString()
+    const consCount = () => supabase.from('consultations').select('id', { count: 'exact', head: true })
+    const [
+      profilesRes,
+      consultationsRes,
+      patientsRes,
+      doctorsCnt,
+      onlineCnt,
+      totalConsCnt,
+      waitingCnt,
+      openCnt,
+      closedCnt,
+      referredCnt,
+      urgentCnt
+    ] = await Promise.all([
+      supabase.from('profiles').select('*').order('created_at', { ascending: false }).limit(1000),
       supabase
         .from('consultations')
         .select(
@@ -159,12 +186,34 @@ export default function AdminDashboard() {
         )
         .order('created_at', { ascending: false })
         .limit(200),
-      supabase.from('patients').select('id', { count: 'exact', head: true })
+      supabase.from('patients').select('id', { count: 'exact', head: true }),
+      supabase.from('profiles').select('id', { count: 'exact', head: true }).in('role', staffRoles),
+      supabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .in('role', staffRoles)
+        .gte('last_seen_at', onlineThreshold),
+      consCount(),
+      consCount().eq('status', 'waiting'),
+      consCount().eq('status', 'in_progress'),
+      consCount().eq('status', 'closed'),
+      consCount().eq('status', 'referred_to_specialist'),
+      consCount().eq('status', 'urgent_in_person')
     ])
 
     if (profilesRes.data) setProfiles(profilesRes.data as Profile[])
     if (consultationsRes.data) setConsultations(consultationsRes.data as Consultation[])
     setPatientsCount(patientsRes.count || 0)
+    setCounts({
+      doctors: doctorsCnt.count || 0,
+      onlineDoctors: onlineCnt.count || 0,
+      consultations: totalConsCnt.count || 0,
+      waiting: waitingCnt.count || 0,
+      open: openCnt.count || 0,
+      closed: closedCnt.count || 0,
+      referred: referredCnt.count || 0,
+      urgent: urgentCnt.count || 0
+    })
   }
 
   const now = Date.now()
@@ -173,12 +222,8 @@ export default function AdminDashboard() {
     !!lastSeen && now - new Date(lastSeen).getTime() < 3 * 60 * 1000
   const doctors = profiles.filter((p) => ['doctor', 'specialist'].includes(p.role))
   const activeDoctors = doctors.filter((d) => d.active)
-  const onlineDoctors = doctors.filter((d) => isOnline(d.last_seen_at))
-  const waiting = consultations.filter((c) => c.status === 'waiting')
-  const open = consultations.filter((c) => c.status === 'in_progress')
-  const closed = consultations.filter((c) => c.status === 'closed')
+  // Used only for the "Derivaciones por especialidad" breakdown (over the loaded recent cases).
   const referred = consultations.filter((c) => c.status === 'referred_to_specialist')
-  const urgent = consultations.filter((c) => c.status === 'urgent_in_person')
 
   const bySpecialty = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -405,19 +450,19 @@ export default function AdminDashboard() {
           )}
 
           <div className="grid grid-4" style={{ marginBottom: 18 }}>
-            <Kpi value={doctors.length} label="Médicos registrados" />
-            <Kpi value={onlineDoctors.length} label="Médicos online" />
+            <Kpi value={counts.doctors} label="Médicos registrados" />
+            <Kpi value={counts.onlineDoctors} label="Médicos online" />
             <Kpi value={patientsCount} label="Pacientes registrados" />
-            <Kpi value={consultations.length} label="Consultas totales recientes" />
-            <Kpi value={waiting.length} label="Consultas esperando" />
-            <Kpi value={open.length} label="Consultas abiertas" />
-            <Kpi value={closed.length} label="Consultas cerradas" />
-            <Kpi value={referred.length} label="Derivadas a especialista" />
+            <Kpi value={counts.consultations} label="Consultas totales" />
+            <Kpi value={counts.waiting} label="Consultas esperando" />
+            <Kpi value={counts.open} label="Consultas abiertas" />
+            <Kpi value={counts.closed} label="Consultas cerradas" />
+            <Kpi value={counts.referred} label="Derivadas a especialista" />
           </div>
 
-          {urgent.length > 0 && (
+          {counts.urgent > 0 && (
             <div className="notice notice-danger" style={{ marginBottom: 18 }}>
-              <strong>{urgent.length}</strong> consultas marcadas como urgentes/presenciales.
+              <strong>{counts.urgent}</strong> consultas marcadas como urgentes/presenciales.
             </div>
           )}
 
