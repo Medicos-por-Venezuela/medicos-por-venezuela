@@ -54,7 +54,7 @@ type EventAuthor = Pick<Profile, 'id' | 'full_name' | 'role'>
 
 const ADMIN_ROLES = ['admin', 'super_admin'] as const
 const PANEL_ALLOWED_ROLES = ['doctor', 'specialist', ...ADMIN_ROLES] as const
-const PRESENCE_WINDOW_MS = 5 * 60 * 1000
+const PRESENCE_WINDOW_MS = 30 * 60 * 1000 // generous; see note in panel-medico.tsx
 
 function isAdminRole(role?: string | null): boolean {
   return !!role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])

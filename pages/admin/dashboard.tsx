@@ -18,6 +18,7 @@ type Profile = {
 
 type Consultation = {
   id: string
+  patient_id: string
   code: string
   status: string
   priority: string
@@ -65,6 +66,9 @@ export default function AdminDashboard() {
   const [caseStatus, setCaseStatus] = useState('')
   const [caseDoctor, setCaseDoctor] = useState('')
   const [caseNote, setCaseNote] = useState('')
+  // Super-admin-only: delete a patient and all their cases (confirmation gated).
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   // Users (doctors/admins) table filters
   const [userSearch, setUserSearch] = useState('')
@@ -122,6 +126,7 @@ export default function AdminDashboard() {
   }
 
   const now = Date.now()
+  const isSuperAdmin = profile?.role === 'super_admin'
   const doctors = profiles.filter((p) => ['doctor', 'specialist'].includes(p.role))
   const activeDoctors = doctors.filter((d) => d.active)
   const onlineDoctors = doctors.filter(
@@ -179,6 +184,7 @@ export default function AdminDashboard() {
     setCaseStatus(c.status)
     setCaseDoctor(c.assigned_doctor_id || '')
     setCaseNote(c.internal_note || '')
+    setConfirmingDelete(false)
     setMessage('')
   }
 
@@ -208,6 +214,24 @@ export default function AdminDashboard() {
       note: `Estado: ${STATUS_LABELS[caseStatus] || caseStatus}; médico: ${doctorName(caseDoctor || null)}`
     })
     setMessage('Caso actualizado.')
+    setSelected(null)
+    await loadAll()
+  }
+
+  async function deletePatient() {
+    if (!selected) return
+    setDeleting(true)
+    const { error } = await supabase.rpc('admin_delete_patient', {
+      p_patient_id: selected.patient_id
+    })
+    setDeleting(false)
+    setConfirmingDelete(false)
+    if (error) {
+      console.error(error)
+      setMessage('No se pudo eliminar el paciente.')
+      return
+    }
+    setMessage('Paciente y todos sus casos fueron eliminados.')
     setSelected(null)
     await loadAll()
   }
@@ -333,6 +357,15 @@ export default function AdminDashboard() {
                       Cancelar
                     </button>
                   </div>
+                  {isSuperAdmin && (
+                    <button
+                      className="btn btn-full"
+                      style={{ background: '#dc2626', color: '#fff' }}
+                      onClick={() => setConfirmingDelete(true)}
+                    >
+                      Eliminar paciente y todos sus casos
+                    </button>
+                  )}
                 </div>
               )}
             </section>
@@ -564,6 +597,58 @@ export default function AdminDashboard() {
           </div>
         </div>
       </main>
+
+      {confirmingDelete && selected && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-title"
+          onClick={() => !deleting && setConfirmingDelete(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            zIndex: 1000
+          }}
+        >
+          <div
+            className="card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 440, width: '100%' }}
+          >
+            <h2 id="delete-title" style={{ marginTop: 0 }}>
+              Eliminar paciente
+            </h2>
+            <p>
+              Vas a eliminar a{' '}
+              <strong>{selected.patients?.full_name || 'este paciente'}</strong> y{' '}
+              <strong>todos sus casos y registros</strong>.
+            </p>
+            <p style={{ color: '#dc2626', fontWeight: 700 }}>Esta acción no se puede deshacer.</p>
+            <div className="grid grid-2" style={{ marginTop: 8 }}>
+              <button
+                className="btn btn-full"
+                style={{ background: '#dc2626', color: '#fff' }}
+                onClick={deletePatient}
+                disabled={deleting}
+              >
+                {deleting ? 'Eliminando...' : 'Eliminar definitivamente'}
+              </button>
+              <button
+                className="btn btn-muted"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

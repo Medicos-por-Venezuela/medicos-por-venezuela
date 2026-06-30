@@ -157,6 +157,14 @@ Functions / RPCs:
 RLS is enabled on every table: anon can INSERT patients/consultations; account-holding patients read their
 own rows; staff read all; admins manage.
 
+**Cascading deletes:** the schema declares `consultations.patient_id` and
+`consultation_events.consultation_id` as `ON DELETE CASCADE`, so deleting a `patients` row also removes its
+consultations and audit events. **Note for existing databases:** `create table if not exists` does **not**
+fix a foreign key that was first created without cascade, so older DBs may still have `NO ACTION` and reject
+a patient delete with a `consultations_patient_id_fkey` violation. The schema now re-applies these
+constraints idempotently — **re-run [supabase_schema.sql](supabase_schema.sql)** to bring an existing
+database in line, after which patient deletes cascade automatically.
+
 ### Case claiming (concurrency)
 
 When a doctor opens a case, the panel performs an **atomic claim**: the update only matches while the case is
@@ -173,7 +181,8 @@ sent to the dedicated case detail page (`/panel-medico/consulta/[id]`) to manage
 A submitted request is not the same as a patient actually waiting. While `/sala-espera` is open it calls the
 `mark_patient_waiting` RPC every ~20s, updating `consultations.patient_last_seen_at`. The doctor/admin panel
 polls the queue every ~20s and treats a patient as **present** only if seen within `PRESENCE_WINDOW_MS`
-(currently 5 minutes). Consequences:
+(currently 30 minutes — generous, because the heartbeat stops once the patient enters the Jitsi call and
+the waiting-room tab is backgrounded). Consequences:
 
 - The "En sala esperando" KPIs count only **present** patients. Each queue card shows **● En sala** or
   **○ Sin conexión**.
