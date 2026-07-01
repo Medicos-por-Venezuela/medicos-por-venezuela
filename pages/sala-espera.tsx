@@ -16,6 +16,13 @@ export default function SalaEspera() {
   // window.open() call still runs inside a user gesture and isn't blocked as a pop-up.
   const openRoom = () => {
     setShowWarning(false)
+    // Record that the patient actually entered the call (admin metrics count a case as "esperando"
+    // only from this point on). Fire-and-forget so it never delays opening the room.
+    if (cid) {
+      supabase.rpc('mark_patient_entered_call', { p_consultation_id: cid }).then(({ error }) => {
+        if (error) console.error('Error marcando entrada a la videollamada:', error)
+      })
+    }
     if (room) window.open(room, '_blank', 'noopener,noreferrer')
   }
 

@@ -84,7 +84,12 @@ function eventLabel(type: string): string {
 }
 
 function fmtDateTime(value: string): string {
-  return new Date(value).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' })
+  // Always render in Venezuela time (America/Caracas), regardless of the viewer's browser timezone.
+  return new Date(value).toLocaleString('es-VE', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'America/Caracas'
+  })
 }
 
 export default function ConsultaDetalle() {
