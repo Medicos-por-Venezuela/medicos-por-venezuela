@@ -7,6 +7,14 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-01
 
+- **Home page: extendido "médico o psicólogo" → "profesional de la salud" en toda la página** —
+  ticket `refactor(Home-page)`, barrido completo de las 8 menciones restantes que solo nombraban
+  médico/psicólogo: los 3 steps de "¿Cómo funciona?", la meta description, el pill del hero, el H1
+  del hero, la trust card de confidencialidad y el footer. Título del H1 acordado con el usuario:
+  "¿Necesitas atención médica, psicológica o en otra área de la salud, gratuita?". Sigue pendiente
+  (no es código, requiere respuesta externa) preguntar a las Drs del grupo la lista exacta de
+  profesiones a enumerar en otras pantallas (ver ticket `refactor(registro-medicos)`). File:
+  `pages/index.tsx`.
 - **Home page: tarjeta de paciente inclusiva + paso redundante eliminado** — ticket
   `refactor(Home-page)`, seguimiento del cambio anterior. La tarjeta "Soy Paciente" ahora dice
   "Necesito hablar con un médico, psicólogo u otro profesional de la salud." (antes solo
