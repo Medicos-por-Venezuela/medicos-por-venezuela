@@ -24,6 +24,7 @@ type Consultation = {
   category: string | null
   chief_complaint: string | null
   created_at: string
+  entered_call_at: string | null
   opened_at: string | null
   closed_at: string | null
   referred_specialty: string | null
@@ -31,18 +32,28 @@ type Consultation = {
   video_room_url: string | null
   patient_last_seen_at: string | null
   assigned_doctor_id: string | null
+  attended_via_whatsapp: boolean
   patients: Patient | null
 }
 
-// A patient counts as "in the waiting room" if their /sala-espera page pinged within this window.
-// It's generous (30 min) on purpose: once a patient enters the Jitsi call the /sala-espera tab is
-// backgrounded/suspended and stops pinging, so a short window would grey out patients who are
-// actually in the call waiting for a doctor.
-const PRESENCE_WINDOW_MS = 30 * 60 * 1000
-function isPatientPresent(c: Consultation): boolean {
-  if (!c.patient_last_seen_at) return false
-  return Date.now() - new Date(c.patient_last_seen_at).getTime() < PRESENCE_WINDOW_MS
-}
+// A patient surfaces in the "no han podido ser atendidos" queue once they've been waiting at least
+// this many minutes without a doctor assigned.
+const WAITING_FALLBACK_MIN = 20
+
+// "Still open" case statuses = not yet resolved. Includes patient_no_show (the patient registered
+// but never connected to the video call, so they still need follow-up) but excludes the truly
+// resolved statuses (closed, closed_by_admin, cancelled).
+const OPEN_STATUSES = [
+  'waiting',
+  'in_progress',
+  'referred_to_specialist',
+  'urgent_in_person',
+  'contacted_whatsapp',
+  'patient_no_show'
+]
+
+const PATIENT_COLS =
+  'id, full_name, cedula, phone_whatsapp, affected_zone, age_range, needs_tags, description'
 
 function statusBadgeClass(status: string): string {
   if (status === 'urgent_in_person') return 'badge-red'
@@ -67,8 +78,6 @@ type Profile = {
   active: boolean
 }
 
-type AssignedDoctor = Pick<Profile, 'id' | 'full_name' | 'role' | 'specialty'>
-
 export default function PanelMedico() {
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -76,7 +85,8 @@ export default function PanelMedico() {
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [myClosed, setMyClosed] = useState(0)
-  const [assignedDoctorsById, setAssignedDoctorsById] = useState<Record<string, AssignedDoctor>>({})
+  // Waiting case the doctor wants to attend via WhatsApp — set while the commitment modal is open.
+  const [whatsappTarget, setWhatsappTarget] = useState<Consultation | null>(null)
   const isCurrentUserAdmin = isAdminRole(profile?.role)
 
   useEffect(() => {
@@ -149,12 +159,17 @@ export default function PanelMedico() {
   }
 
   async function loadConsultations(currentProfile: Profile | null = profile) {
-    const { data, error } = await supabase
+    const twentyMinAgo = new Date(Date.now() - WAITING_FALLBACK_MIN * 60000).toISOString()
+
+    // "Pacientes que no han podido ser atendidos": three filters, all in the DB so a large backlog
+    // can't push recent patients past the row cap — (1) case still open (not resolved), (2) not
+    // assigned to any doctor, (3) waiting longer than WAITING_FALLBACK_MIN minutes.
+    const { data: unattended, error } = await supabase
       .from('consultations')
-      .select(
-        '*, patients(id, full_name, cedula, phone_whatsapp, affected_zone, age_range, needs_tags, description)'
-      )
-      .in('status', ['waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person'])
+      .select(`*, patients(${PATIENT_COLS})`)
+      .in('status', OPEN_STATUSES)
+      .is('assigned_doctor_id', null)
+      .lte('created_at', twentyMinAgo)
       .order('created_at', { ascending: true })
 
     if (error) {
@@ -162,36 +177,23 @@ export default function PanelMedico() {
       setMessage('No se pudieron cargar las consultas.')
       return
     }
-    const rows = (data || []) as Consultation[]
-    setConsultations(rows)
 
-    if (isAdminRole(currentProfile?.role)) {
-      const assignedIds = Array.from(
-        new Set(rows.map((c) => c.assigned_doctor_id).filter((id): id is string => !!id))
-      )
-      if (assignedIds.length > 0) {
-        const { data: doctors, error: doctorsError } = await supabase
-          .from('profiles')
-          .select('id, full_name, role, specialty')
-          .in('id', assignedIds)
-
-        if (doctorsError) {
-          console.error(doctorsError)
-          setAssignedDoctorsById({})
-        } else {
-          setAssignedDoctorsById(
-            Object.fromEntries(((doctors || []) as AssignedDoctor[]).map((d) => [d.id, d]))
-          )
-        }
-      } else {
-        setAssignedDoctorsById({})
-      }
-    } else {
-      setAssignedDoctorsById({})
+    // The doctor's own open cases, fetched separately so the cap can't drop them either.
+    const id = currentProfile?.id
+    let mine: Consultation[] = []
+    if (id) {
+      const { data: mineData } = await supabase
+        .from('consultations')
+        .select(`*, patients(${PATIENT_COLS})`)
+        .eq('assigned_doctor_id', id)
+        .in('status', ['in_progress', 'contacted_whatsapp'])
+        .order('created_at', { ascending: true })
+      mine = (mineData || []) as Consultation[]
     }
 
+    setConsultations([...((unattended || []) as Consultation[]), ...mine])
+
     // How many cases this doctor has closed.
-    const id = currentProfile?.id
     if (id) {
       const { count } = await supabase
         .from('consultations')
@@ -202,61 +204,49 @@ export default function PanelMedico() {
     }
   }
 
+  // "Pacientes que no han podido ser atendidos hasta ahora": registered cases not assigned to any
+  // doctor, waiting longer than WAITING_FALLBACK_MIN minutes. (The DB query already enforces this;
+  // the client filter keeps it correct as time passes between refreshes.)
   const waiting = useMemo(
-    () => consultations.filter((c) => c.status === 'waiting'),
-    [consultations]
-  )
-  const activeSystemConsultations = useMemo(
     () =>
-      consultations.filter((c) =>
-        ['in_progress', 'urgent_in_person', 'referred_to_specialist'].includes(c.status)
+      consultations.filter(
+        (c) => c.assigned_doctor_id === null && minutesSince(c.created_at) >= WAITING_FALLBACK_MIN
       ),
     [consultations]
   )
+  // The doctor's own active cases they can reopen: in-progress ones plus WhatsApp cases already
+  // marked "Ya contactado vía WhatsApp" (which otherwise would drop off the panel). Only the
+  // attending doctor sees them here.
   const myOpenConsultations = useMemo(
     () =>
       consultations.filter(
-        (c) => c.status === 'in_progress' && c.assigned_doctor_id === profile?.id
+        (c) =>
+          c.assigned_doctor_id === profile?.id &&
+          (c.status === 'in_progress' || c.status === 'contacted_whatsapp')
       ),
     [consultations, profile?.id]
   )
-  // Only patients whose waiting-room page is still pinging count as actually present in the queue.
-  const waitingPresent = useMemo(() => waiting.filter(isPatientPresent), [waiting])
-  // Present waiting patients that align with this doctor's specialty (and that they're allowed to take).
+  // Waiting patients that align with this doctor's specialty (and that they're allowed to take).
   const mySpecialtyWaiting = useMemo(
     () =>
-      waitingPresent.filter(
+      waiting.filter(
         (c) =>
           isCurrentUserAdmin ||
           (canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null) &&
             matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null))
       ),
-    [waitingPresent, profile?.specialty, isCurrentUserAdmin]
+    [waiting, profile?.specialty, isCurrentUserAdmin]
   )
-  const kpis = isCurrentUserAdmin
-    ? [
-        { value: waitingPresent.length, label: 'En sala esperando ahora' },
-        { value: waiting.length, label: 'Nuevos en cola (waiting)' },
-        { value: activeSystemConsultations.length, label: 'Casos activos del sistema' }
-      ]
-    : [
-        { value: waitingPresent.length, label: 'En sala esperando ahora' },
-        { value: mySpecialtyWaiting.length, label: 'En sala asignados a esta especialidad' },
-        { value: myClosed, label: 'Consultas cerradas por mí' }
-      ]
+  // Everyone — including admins/super_admins — sees /panel-medico as a doctor: the waiting queue and
+  // their own open cases, no admin-only "system cases" section.
+  const kpis = [
+    { value: waiting.length, label: 'Pacientes esperando' },
+    { value: mySpecialtyWaiting.length, label: 'Esperando para tu especialidad' },
+    { value: myClosed, label: 'Consultas cerradas por mí' }
+  ]
 
-  const waitingEmptyMessage = isCurrentUserAdmin
-    ? activeSystemConsultations.length > 0
-      ? 'No hay pacientes nuevos en cola (waiting). Hay casos activos del sistema abajo.'
-      : 'No hay pacientes nuevos en cola (waiting) ni casos activos del sistema.'
-    : 'No hay pacientes nuevos en cola (waiting). Si ya tomaste un caso, aparecerá en “Mis consultas abiertas”.'
-
-  function assignmentLabel(c: Consultation): string {
-    if (!c.assigned_doctor_id) return 'Sin asignar'
-    if (c.assigned_doctor_id === profile?.id) return 'Asignado a ti'
-    const doctor = assignedDoctorsById[c.assigned_doctor_id]
-    return doctor ? `Asignado a ${doctor.full_name}` : 'Asignado a otro médico'
-  }
+  const waitingEmptyMessage =
+    'No hay pacientes nuevos en cola (waiting). Si ya tomaste un caso, aparecerá en “Mis consultas abiertas”.'
 
   async function addEvent(consultationId: string, eventType: string, eventNote?: string) {
     await supabase.from('consultation_events').insert({
@@ -269,7 +259,7 @@ export default function PanelMedico() {
   async function openConsultation(c: Consultation) {
     if (!profile) return
     const now = new Date().toISOString()
-    // Atomic claim: the update only matches while the case is still 'waiting', so if another
+    // Atomic claim: the update only matches while the case is still unassigned, so if another
     // doctor grabbed it first it returns 0 rows. We must NOT open the video room in that case,
     // otherwise two doctors could land in the same meeting.
     const { data: claimed, error } = await supabase
@@ -280,7 +270,7 @@ export default function PanelMedico() {
         opened_at: c.opened_at || now
       })
       .eq('id', c.id)
-      .eq('status', 'waiting')
+      .is('assigned_doctor_id', null)
       .select('id')
 
     if (error) {
@@ -295,6 +285,39 @@ export default function PanelMedico() {
 
     await addEvent(c.id, 'opened', `Abierta por ${profile.full_name}`)
     if (c.video_room_url) window.open(browserRoomUrl(c.video_room_url), '_blank')
+    await router.push(`/panel-medico/consulta/${c.id}`)
+  }
+
+  // Claim a waiting patient to attend directly via WhatsApp (no video). Same atomic claim as
+  // openConsultation: the update only matches while the case is 'waiting', so if another doctor took
+  // it first we show "Ya fue asignado a otro doctor" instead. Runs only after the doctor accepts the
+  // commitment modal.
+  async function attendViaWhatsapp(c: Consultation) {
+    if (!profile) return
+    const now = new Date().toISOString()
+    const { data: claimed, error } = await supabase
+      .from('consultations')
+      .update({
+        status: 'in_progress',
+        assigned_doctor_id: profile.id,
+        opened_at: c.opened_at || now,
+        attended_via_whatsapp: true
+      })
+      .eq('id', c.id)
+      .is('assigned_doctor_id', null)
+      .select('id')
+
+    setWhatsappTarget(null)
+    if (error) {
+      setMessage('No se pudo asignar la consulta.')
+      return
+    }
+    if (!claimed || claimed.length === 0) {
+      setMessage('Ya fue asignado a otro doctor.')
+      await loadConsultations()
+      return
+    }
+    await addEvent(c.id, 'opened', `Atendido vía WhatsApp por ${profile.full_name}`)
     await router.push(`/panel-medico/consulta/${c.id}`)
   }
 
@@ -316,10 +339,7 @@ export default function PanelMedico() {
       return
     }
 
-    // Preferimos pacientes detectados como presentes, pero si el heartbeat falló,
-    // igual permitimos atender casos que están en waiting.
-    const presentEligible = eligible.filter(isPatientPresent)
-    const pool = presentEligible.length > 0 ? presentEligible : eligible
+    const pool = eligible
 
     const next = isCurrentUserAdmin
       ? pool[0]
@@ -422,43 +442,69 @@ export default function PanelMedico() {
               )}
             </section>
             <section className="card">
-              <h2 style={{ marginTop: 0 }}>Consultas disponibles</h2>
+              <h2 style={{ marginTop: 0 }}>
+                Pacientes que no han podido ser atendidos hasta ahora
+              </h2>
               {waiting.length === 0 ? (
                 <p style={{ color: '#64748b' }}>{waitingEmptyMessage}</p>
               ) : (
                 <div className="grid">
                   {waiting.map((c) => (
-                    <ConsultationCard key={c.id} c={c} onOpen={() => openConsultation(c)} />
+                    <ConsultationCard key={c.id} c={c} onWhatsapp={() => setWhatsappTarget(c)} />
                   ))}
                 </div>
               )}
             </section>
-
-            {isCurrentUserAdmin && (
-              <section className="card panel-full-span">
-                <h2 style={{ marginTop: 0 }}>Casos activos del sistema</h2>
-                {activeSystemConsultations.length === 0 ? (
-                  <p style={{ color: '#64748b' }}>
-                    No hay casos activos en progreso, derivados o marcados como urgentes
-                    presenciales.
-                  </p>
-                ) : (
-                  <div className="grid">
-                    {activeSystemConsultations.map((c) => (
-                      <AdminActiveCaseCard
-                        key={c.id}
-                        c={c}
-                        assignment={assignmentLabel(c)}
-                        onSelect={() => router.push(`/panel-medico/consulta/${c.id}`)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
-            )}
           </div>
         </div>
       </main>
+
+      {whatsappTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setWhatsappTarget(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            zIndex: 1000
+          }}
+        >
+          <div
+            className="card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 460, width: '100%' }}
+          >
+            <h2 style={{ marginTop: 0 }}>Atender vía WhatsApp</h2>
+            <p>
+              Al cliquear aquí te comprometes a contactar al paciente vía WhatsApp con el número
+              disponible, de no ser posible por favor contacta a nuestro equipo al{' '}
+              <strong>+4915203003171</strong>.
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
+              <button
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                onClick={() => attendViaWhatsapp(whatsappTarget)}
+              >
+                Aceptar
+              </button>
+              <button
+                className="btn btn-muted"
+                style={{ flex: 1 }}
+                onClick={() => setWhatsappTarget(null)}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx global>{`
         .panel-topbar {
@@ -532,54 +578,7 @@ export default function PanelMedico() {
   )
 }
 
-function AdminActiveCaseCard({
-  c,
-  assignment,
-  onSelect
-}: {
-  c: Consultation
-  assignment: string
-  onSelect: () => void
-}) {
-  return (
-    <div className="card-flat">
-      <div className="panel-card-header">
-        <div>
-          <strong>{c.patients?.full_name || 'Paciente'}</strong>
-          <div style={{ color: '#64748b', fontSize: 13 }}>
-            {c.patients?.affected_zone || 'Zona no indicada'} · hace {minutesSince(c.created_at)}{' '}
-            min
-          </div>
-        </div>
-        <span className={`badge ${statusBadgeClass(c.status)}`}>
-          {STATUS_LABELS[c.status] || c.status}
-        </span>
-      </div>
-
-      <p>{c.chief_complaint || c.patients?.description || 'Sin descripción'}</p>
-
-      <div className="tag-row" style={{ marginBottom: 12 }}>
-        <span className="badge">{assignment}</span>
-        {isPatientPresent(c) ? (
-          <span className="badge badge-green">● En sala</span>
-        ) : (
-          <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>
-            ○ Sin conexión
-          </span>
-        )}
-        {c.referred_specialty && (
-          <span className="badge badge-blue">Derivado a {c.referred_specialty}</span>
-        )}
-      </div>
-
-      <button className="btn btn-secondary btn-full" onClick={onSelect}>
-        Ver / gestionar caso
-      </button>
-    </div>
-  )
-}
-
-function ConsultationCard({ c, onOpen }: { c: Consultation; onOpen: () => void }) {
+function ConsultationCard({ c, onWhatsapp }: { c: Consultation; onWhatsapp: () => void }) {
   return (
     <div className="card-flat">
       <div className="panel-card-header">
@@ -589,13 +588,7 @@ function ConsultationCard({ c, onOpen }: { c: Consultation; onOpen: () => void }
             {c.patients?.affected_zone} · hace {minutesSince(c.created_at)} min
           </div>
           <div style={{ marginTop: 4 }}>
-            {isPatientPresent(c) ? (
-              <span className="badge badge-green">● En sala</span>
-            ) : (
-              <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>
-                ○ Sin conexión
-              </span>
-            )}
+            <span className="badge badge-green">● Disponible</span>
           </div>
         </div>
         <span className={`badge ${statusBadgeClass(c.status)}`}>
@@ -615,8 +608,8 @@ function ConsultationCard({ c, onOpen }: { c: Consultation; onOpen: () => void }
           </span>
         ))}
       </div>
-      <button className="btn btn-primary btn-full" onClick={onOpen}>
-        Atender
+      <button className="btn btn-primary btn-full" onClick={onWhatsapp}>
+        Puedo atender a este paciente vía WhatsApp con mi número personal
       </button>
     </div>
   )

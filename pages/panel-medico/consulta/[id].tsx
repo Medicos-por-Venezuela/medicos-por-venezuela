@@ -32,6 +32,7 @@ type Consultation = {
   video_room_url: string | null
   patient_last_seen_at: string | null
   assigned_doctor_id: string | null
+  attended_via_whatsapp: boolean
   patients: Patient | null
 }
 
@@ -57,6 +58,15 @@ type EventAuthor = Pick<Profile, 'id' | 'full_name' | 'role'>
 const ADMIN_ROLES = ['admin', 'super_admin'] as const
 const PANEL_ALLOWED_ROLES = ['doctor', 'specialist', ...ADMIN_ROLES] as const
 const PRESENCE_WINDOW_MS = 30 * 60 * 1000 // generous; see note in panel-medico.tsx
+
+// Status options shown for WhatsApp-attended cases (the doctor handles these outside video).
+const WHATSAPP_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'in_progress', label: 'Abierta' },
+  { value: 'referred_to_specialist', label: 'Referenciado a otro médico' },
+  { value: 'contacted_whatsapp', label: 'Ya contactado vía WhatsApp' },
+  { value: 'urgent_in_person', label: 'Necesita ir a centro de atención' },
+  { value: 'closed', label: 'Cerrado' }
+]
 
 function isAdminRole(role?: string | null): boolean {
   return !!role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])
@@ -250,6 +260,31 @@ export default function ConsultaDetalle() {
     else setMessage('Nota guardada.')
   }
 
+  // Change the case status from the WhatsApp status dropdown (no video / close-button flow).
+  async function updateStatus(newStatus: string) {
+    if (!consultation || !profile) return
+    setMessage('')
+    const isClosed = newStatus === 'closed'
+    const { error } = await supabase
+      .from('consultations')
+      .update({
+        status: newStatus,
+        ...(isClosed ? { closed_at: new Date().toISOString() } : {})
+      })
+      .eq('id', consultation.id)
+    if (error) {
+      setMessage('No se pudo actualizar el estado.')
+      return
+    }
+    setConsultation({ ...consultation, status: newStatus })
+    await addEvent(
+      consultation.id,
+      'admin_update',
+      `Estado: ${STATUS_LABELS[newStatus] || newStatus} (${profile.full_name})`
+    )
+    setMessage('Estado actualizado.')
+  }
+
   async function closeConsultation(outcome: 'closed' | 'patient_no_show' = 'closed') {
     if (!consultation || !profile) return
     setMessage('')
@@ -406,29 +441,34 @@ export default function ConsultaDetalle() {
                     Todavía no hay historial registrado para este caso.
                   </p>
                 ) : (
-                  <div className="grid">
-                    {events.map((event) => {
+                  <div>
+                    {events.map((event, i) => {
                       const author = event.created_by ? eventAuthorsById[event.created_by] : null
                       return (
-                        <div key={event.id} className="card-flat">
-                          <div
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              gap: 10,
-                              flexWrap: 'wrap'
-                            }}
-                          >
+                        <div
+                          key={event.id}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            gap: 12,
+                            padding: '8px 0',
+                            borderTop: i === 0 ? 'none' : '1px solid var(--border)'
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
                             <strong>{eventLabel(event.event_type)}</strong>
-                            <span style={{ color: '#64748b', fontSize: 13 }}>
-                              {fmtDateTime(event.created_at)}
+                            {event.note && (
+                              <span style={{ color: '#475569' }}> — {event.note}</span>
+                            )}
+                            <span style={{ color: '#94a3b8', fontSize: 12 }}>
+                              {' · '}
+                              {author?.full_name || 'usuario del sistema'}
+                              {author?.role ? ` (${author.role})` : ''}
                             </span>
                           </div>
-                          <p style={{ color: '#64748b', margin: '4px 0 0', fontSize: 13 }}>
-                            Por {author?.full_name || 'usuario del sistema'}
-                            {author?.role ? ` · ${author.role}` : ''}
-                          </p>
-                          {event.note && <p style={{ marginBottom: 0 }}>{event.note}</p>}
+                          <span style={{ color: '#64748b', fontSize: 13, whiteSpace: 'nowrap' }}>
+                            {fmtDateTime(event.created_at)}
+                          </span>
                         </div>
                       )
                     })}
@@ -440,8 +480,23 @@ export default function ConsultaDetalle() {
             <section className="card detail-full-span">
               <h2 style={{ marginTop: 0 }}>Gestión de la consulta</h2>
               <div className="detail-actions">
+                {consultation.attended_via_whatsapp && (
+                  <div>
+                    <label className="label">Estado del caso</label>
+                    <select
+                      value={consultation.status}
+                      onChange={(e) => updateStatus(e.target.value)}
+                    >
+                      {WHATSAPP_STATUS_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div>
-                  <label className="label">Nota operativa interna</label>
+                  <label className="label">Notas del médico</label>
                   <textarea
                     rows={6}
                     value={note}
@@ -449,7 +504,7 @@ export default function ConsultaDetalle() {
                     placeholder="Evita escribir historia clínica completa. Solo información necesaria para coordinación."
                   />
                 </div>
-                {consultation.video_room_url && (
+                {!consultation.attended_via_whatsapp && consultation.video_room_url && (
                   <a
                     className="btn btn-primary"
                     href={browserRoomUrl(consultation.video_room_url)}
@@ -462,18 +517,22 @@ export default function ConsultaDetalle() {
                 <button className="btn btn-secondary" onClick={saveNote}>
                   Guardar nota
                 </button>
-                <button
-                  className="btn btn-primary btn-full"
-                  onClick={() => closeConsultation('closed')}
-                >
-                  Cerrar consulta
-                </button>
-                <button
-                  className="btn btn-outline btn-full"
-                  onClick={() => closeConsultation('patient_no_show')}
-                >
-                  Paciente no estaba en la sala de espera
-                </button>
+                {!consultation.attended_via_whatsapp && (
+                  <>
+                    <button
+                      className="btn btn-primary btn-full"
+                      onClick={() => closeConsultation('closed')}
+                    >
+                      Cerrar consulta
+                    </button>
+                    <button
+                      className="btn btn-outline btn-full"
+                      onClick={() => closeConsultation('patient_no_show')}
+                    >
+                      Paciente no estaba en la sala de espera
+                    </button>
+                  </>
+                )}
               </div>
             </section>
           </div>

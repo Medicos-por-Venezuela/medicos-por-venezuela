@@ -59,7 +59,8 @@ const STATUS_OPTIONS = [
   'closed',
   'cancelled',
   'patient_no_show',
-  'closed_by_admin'
+  'closed_by_admin',
+  'contacted_whatsapp'
 ]
 // A case counts as "closed" (green row) ONLY when it's Cerrada or Cerrada por admin.
 // Everything else — including cancelled, no-show, waiting, in progress — is still open (red row).
@@ -72,7 +73,8 @@ const IN_PROGRESS_STATUSES = [
   'referred_to_specialist',
   'urgent_in_person',
   'patient_no_show',
-  'cancelled'
+  'cancelled',
+  'contacted_whatsapp'
 ]
 const ROLE_OPTIONS = ['all', 'doctor', 'specialist', 'admin', 'super_admin']
 // The "Médicos y administradores" table is staff-only — patients never appear there.
