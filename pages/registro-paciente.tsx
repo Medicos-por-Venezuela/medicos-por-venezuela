@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { signInWithGoogle } from '../lib/auth'
 import GoogleButton from '../components/GoogleButton'
+import { NEEDS as NECESIDADES } from '../lib/utils'
 
 const ZONAS = [
   'La Guaira - Catia La Mar',
@@ -25,19 +26,6 @@ const ZONAS = [
   'Carabobo',
   'Otro'
 ]
-const NECESIDADES = [
-  'Medicina general',
-  'Lesión física',
-  'Primeros auxilios',
-  'Apoyo emocional',
-  'Crisis de ansiedad',
-  'Niño / pediatría',
-  'Embarazo',
-  'Medicamentos',
-  'Enfermedad crónica',
-  'Otra'
-]
-
 export default function RegistroPaciente() {
   const router = useRouter()
   const [nombre, setNombre] = useState('')

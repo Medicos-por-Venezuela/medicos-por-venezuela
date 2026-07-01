@@ -7,6 +7,52 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-01
 
+- **Admin: "Referencia y trazabilidad" in "Gestionar caso"** — selecting a case now loads its
+  `consultation_events` audit trail and shows the history (event label, note, author + role, and the
+  timestamp in Venezuela time) at the bottom of the manage panel, so admins can see what has happened.
+  Refreshes after an inline status change on the selected case. File: `pages/admin/dashboard.tsx`.
+
+- **Case detail: WhatsApp contact guidance next to patient phone** — added a red note under the
+  patient's phone in `/panel-medico/consulta/[id]` explaining to prefer WhatsApp chat (better
+  connectivity), to agree a call time there, to wait up to 24h for a reply, and to log missing/wrong
+  contacts in the medical notes. File: `pages/panel-medico/consulta/[id].tsx`.
+
+- **Admin: editable "Especialidades que pueden ver este caso" (override)** — "Gestionar caso" now has
+  an editable specialties selector: editing the Tipo de ayuda re-derives it, but the admin can also
+  toggle specialties directly to override the routing. Saved as `consultations.required_specialties`
+  (null when it matches the derived set, so it keeps deriving). The doctor panel honors it
+  (`specialtyCanSee`), and the cases table "Especialidades" line shows the effective set
+  (`effectiveSpecialties`). New helpers in `lib/utils.ts`; needs one additive prod migration
+  (`required_specialties text[]`). Files: `supabase_schema.sql`, `lib/utils.ts`,
+  `pages/panel-medico.tsx`, `pages/admin/dashboard.tsx`.
+- **Case detail: reworked "Gestión de la consulta"** — removed the "Unirse a videoconsulta" / "Cerrar
+  consulta" / "Paciente no estaba en la sala de espera" buttons (and the now-unused `closeConsultation`
+  / `browserRoomUrl`); added an **Estado** dropdown for **all** cases (Abierta / Ya contactado vía
+  WhatsApp / Referenciado / Necesita ir a centro / Paciente no se presentó / Cerrado — sets `closed_at`
+  on terminal statuses) plus "Guardar nota". Added a **red** top-right notice ("Si tienes problemas
+  con este caso, contáctanos vía +4915203003171 en WhatsApp") and moved "Referencia y trazabilidad"
+  to the bottom of the page. File: `pages/panel-medico/consulta/[id].tsx`.
+- **Admin: "Doctor contactará vía WhatsApp" indicator** — in the cases table, under Estado and below
+  Especialidades, a green "Doctor contactará vía WhatsApp" line now shows when a case was claimed via
+  the WhatsApp button (`attended_via_whatsapp`), so admins can tell it apart from a video-attended
+  "Abierta" case. File: `pages/admin/dashboard.tsx`.
+- **Admin: removed "Derivaciones por especialidad" section** — dropped the referrals-by-specialty
+  card (and its dead `bySpecialty`/`referred` helpers); "Gestionar caso" is now full-width. File:
+  `pages/admin/dashboard.tsx`.
+- **Admin: clicking a case scrolls to "Gestionar caso"** — selecting a case from the cases table now
+  smooth-scrolls up to the manage panel (via a ref + `scrollIntoView`), so the admin doesn't have to
+  scroll manually. File: `pages/admin/dashboard.tsx`.
+- **Panel queues respect the doctor's specialty** — the `/panel-medico` "Pacientes que no han podido
+  ser atendidos" and live video queues now only show cases the logged-in user's specialty can attend
+  (`canAttend`), applied to admins by their specialty too (removed the `isCurrentUserAdmin` bypass on
+  the panel). So a Medicina general account no longer sees reserved psychology cases. File:
+  `pages/panel-medico.tsx`.
+- **Admin: edit a case's "tipo de ayuda" to re-route it** — the "Gestionar caso" panel now has an
+  editable Tipo de ayuda (categorías/necesidades) selector with a live preview of the specialties
+  that will be able to attend it; saving updates `patients.needs_tags` + `consultations.category` so
+  the routing re-derives (fixes a patient's wrong selection). Centralized the needs list as
+  `NEEDS` in `lib/utils.ts` (shared with the registration form). Files: `lib/utils.ts`,
+  `pages/admin/dashboard.tsx`, `pages/registro-paciente.tsx`.
 - **Admin cases: show eligible specialties (replaces "Prioridad")** — under the Estado column, the
   cases table now lists which specialties can pick up each case (`eligibleSpecialties` = specialties
   whose scope fits the case AND are allowed by the psychology reservation), replacing the "Prioridad"

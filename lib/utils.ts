@@ -36,6 +36,20 @@ export const SPECIALTIES = [
   'Otra'
 ]
 
+// The patient "tipo de ayuda" options (shown on the registration form and editable by admins).
+export const NEEDS = [
+  'Medicina general',
+  'Lesión física',
+  'Primeros auxilios',
+  'Apoyo emocional',
+  'Crisis de ansiedad',
+  'Niño / pediatría',
+  'Embarazo',
+  'Medicamentos',
+  'Enfermedad crónica',
+  'Otra'
+]
+
 // Maps a doctor specialty to the patient "tipo de ayuda" / category values it covers
 // (values come from the NECESIDADES list in registro-paciente). '*' = handles anything.
 export const SPECIALTY_NEEDS: Record<string, string[]> = {
@@ -116,4 +130,25 @@ export function eligibleSpecialties(category: string | null, needsTags: string[]
   return SPECIALTIES.filter(
     (s) => matchesSpecialty(s, category, needsTags) && canAttend(s, category, needsTags)
   )
+}
+
+// The specialties that can see a case, honoring an admin override when present, otherwise the
+// derived set. `required` comes from consultations.required_specialties.
+export function effectiveSpecialties(
+  required: string[] | null | undefined,
+  category: string | null,
+  needsTags: string[] | null
+): string[] {
+  return required && required.length > 0 ? required : eligibleSpecialties(category, needsTags)
+}
+
+// Whether a doctor of `specialty` can see/attend a case, honoring the admin override when present.
+export function specialtyCanSee(
+  specialty: string | null | undefined,
+  required: string[] | null | undefined,
+  category: string | null,
+  needsTags: string[] | null
+): boolean {
+  if (required && required.length > 0) return !!specialty && required.includes(specialty)
+  return canAttend(specialty, category, needsTags)
 }
