@@ -7,6 +7,14 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-01
 
+- **Home page: "Soy profesional de la salud" + sala de espera en el paso 4** — ticket
+  `refactor(Home-page)`, rama base `dev_aws`. Renombrado "Soy Médico" → "Soy profesional de la
+  salud" en el nav y en la hero card (más inclusivo, no solo médicos). El paso 4 de "¿Cómo
+  funciona?" ahora dice "Entra a la sala de espera" y explica que el paciente espera ahí hasta que
+  un médico o psicólogo lo atienda, antes de unirse a la teleconsulta. Pendiente (no implementado,
+  requiere info externa): expandir la lista de profesiones más allá de médico/psicólogo una vez
+  que las Drs del grupo confirmen cuáles agregar — dejado como TODO en el código (`STEPS` en
+  `pages/index.tsx`). File: `pages/index.tsx`.
 - **Trazabilidad as compact rows** — the case-detail "Referencia y trazabilidad" event history now
   renders each event as a single divider-separated row (label — note · author, with the date on the
   right) instead of stacked cards, so the section is much shorter. File:
@@ -96,7 +104,7 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   called from `/sala-espera` on that click (fire-and-forget, sets the timestamp once via `coalesce`);
   the KPI query gates on `status='waiting' AND entered_call_at IS NOT NULL`. Renamed "Consultas
   abiertas" → **"Consultas en progreso"**, now counting `in_progress + referred_to_specialist +
-  urgent_in_person + patient_no_show + cancelled` (everything past the queue that isn't a formal
+urgent_in_person + patient_no_show + cancelled` (everything past the queue that isn't a formal
   close). Files: `supabase_schema.sql` (column + RPC), `pages/sala-espera.tsx`,
   `pages/admin/dashboard.tsx`. Needs one additive prod migration (the column + RPC).
 - **Resolved stray `git stash` conflicts** — `dashboard.tsx` and `changeslog.md` had unresolved
