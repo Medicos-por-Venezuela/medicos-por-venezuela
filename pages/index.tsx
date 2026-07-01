@@ -206,6 +206,10 @@ function useReveal<T extends HTMLElement>() {
 
 /* ---------- Data ---------- */
 
+// TODO(refactor(Home-page) #2/#5): pendiente confirmar con las Drs del grupo la lista completa
+// de profesiones a mostrar (hoy solo se menciona médico/psicólogo en varios puntos: STEPS[1],
+// STEPS[4], la meta description del <Head>, y el copy del hero). No se expande todavía porque
+// no sabemos qué otras profesiones agregar.
 const STEPS = [
   {
     icon: <IconGlobe />,
@@ -224,8 +228,8 @@ const STEPS = [
   },
   {
     icon: <IconVideo />,
-    title: 'Únete a la teleconsulta',
-    text: 'Cuando aparezca la opción, haz clic en “Unirse a la teleconsulta”.'
+    title: 'Entra a la sala de espera',
+    text: 'Ingresarás a una sala de espera virtual; cuando un médico o psicólogo esté listo para atenderte, haz clic en “Unirse a la teleconsulta”.'
   },
   {
     icon: <IconDoctor />,
@@ -314,7 +318,7 @@ export default function Home() {
                   Soy Paciente
                 </button>
                 <button className="btn-pill btn-gold-outline" onClick={goMedico}>
-                  Soy Médico
+                  Soy profesional de la salud
                 </button>
               </div>
             </nav>
@@ -351,7 +355,7 @@ export default function Home() {
                 <div className="hcard-icon hcard-icon--gold">
                   <IconDoctor />
                 </div>
-                <h2>Soy Médico</h2>
+                <h2>Soy profesional de la salud</h2>
                 <p>Quiero ofrecer mi ayuda voluntaria.</p>
                 <button className="btn-pill btn-gold-outline btn-block" onClick={goMedico}>
                   Registrarme →
