@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { STATUS_LABELS, canAttend, matchesSpecialty, minutesSince } from '../lib/utils'
+import { browserRoomUrl } from '../lib/jitsi'
 
 type Patient = {
   id: string
@@ -293,7 +294,7 @@ export default function PanelMedico() {
     }
 
     await addEvent(c.id, 'opened', `Abierta por ${profile.full_name}`)
-    if (c.video_room_url) window.open(c.video_room_url, '_blank')
+    if (c.video_room_url) window.open(browserRoomUrl(c.video_room_url), '_blank')
     await router.push(`/panel-medico/consulta/${c.id}`)
   }
 

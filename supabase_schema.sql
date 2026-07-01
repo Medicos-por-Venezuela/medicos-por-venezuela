@@ -110,6 +110,10 @@ alter table public.consultations add column if not exists created_at timestamptz
 -- Admin follow-up flag: whether an admin has contacted the patient about this case (set from the
 -- admin dashboard, independent of status).
 alter table public.consultations add column if not exists contacted boolean not null default false;
+-- Admin case follow-up: which super_admin is following up (admin_seguimiento) and a free-text admin
+-- note (nota_admin). Both are edited from the admin dashboard cases table.
+alter table public.consultations add column if not exists admin_seguimiento uuid references public.profiles(id);
+alter table public.consultations add column if not exists nota_admin text;
 
 -- Allow the 'patient_no_show' and 'closed_by_admin' statuses on existing databases (idempotent).
 alter table public.consultations drop constraint if exists consultations_status_check;

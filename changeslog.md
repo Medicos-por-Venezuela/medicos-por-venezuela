@@ -7,6 +7,28 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-01
 
+- **Inline searchable "Médico" reassignment + assigned-name resolution** — the cases-table Médico
+  cell is now a search-as-you-type combobox (queries the DB, reaches all doctors) so admins can
+  reassign the attending doctor straight from the row, no need to open "Gestionar caso". Also fixed a
+  display bug: assigned doctors living beyond the loaded 1000 profiles showed as a generic "Médico";
+  `loadAll` now resolves assigned-doctor names from the DB into a name cache, so the real name shows.
+  (Note: a doctor who takes a case via "Atender" is already auto-assigned — `opened_at` and
+  `assigned_doctor_id` are set together in `openConsultation`; the bug was only in how the name
+  displayed.) File: `pages/admin/dashboard.tsx`.
+- **Restored missing `admin_seguimiento` / `nota_admin` columns in the schema** — the two admin
+  follow-up columns had been dropped from `supabase_schema.sql` during the branch/stash mess, even
+  though the dashboard reads and writes them. Re-added the idempotent `add column if not exists`
+  alters so a fresh setup (or a re-run) has them. File: `supabase_schema.sql`.
+- **Instruction screenshot in the pre-join modal** — added `public/instruccion-jitsi.png` and showed
+  it inside the `/sala-espera` "Antes de entrar" warning modal, captioned "Si te aparece esta
+  pantalla, toca «Unirse en el navegador»", so patients who still hit Jitsi's app/browser screen know
+  which option to tap. Files: `public/instruccion-jitsi.png` (new), `pages/sala-espera.tsx`.
+- **Skip Jitsi "descarga la app" screen — open straight in the browser** — added a `browserRoomUrl`
+  helper that appends `config.disableDeepLinking=true` (+ nested `deeplinking.disabled`) to the room
+  URL, so mobile users skip the "open in app / continue in browser" interstitial and land directly in
+  the call. Applied at every open point (patient waiting room, doctor "Atender", doctor case-detail
+  link), so it also fixes rooms already stored in the DB. Files: `lib/jitsi.ts`, `pages/sala-espera.tsx`,
+  `pages/panel-medico.tsx`, `pages/panel-medico/consulta/[id].tsx`.
 - **Cases table "Fechas": A/B/C/D milestones + legend** — the Fechas column now shows four
   timestamps with a color legend above the table: **A** El paciente registró su caso (`created_at`),
   **B** El paciente ingresó en la videollamada (`entered_call_at`, new), **C** Un médico de la

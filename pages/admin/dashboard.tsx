@@ -160,6 +160,15 @@ export default function AdminDashboard() {
   // Per-row inline edits of the notes in the cases table (keyed by consultation id).
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
   const [notaAdminDrafts, setNotaAdminDrafts] = useState<Record<string, string>>({})
+  // Inline (cases table) "Médico" reassignment combobox — one open row at a time, searched in the DB.
+  const [rowDocMenu, setRowDocMenu] = useState<string | null>(null) // consultation id with its menu open
+  const [rowDocQuery, setRowDocQuery] = useState('')
+  const [rowDocOptions, setRowDocOptions] = useState<
+    { id: string; full_name: string; specialty: string | null; role: string }[]
+  >([])
+  // Names of doctors picked via search (may live beyond the loaded 1000 profiles) so the cell still
+  // shows the right name after assigning.
+  const [doctorNameCache, setDoctorNameCache] = useState<Record<string, string>>({})
 
   // Users (doctors/admins) table filters
   const [userSearch, setUserSearch] = useState('')
@@ -231,6 +240,34 @@ export default function AdminDashboard() {
     return () => clearTimeout(t)
   }, [doctorQuery, doctorMenuOpen])
 
+  // Same search, for the inline "Médico" combobox in the cases table (debounced; only while a row's
+  // menu is open).
+  useEffect(() => {
+    if (!rowDocMenu) return
+    const t = setTimeout(async () => {
+      let q = supabase
+        .from('profiles')
+        .select('id, full_name, specialty, role')
+        .in('role', ['doctor', 'specialist'])
+        .eq('active', true)
+        .order('full_name')
+        .limit(20)
+      const term = rowDocQuery.trim().replace(/[(),]/g, ' ')
+      if (term)
+        q = q.or(`full_name.ilike.%${term}%,email.ilike.%${term}%,specialty.ilike.%${term}%`)
+      const { data } = await q
+      setRowDocOptions(
+        (data || []) as {
+          id: string
+          full_name: string
+          specialty: string | null
+          role: string
+        }[]
+      )
+    }, 250)
+    return () => clearTimeout(t)
+  }, [rowDocQuery, rowDocMenu])
+
   async function init() {
     const { data: sessionData } = await supabase.auth.getSession()
     if (!sessionData.session) {
@@ -296,6 +333,32 @@ export default function AdminDashboard() {
 
     if (profilesRes.data) setProfiles(profilesRes.data as Profile[])
     if (consultationsRes.data) setConsultations(consultationsRes.data as Consultation[])
+
+    // Resolve names of assigned doctors that may live beyond the loaded 1000 profiles, so the cases
+    // table shows the real name (not a generic "Médico") for cases claimed by older doctors.
+    if (consultationsRes.data) {
+      const assignedIds = Array.from(
+        new Set(
+          (consultationsRes.data as Consultation[])
+            .map((c) => c.assigned_doctor_id)
+            .filter((id): id is string => !!id)
+        )
+      )
+      if (assignedIds.length > 0) {
+        const { data: docs } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', assignedIds)
+        if (docs)
+          setDoctorNameCache((m) => ({
+            ...m,
+            ...Object.fromEntries(
+              (docs as { id: string; full_name: string }[]).map((d) => [d.id, d.full_name])
+            )
+          }))
+      }
+    }
+
     setPatientsCount(patientsRes.count || 0)
     setCounts({
       doctors: doctorsCnt.count || 0,
@@ -336,7 +399,8 @@ export default function AdminDashboard() {
   }, [referred])
 
   const doctorName = (id: string | null) =>
-    doctors.find((d) => d.id === id)?.full_name || (id ? 'Médico' : 'Sin asignar')
+    doctors.find((d) => d.id === id)?.full_name ||
+    (id ? doctorNameCache[id] || 'Médico' : 'Sin asignar')
 
   // Super-admins available in the "Seguimiento" dropdown (who is following up a case).
   const superAdmins = useMemo(() => profiles.filter((p) => p.role === 'super_admin'), [profiles])
@@ -548,6 +612,39 @@ export default function AdminDashboard() {
         list.map((x) => (x.id === c.id ? { ...x, admin_seguimiento: prev } : x))
       )
     }
+  }
+
+  // Inline (cases table) reassignment of the attending doctor. `doctor` is null to unassign.
+  async function assignDoctorInline(
+    c: Consultation,
+    doctor: { id: string; full_name: string } | null
+  ) {
+    const doctorId = doctor?.id || null
+    const prev = c.assigned_doctor_id
+    if (doctor) setDoctorNameCache((m) => ({ ...m, [doctor.id]: doctor.full_name }))
+    setConsultations((list) =>
+      list.map((x) => (x.id === c.id ? { ...x, assigned_doctor_id: doctorId } : x))
+    )
+    setRowDocMenu(null)
+    setRowDocQuery('')
+    const { error } = await supabase
+      .from('consultations')
+      .update({ assigned_doctor_id: doctorId })
+      .eq('id', c.id)
+    if (error) {
+      console.error(error)
+      setMessage('No se pudo asignar el médico.')
+      setConsultations((list) =>
+        list.map((x) => (x.id === c.id ? { ...x, assigned_doctor_id: prev } : x))
+      )
+      return
+    }
+    await supabase.from('consultation_events').insert({
+      consultation_id: c.id,
+      event_type: 'admin_update',
+      note: `Médico asignado: ${doctor ? doctor.full_name : 'Sin asignar'}`
+    })
+    setMessage('Médico actualizado.')
   }
 
   // Inline (cases table) save of the admin note.
@@ -1084,8 +1181,101 @@ export default function AdminDashboard() {
                               )}
                             </td>
                             <td>
-                              <div style={{ marginBottom: 4 }}>
-                                {doctorName(c.assigned_doctor_id)}
+                              <div style={{ position: 'relative', marginBottom: 6 }}>
+                                <input
+                                  value={
+                                    rowDocMenu === c.id
+                                      ? rowDocQuery
+                                      : doctorName(c.assigned_doctor_id)
+                                  }
+                                  placeholder="Buscar médico…"
+                                  onFocus={() => {
+                                    setRowDocQuery('')
+                                    setRowDocOptions([])
+                                    setRowDocMenu(c.id)
+                                  }}
+                                  onChange={(e) => setRowDocQuery(e.target.value)}
+                                  onBlur={() => setRowDocMenu((cur) => (cur === c.id ? null : cur))}
+                                  style={{ fontSize: 12, padding: '4px 6px' }}
+                                />
+                                {rowDocMenu === c.id && (
+                                  <div
+                                    style={{
+                                      position: 'absolute',
+                                      zIndex: 30,
+                                      top: '100%',
+                                      left: 0,
+                                      right: 0,
+                                      marginTop: 4,
+                                      background: '#fff',
+                                      border: '1px solid var(--border)',
+                                      borderRadius: 8,
+                                      maxHeight: 200,
+                                      overflowY: 'auto',
+                                      boxShadow: '0 8px 24px rgba(15,23,42,0.12)'
+                                    }}
+                                  >
+                                    <button
+                                      type="button"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault()
+                                        assignDoctorInline(c, null)
+                                      }}
+                                      style={{
+                                        display: 'block',
+                                        width: '100%',
+                                        textAlign: 'left',
+                                        padding: '6px 10px',
+                                        border: 'none',
+                                        background: 'transparent',
+                                        color: '#64748b',
+                                        fontSize: 12
+                                      }}
+                                    >
+                                      Sin asignar
+                                    </button>
+                                    {rowDocOptions.map((d) => (
+                                      <button
+                                        type="button"
+                                        key={d.id}
+                                        onMouseDown={(e) => {
+                                          e.preventDefault()
+                                          assignDoctorInline(c, d)
+                                        }}
+                                        style={{
+                                          display: 'block',
+                                          width: '100%',
+                                          textAlign: 'left',
+                                          padding: '6px 10px',
+                                          border: 'none',
+                                          fontSize: 12,
+                                          background:
+                                            c.assigned_doctor_id === d.id
+                                              ? 'var(--green-light)'
+                                              : 'transparent'
+                                        }}
+                                      >
+                                        {d.full_name}{' '}
+                                        <span style={{ color: '#94a3b8' }}>
+                                          ({d.specialty || d.role})
+                                        </span>
+                                      </button>
+                                    ))}
+                                    {rowDocOptions.length === 0 && (
+                                      <div
+                                        style={{
+                                          padding: '6px 10px',
+                                          color: '#94a3b8',
+                                          fontSize: 12
+                                        }}
+                                      >
+                                        {rowDocQuery.trim()
+                                          ? 'Sin resultados'
+                                          : 'Escribe para buscar…'}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                               <textarea
                                 rows={2}

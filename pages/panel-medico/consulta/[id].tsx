@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { STATUS_LABELS, minutesSince } from '../../../lib/utils'
+import { browserRoomUrl } from '../../../lib/jitsi'
 
 type Patient = {
   id: string
@@ -451,7 +452,7 @@ export default function ConsultaDetalle() {
                 {consultation.video_room_url && (
                   <a
                     className="btn btn-primary"
-                    href={consultation.video_room_url}
+                    href={browserRoomUrl(consultation.video_room_url)}
                     target="_blank"
                     rel="noreferrer"
                   >
