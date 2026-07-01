@@ -7,6 +7,58 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-01
 
+- **Case detail: clearer patient header** — Zona, Edad (años) and Cédula now render as three clearly
+  labeled columns side by side, and the case **Categoría** (e.g. "Crisis de ansiedad") shows as a badge
+  next to the patient's name. File: `pages/panel-medico/consulta/[id].tsx`.
+
+- **Admin: inline-edit a patient's phone** — the cases table phone now has a pencil that opens an input
+  with a green check (Enter) to save / red ✕ (Esc) to cancel; verified with `.select()` and updates
+  every case of that patient locally. File: `pages/admin/dashboard.tsx`.
+
+- **Trazabilidad: log patient entry / WhatsApp choice** — the anon RPCs now record one-time timeline
+  events: `patient_entered_call` ("Paciente ingresó a la videollamada") on first video entry and
+  `patient_wants_whatsapp` ("Paciente prefirió ser contactado por WhatsApp") when they choose WhatsApp.
+  Files: `supabase_schema.sql` (**needs prod migration**), `eventLabel` in `pages/admin/dashboard.tsx`
+  and `pages/panel-medico/consulta/[id].tsx`.
+
+- **Patient chooses video vs. WhatsApp on /sala-espera** — after registering, the patient now picks
+  between "Ingresar a videollamada para ayuda inmediata" (existing Jitsi flow) and "Prefiero ser
+  contactado/a por WhatsApp". The WhatsApp choice flags the case (`consultations.contact_preference`)
+  via a new anon RPC `mark_patient_wants_whatsapp()` and it enters the doctors' contact pool
+  **immediately** (no 20-min wait); the panel's "no atendidos" queue condition is now
+  `contact_preference = 'whatsapp' OR waited ≥20 min`. Files: `supabase_schema.sql` (new column + RPC,
+  **needs prod migration**), `pages/sala-espera.tsx`, `pages/panel-medico.tsx`.
+
+- **Admin: reliable "Guardar cambios" in "Gestionar caso"** — the save now verifies both writes
+  (consultation + patient `needs_tags`) with `.select()` so a silent 0-row update (RLS/no match, which
+  returns no error) is caught and surfaced with the real DB message instead of appearing to succeed.
+  This fixes tipo de ayuda / especialidades edits that occasionally didn't stick. On success the panel
+  still closes (`setSelected(null)`); on a real failure it stays open with the error. File:
+  `pages/admin/dashboard.tsx`.
+
+- **Case detail: WhatsApp guidance reworded as bullets** — the red contact note in
+  `/panel-medico/consulta/[id]` is now a 3-item list (contact via WhatsApp to schedule a call; wait up
+  to 24h; log missing/wrong contact in the notes). File: `pages/panel-medico/consulta/[id].tsx`.
+
+- **Patient phone: forced +58 prefix, digits-only input** — the registration phone field
+  (`/registro-paciente`) now shows a fixed `+58` prefix and accepts only numbers (strips non-digits
+  and a leading 0); saved as `+58` + the local number. File: `pages/registro-paciente.tsx`.
+
+- **Case detail: patient phone is a big WhatsApp link** — in `/panel-medico/consulta/[id]` the patient
+  number is now a larger, tappable `wa.me` link so doctors can open WhatsApp directly from their phones.
+  File: `pages/panel-medico/consulta/[id].tsx`.
+
+- **Case detail: "Tengo un problema" button + modal** — replaced the always-on red top-right notice
+  with a "Tengo un problema" button that opens a popup showing the team WhatsApp contact
+  (+4915203003171). File: `pages/panel-medico/consulta/[id].tsx`.
+
+- **QR image hosted for social media** — added `public/qr-medicosporvenezuela.jpg`, served inline at
+  `/qr-medicosporvenezuela.jpg` so the link can be shared on social media.
+
+- **Instruction image URL forces download** — opening `/instruccion-jitsi.png` directly now downloads
+  the file (as `instruccion-videollamada.png`) via a `Content-Disposition: attachment` header, while
+  still rendering normally in the `<img>` on `/sala-espera`. File: `next.config.js` (`headers()`).
+
 - **Admin: "Referencia y trazabilidad" in "Gestionar caso"** — selecting a case now loads its
   `consultation_events` audit trail and shows the history (event label, note, author + role, and the
   timestamp in Venezuela time) at the bottom of the manage panel, so admins can see what has happened.

@@ -106,7 +106,7 @@ export default function RegistroPaciente() {
           user_id: userId,
           full_name: nombre.trim(),
           cedula: cedula.trim(),
-          phone_whatsapp: telefono.trim(),
+          phone_whatsapp: '+58' + telefono.trim(),
           email: contactEmail.trim() || null,
           affected_zone: zona,
           age_range: edad || null,
@@ -209,13 +209,38 @@ export default function RegistroPaciente() {
                 </div>
               </div>
               <div>
-                <label className="label">Teléfono con código de país *</label>
-                <input
-                  value={telefono}
-                  onChange={(e) => setTelefono(e.target.value)}
-                  placeholder="Ej. 584121234567"
-                />
-                <div className="hint">Solo lo usaremos si tu caso necesita seguimiento.</div>
+                <label className="label">Teléfono (WhatsApp) *</label>
+                <div style={{ display: 'flex', alignItems: 'stretch' }}>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '0 12px',
+                      background: '#f1f5f9',
+                      border: '1px solid var(--border)',
+                      borderRight: 'none',
+                      borderRadius: '10px 0 0 10px',
+                      color: '#334155',
+                      fontWeight: 600,
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    +58
+                  </span>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    value={telefono}
+                    onChange={(e) =>
+                      setTelefono(e.target.value.replace(/\D/g, '').replace(/^0+/, ''))
+                    }
+                    placeholder="Ej. 4121234567"
+                    style={{ borderRadius: '0 10px 10px 0', flex: 1 }}
+                  />
+                </div>
+                <div className="hint">
+                  Solo números, sin el 0 inicial. Lo usaremos si tu caso necesita seguimiento.
+                </div>
               </div>
               <div>
                 <label className="label">Correo electrónico (opcional)</label>

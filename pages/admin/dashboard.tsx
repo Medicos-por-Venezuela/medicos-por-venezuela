@@ -77,7 +77,9 @@ function eventLabel(type: string): string {
     opened: 'Consulta abierta',
     closed: 'Consulta cerrada',
     patient_no_show: 'Paciente ausente',
-    admin_update: 'Actualización administrativa'
+    admin_update: 'Actualización administrativa',
+    patient_entered_call: 'Paciente ingresó a la videollamada',
+    patient_wants_whatsapp: 'Paciente prefirió ser contactado por WhatsApp'
   }
   return labels[type] || type
 }
@@ -171,6 +173,11 @@ export default function AdminDashboard() {
 
   // Which section is shown: patients/cases vs doctors/admins.
   const [tab, setTab] = useState<'casos' | 'medicos'>('casos')
+
+  // Inline patient-phone edit in the cases table (pencil → input → check). Keyed by consultation id.
+  const [editingPhoneId, setEditingPhoneId] = useState<string | null>(null)
+  const [phoneDraft, setPhoneDraft] = useState('')
+  const [savingPhone, setSavingPhone] = useState(false)
 
   // Case oversight panel state
   const [selected, setSelected] = useState<Consultation | null>(null)
@@ -602,22 +609,37 @@ export default function AdminDashboard() {
       return
     }
 
-    const { error } = await supabase.from('consultations').update(update).eq('id', selected.id)
-    if (error) {
+    // Use `.select()` so we can detect BOTH a DB error and a silent 0-row update (RLS/no match returns
+    // no error but changes nothing) — that silent case is what made saves appear to "not stick".
+    const { data: consRows, error } = await supabase
+      .from('consultations')
+      .update(update)
+      .eq('id', selected.id)
+      .select('id')
+    if (error || !consRows || consRows.length === 0) {
       console.error(error)
-      setMessage('No se pudo actualizar el caso.')
+      setMessage(
+        error
+          ? `No se pudo actualizar el caso: ${error.message}`
+          : 'No se pudo actualizar el caso (sin permisos o no encontrado).'
+      )
       return
     }
 
     // The tipo de ayuda lives on the patient row (needs_tags); persist the admin's edit so the
     // eligible specialties re-derive from it.
-    const { error: needsError } = await supabase
+    const { data: patRows, error: needsError } = await supabase
       .from('patients')
       .update({ needs_tags: caseNeeds })
       .eq('id', selected.patient_id)
-    if (needsError) {
+      .select('id')
+    if (needsError || !patRows || patRows.length === 0) {
       console.error(needsError)
-      setMessage('Se guardó el caso, pero no se pudo actualizar el tipo de ayuda.')
+      setMessage(
+        needsError
+          ? `Se guardó el caso, pero no se pudo actualizar el tipo de ayuda: ${needsError.message}`
+          : 'Se guardó el caso, pero no se pudo actualizar el tipo de ayuda (sin permisos o paciente no encontrado).'
+      )
       return
     }
     await supabase.from('consultation_events').insert({
@@ -662,6 +684,40 @@ export default function AdminDashboard() {
       setMessage('No se pudo actualizar "Contactado".')
       setConsultations((prev) => prev.map((x) => (x.id === c.id ? { ...x, contacted: !next } : x)))
     }
+  }
+
+  // Inline edit of a patient's phone from the cases table. Verified with `.select()` so a silent
+  // 0-row update (RLS/no match) is caught. Updates every case of the same patient locally.
+  async function savePhone(c: Consultation) {
+    if (!c.patient_id) return
+    const value = phoneDraft.trim()
+    setSavingPhone(true)
+    const { data, error } = await supabase
+      .from('patients')
+      .update({ phone_whatsapp: value })
+      .eq('id', c.patient_id)
+      .select('id')
+    setSavingPhone(false)
+    if (error || !data || data.length === 0) {
+      setMessage(
+        error
+          ? `No se pudo actualizar el teléfono: ${error.message}`
+          : 'No se pudo actualizar el teléfono (sin permisos o paciente no encontrado).'
+      )
+      return
+    }
+    setConsultations((prev) =>
+      prev.map((x) =>
+        x.patient_id === c.patient_id && x.patients
+          ? { ...x, patients: { ...x.patients, phone_whatsapp: value } }
+          : x
+      )
+    )
+    if (selected?.patient_id === c.patient_id && selected.patients) {
+      setSelected({ ...selected, patients: { ...selected.patients, phone_whatsapp: value } })
+    }
+    setEditingPhoneId(null)
+    setMessage('Teléfono actualizado.')
   }
 
   // Inline status change from the cases table (no need to open "Gestionar caso").
@@ -1254,9 +1310,82 @@ export default function AdminDashboard() {
                               <Line label="Edad" value={c.patients?.age_range} />
                             </td>
                             <td style={{ fontSize: 12 }}>
-                              <div title="Teléfono" style={{ color: '#0f172a', fontWeight: 600 }}>
-                                {c.patients?.phone_whatsapp || '—'}
-                              </div>
+                              {editingPhoneId === c.id ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <input
+                                    value={phoneDraft}
+                                    onChange={(e) => setPhoneDraft(e.target.value)}
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') savePhone(c)
+                                      if (e.key === 'Escape') setEditingPhoneId(null)
+                                    }}
+                                    style={{ fontSize: 12, padding: '2px 4px', width: 120 }}
+                                  />
+                                  <button
+                                    type="button"
+                                    title="Guardar teléfono"
+                                    onClick={() => savePhone(c)}
+                                    disabled={savingPhone}
+                                    style={{
+                                      border: 'none',
+                                      background: 'transparent',
+                                      cursor: 'pointer',
+                                      color: '#16a34a',
+                                      fontSize: 15,
+                                      padding: 0
+                                    }}
+                                  >
+                                    ✓
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title="Cancelar"
+                                    onClick={() => setEditingPhoneId(null)}
+                                    style={{
+                                      border: 'none',
+                                      background: 'transparent',
+                                      cursor: 'pointer',
+                                      color: '#dc2626',
+                                      fontSize: 14,
+                                      padding: 0
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              ) : (
+                                <div
+                                  title="Teléfono"
+                                  style={{
+                                    color: '#0f172a',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 6
+                                  }}
+                                >
+                                  <span>{c.patients?.phone_whatsapp || '—'}</span>
+                                  <button
+                                    type="button"
+                                    title="Editar teléfono"
+                                    onClick={() => {
+                                      setEditingPhoneId(c.id)
+                                      setPhoneDraft(c.patients?.phone_whatsapp || '')
+                                    }}
+                                    style={{
+                                      border: 'none',
+                                      background: 'transparent',
+                                      cursor: 'pointer',
+                                      color: '#94a3b8',
+                                      fontSize: 14,
+                                      padding: 0
+                                    }}
+                                  >
+                                    ✎
+                                  </button>
+                                </div>
+                              )}
                               {c.patients?.cedula && (
                                 <div title="Cédula" style={{ color: '#a16207' }}>
                                   {c.patients.cedula}

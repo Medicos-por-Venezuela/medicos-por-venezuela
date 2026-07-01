@@ -34,6 +34,7 @@ type Consultation = {
   assigned_doctor_id: string | null
   attended_via_whatsapp: boolean
   required_specialties: string[] | null
+  contact_preference: string | null
   patients: Patient | null
 }
 
@@ -189,9 +190,19 @@ export default function PanelMedico() {
       .gte('entered_call_at', liveWindowAgo)
       .order('entered_call_at', { ascending: true })
 
-    const [unattendedRes, liveRes] = await Promise.all([qUnattended, qLive])
-    if (unattendedRes.error || liveRes.error) {
-      console.error(unattendedRes.error || liveRes.error)
+    // Patients who chose "Prefiero ser contactado/a por WhatsApp" on /sala-espera: open, not assigned,
+    // surfaced immediately (no 20-min wait) since they explicitly asked to be contacted.
+    const qWhatsapp = supabase
+      .from('consultations')
+      .select(`*, patients(${PATIENT_COLS})`)
+      .in('status', OPEN_STATUSES)
+      .is('assigned_doctor_id', null)
+      .eq('contact_preference', 'whatsapp')
+      .order('created_at', { ascending: true })
+
+    const [unattendedRes, liveRes, whatsappRes] = await Promise.all([qUnattended, qLive, qWhatsapp])
+    if (unattendedRes.error || liveRes.error || whatsappRes.error) {
+      console.error(unattendedRes.error || liveRes.error || whatsappRes.error)
       setMessage('No se pudieron cargar las consultas.')
       return
     }
@@ -209,11 +220,12 @@ export default function PanelMedico() {
       mine = (mineData || []) as Consultation[]
     }
 
-    // Merge the three sources, de-duplicated by id (a live case may also be >20 min old).
+    // Merge the sources, de-duplicated by id (a live case may also be >20 min old, etc.).
     const byId = new Map<string, Consultation>()
     for (const c of [
       ...((unattendedRes.data || []) as Consultation[]),
       ...((liveRes.data || []) as Consultation[]),
+      ...((whatsappRes.data || []) as Consultation[]),
       ...mine
     ]) {
       byId.set(c.id, c)
@@ -239,7 +251,8 @@ export default function PanelMedico() {
       consultations.filter(
         (c) =>
           c.assigned_doctor_id === null &&
-          minutesSince(c.created_at) >= WAITING_FALLBACK_MIN &&
+          (c.contact_preference === 'whatsapp' ||
+            minutesSince(c.created_at) >= WAITING_FALLBACK_MIN) &&
           specialtyCanSee(
             profile?.specialty,
             c.required_specialties,

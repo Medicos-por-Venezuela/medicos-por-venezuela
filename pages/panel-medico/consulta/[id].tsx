@@ -89,7 +89,9 @@ function eventLabel(type: string): string {
     opened: 'Consulta abierta',
     closed: 'Consulta cerrada',
     patient_no_show: 'Paciente ausente',
-    admin_update: 'Actualización administrativa'
+    admin_update: 'Actualización administrativa',
+    patient_entered_call: 'Paciente ingresó a la videollamada',
+    patient_wants_whatsapp: 'Paciente prefirió ser contactado por WhatsApp'
   }
   return labels[type] || type
 }
@@ -114,6 +116,7 @@ export default function ConsultaDetalle() {
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
+  const [problemOpen, setProblemOpen] = useState(false)
 
   useEffect(() => {
     if (!consultationId) return
@@ -331,20 +334,23 @@ export default function ConsultaDetalle() {
               <span className={`badge ${statusBadgeClass(consultation.status)}`}>
                 {STATUS_LABELS[consultation.status] || consultation.status}
               </span>
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: '#b91c1c',
-                  background: 'var(--red-light)',
-                  border: '1px solid #fca5a5',
-                  borderRadius: 8,
-                  padding: '8px 10px'
-                }}
-              >
-                Si tienes problemas con este caso, por favor contáctanos vía{' '}
-                <strong>+4915203003171</strong> en WhatsApp.
+              <div style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setProblemOpen(true)}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: '#b91c1c',
+                    background: 'var(--red-light)',
+                    border: '1px solid #fca5a5',
+                    borderRadius: 8,
+                    padding: '8px 12px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Tengo un problema
+                </button>
               </div>
             </div>
           </div>
@@ -358,32 +364,101 @@ export default function ConsultaDetalle() {
           <div className="detail-grid">
             <section className="card">
               <h2 style={{ marginTop: 0 }}>Paciente</h2>
-              <h3 style={{ marginBottom: 4 }}>{consultation.patients?.full_name || 'Paciente'}</h3>
-              <p style={{ marginTop: 0, color: '#64748b' }}>
-                {consultation.patients?.affected_zone || 'Zona no indicada'} ·{' '}
-                {consultation.patients?.age_range || 'Edad no indicada'}
-              </p>
-              <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
-                Cédula: {consultation.patients?.cedula || '—'}
-              </p>
-              <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
-                Tel. (solo seguimiento): {consultation.patients?.phone_whatsapp || '—'}
-              </p>
-              <p
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                  marginBottom: 4
+                }}
+              >
+                <h3 style={{ margin: 0 }}>{consultation.patients?.full_name || 'Paciente'}</h3>
+                {consultation.category && (
+                  <span
+                    className="badge"
+                    style={{
+                      background: '#eef2ff',
+                      color: '#4338ca',
+                      border: '1px solid #c7d2fe'
+                    }}
+                  >
+                    {consultation.category}
+                  </span>
+                )}
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 16,
+                  margin: '8px 0',
+                  color: '#0f172a'
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>Zona</div>
+                  <div style={{ fontSize: 14 }}>{consultation.patients?.affected_zone || '—'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>Edad (años)</div>
+                  <div style={{ fontSize: 14 }}>{consultation.patients?.age_range || '—'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>Cédula</div>
+                  <div style={{ fontSize: 14 }}>{consultation.patients?.cedula || '—'}</div>
+                </div>
+              </div>
+              <div style={{ margin: '10px 0' }}>
+                <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginBottom: 4 }}>
+                  Tel. (WhatsApp)
+                </div>
+                {consultation.patients?.phone_whatsapp ? (
+                  <a
+                    href={`https://wa.me/${consultation.patients.phone_whatsapp.replace(/\D/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 15,
+                      fontWeight: 700,
+                      color: '#fff',
+                      background: '#16a34a',
+                      borderRadius: 8,
+                      padding: '8px 14px',
+                      textDecoration: 'none',
+                      wordBreak: 'break-all'
+                    }}
+                  >
+                    <span aria-hidden="true">💬</span>
+                    {consultation.patients.phone_whatsapp}
+                  </a>
+                ) : (
+                  <span style={{ color: '#64748b', fontSize: 13 }}>—</span>
+                )}
+              </div>
+              <ul
                 style={{
                   margin: '4px 0 0',
+                  paddingLeft: 16,
                   color: '#b91c1c',
                   fontSize: 12,
                   fontWeight: 600,
                   lineHeight: 1.4
                 }}
               >
-                De ser posible por favor contacta al paciente vía WhatsApp. Por temas de
-                conectividad es mejor si se escribe por chat para agendar una llamada y asegurar
-                mejor conexión del paciente. Por favor espera hasta 24 horas por una respuesta del
-                paciente. Si no hay respuesta alguna o el contacto es incorrecto, coméntalo en las
-                notas médicas.
-              </p>
+                <li>
+                  De ser posible por favor contacta al paciente vía WhatsApp intentando agendar una
+                  llamada y asegurar así una mejor conexión con el paciente.
+                </li>
+                <li>Por favor espera hasta 24 horas por una respuesta del paciente.</li>
+                <li>
+                  Si no hay respuesta alguna o el contacto es incorrecto, coméntalo en las notas
+                  médicas.
+                </li>
+              </ul>
               <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
                 Email (opcional): {consultation.patients?.email || '—'}
               </p>
@@ -396,13 +471,6 @@ export default function ConsultaDetalle() {
                   </span>
                 )}
               </div>
-              <div className="tag-row" style={{ marginTop: 12 }}>
-                {consultation.patients?.needs_tags?.map((t) => (
-                  <span key={t} className="tag">
-                    {t}
-                  </span>
-                ))}
-              </div>
             </section>
 
             <section className="card">
@@ -412,8 +480,14 @@ export default function ConsultaDetalle() {
                   consultation.patients?.description ||
                   'Sin descripción'}
               </div>
-              {consultation.category && (
-                <p style={{ color: '#64748b' }}>Tipo de ayuda: {consultation.category}</p>
+              {consultation.patients?.needs_tags && consultation.patients.needs_tags.length > 0 && (
+                <div className="tag-row" style={{ marginTop: 12 }}>
+                  {consultation.patients.needs_tags.map((t) => (
+                    <span key={t} className="tag">
+                      {t}
+                    </span>
+                  ))}
+                </div>
               )}
               {consultation.referred_specialty && (
                 <p>
@@ -519,6 +593,39 @@ export default function ConsultaDetalle() {
         </div>
       </main>
 
+      {problemOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setProblemOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            zIndex: 1000
+          }}
+        >
+          <div
+            className="card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 420, width: '100%' }}
+          >
+            <h2 style={{ marginTop: 0 }}>¿Tienes un problema?</h2>
+            <p style={{ marginBottom: 20 }}>
+              Si tienes problemas con este caso, por favor contáctanos vía{' '}
+              <strong>+4915203003171</strong> en WhatsApp.
+            </p>
+            <button className="btn btn-primary btn-full" onClick={() => setProblemOpen(false)}>
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
+
       <style jsx global>{`
         .detail-topbar {
           display: flex;
@@ -533,7 +640,12 @@ export default function ConsultaDetalle() {
         .detail-timeline {
           display: grid;
           grid-template-columns: 1fr;
-          gap: 16px;
+          gap: 20px;
+          align-items: start;
+        }
+
+        .detail-grid .card {
+          margin: 0;
         }
 
         .detail-full-span {
@@ -551,6 +663,7 @@ export default function ConsultaDetalle() {
         @media (min-width: 900px) {
           .detail-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 24px;
           }
         }
       `}</style>
