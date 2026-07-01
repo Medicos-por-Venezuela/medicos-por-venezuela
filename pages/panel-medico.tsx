@@ -2,7 +2,7 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { STATUS_LABELS, canAttend, matchesSpecialty, minutesSince } from '../lib/utils'
+import { STATUS_LABELS, matchesSpecialty, minutesSince, specialtyCanSee } from '../lib/utils'
 import { browserRoomUrl } from '../lib/jitsi'
 
 type Patient = {
@@ -33,6 +33,7 @@ type Consultation = {
   patient_last_seen_at: string | null
   assigned_doctor_id: string | null
   attended_via_whatsapp: boolean
+  required_specialties: string[] | null
   patients: Patient | null
 }
 
@@ -236,9 +237,17 @@ export default function PanelMedico() {
   const waiting = useMemo(
     () =>
       consultations.filter(
-        (c) => c.assigned_doctor_id === null && minutesSince(c.created_at) >= WAITING_FALLBACK_MIN
+        (c) =>
+          c.assigned_doctor_id === null &&
+          minutesSince(c.created_at) >= WAITING_FALLBACK_MIN &&
+          specialtyCanSee(
+            profile?.specialty,
+            c.required_specialties,
+            c.category,
+            c.patients?.needs_tags || null
+          )
       ),
-    [consultations]
+    [consultations, profile?.specialty]
   )
   // Live video queue for "Atender al siguiente": unassigned patients who entered the video call
   // within the last LIVE_CALL_WINDOW_MIN minutes (i.e. actually waiting in the room right now).
@@ -248,9 +257,15 @@ export default function PanelMedico() {
         (c) =>
           c.assigned_doctor_id === null &&
           c.entered_call_at !== null &&
-          Date.now() - new Date(c.entered_call_at).getTime() < LIVE_CALL_WINDOW_MIN * 60000
+          Date.now() - new Date(c.entered_call_at).getTime() < LIVE_CALL_WINDOW_MIN * 60000 &&
+          specialtyCanSee(
+            profile?.specialty,
+            c.required_specialties,
+            c.category,
+            c.patients?.needs_tags || null
+          )
       ),
-    [consultations]
+    [consultations, profile?.specialty]
   )
   // The doctor's own active cases they can reopen: in-progress ones plus WhatsApp cases already
   // marked "Ya contactado vía WhatsApp" (which otherwise would drop off the panel). Only the
@@ -353,28 +368,16 @@ export default function PanelMedico() {
   async function attendNext() {
     setMessage('')
 
-    const eligible = liveWaiting.filter(
-      (c) =>
-        isCurrentUserAdmin ||
-        canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null)
-    )
-
-    if (eligible.length === 0) {
-      setMessage(
-        liveWaiting.length
-          ? 'No hay pacientes para tu especialidad en videollamada ahora.'
-          : 'No hay pacientes en videollamada esperando ahora.'
-      )
+    if (liveWaiting.length === 0) {
+      setMessage('No hay pacientes en videollamada esperando ahora.')
       return
     }
 
-    const pool = eligible
-
-    const next = isCurrentUserAdmin
-      ? pool[0]
-      : pool.find((c) =>
-          matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)
-        ) || pool[0]
+    // liveWaiting is already limited to cases this doctor can attend; prefer a specialty match.
+    const next =
+      liveWaiting.find((c) =>
+        matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)
+      ) || liveWaiting[0]
 
     await openConsultation(next)
   }

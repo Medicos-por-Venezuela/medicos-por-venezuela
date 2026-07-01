@@ -1,8 +1,19 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { SPECIALTIES, STATUS_LABELS, eligibleSpecialties } from '../../lib/utils'
+import {
+  NEEDS,
+  SPECIALTIES,
+  STATUS_LABELS,
+  effectiveSpecialties,
+  eligibleSpecialties
+} from '../../lib/utils'
+
+// True if two specialty lists contain the same set (order-independent).
+function sameSpecialtySet(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((x) => b.includes(x))
+}
 
 type Profile = {
   id: string
@@ -48,6 +59,8 @@ type Consultation = {
   contacted: boolean
   admin_seguimiento: string | null // super_admin id following up the case
   nota_admin: string | null
+  attended_via_whatsapp: boolean
+  required_specialties: string[] | null
   patients: Patient | null
 }
 
@@ -148,6 +161,13 @@ export default function AdminDashboard() {
   const [caseNote, setCaseNote] = useState('')
   const [caseSeguimiento, setCaseSeguimiento] = useState('') // admin_seguimiento (super_admin id)
   const [caseNotaAdmin, setCaseNotaAdmin] = useState('')
+  // Editable "tipo de ayuda" of the selected case (fixes a wrong patient selection; re-routes it).
+  const [caseNeeds, setCaseNeeds] = useState<string[]>([])
+  // Which specialties can see the case. Starts from the derived/override set; if the admin changes it
+  // away from what the tipo de ayuda derives, it's saved as an override (required_specialties).
+  const [caseSpecs, setCaseSpecs] = useState<string[]>([])
+  // The "Gestionar caso" panel, so clicking a case scrolls up to it.
+  const manageRef = useRef<HTMLDivElement | null>(null)
   // Searchable "Médico asignado" combobox (queries the DB so it reaches all doctors, not the 1000 cap).
   const [caseDoctorName, setCaseDoctorName] = useState('')
   const [doctorQuery, setDoctorQuery] = useState('')
@@ -388,18 +408,6 @@ export default function AdminDashboard() {
   const isOnline = (lastSeen: string | null) =>
     !!lastSeen && now - new Date(lastSeen).getTime() < 3 * 60 * 1000
   const doctors = profiles.filter((p) => ['doctor', 'specialist'].includes(p.role))
-  // Used only for the "Derivaciones por especialidad" breakdown (over the loaded recent cases).
-  const referred = consultations.filter((c) => c.status === 'referred_to_specialist')
-
-  const bySpecialty = useMemo(() => {
-    const counts: Record<string, number> = {}
-    referred.forEach((c) => {
-      const key = c.referred_specialty || 'Sin especialidad'
-      counts[key] = (counts[key] || 0) + 1
-    })
-    return Object.entries(counts)
-  }, [referred])
-
   const doctorName = (id: string | null) =>
     doctors.find((d) => d.id === id)?.full_name ||
     (id ? doctorNameCache[id] || 'Médico' : 'Sin asignar')
@@ -501,17 +509,30 @@ export default function AdminDashboard() {
     setCaseSeguimiento(c.admin_seguimiento || '')
     setCaseNotaAdmin(c.nota_admin || '')
     setCaseDoctorName(c.assigned_doctor_id ? doctorName(c.assigned_doctor_id) : '')
+    setCaseNeeds(c.patients?.needs_tags || [])
+    setCaseSpecs(
+      effectiveSpecialties(c.required_specialties, c.category, c.patients?.needs_tags || null)
+    )
     setDoctorQuery('')
     setDoctorMenuOpen(false)
     setMessage('')
+    // Bring the "Gestionar caso" panel (near the top) into view. Deferred so it runs after render.
+    requestAnimationFrame(() =>
+      manageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    )
   }
 
   async function saveCase() {
     if (!selected) return
+    // Only store an override when the admin's specialty selection differs from what the tipo de ayuda
+    // derives; otherwise keep it null so it stays derived.
+    const derivedSpecs = eligibleSpecialties(caseNeeds[0] || null, caseNeeds)
     const update: Record<string, unknown> = {
       status: caseStatus,
       assigned_doctor_id: caseDoctor || null,
-      internal_note: caseNote
+      internal_note: caseNote,
+      category: caseNeeds[0] || null,
+      required_specialties: sameSpecialtySet(caseSpecs, derivedSpecs) ? null : caseSpecs
     }
     if (['closed', 'patient_no_show', 'closed_by_admin'].includes(caseStatus))
       update.closed_at = new Date().toISOString()
@@ -524,6 +545,18 @@ export default function AdminDashboard() {
     if (error) {
       console.error(error)
       setMessage('No se pudo actualizar el caso.')
+      return
+    }
+
+    // The tipo de ayuda lives on the patient row (needs_tags); persist the admin's edit so the
+    // eligible specialties re-derive from it.
+    const { error: needsError } = await supabase
+      .from('patients')
+      .update({ needs_tags: caseNeeds })
+      .eq('id', selected.patient_id)
+    if (needsError) {
+      console.error(needsError)
+      setMessage('Se guardó el caso, pero no se pudo actualizar el tipo de ayuda.')
       return
     }
     await supabase.from('consultation_events').insert({
@@ -773,7 +806,7 @@ export default function AdminDashboard() {
 
           {tab === 'casos' && (
             <>
-              <div className="grid grid-2" style={{ marginBottom: 18 }}>
+              <div style={{ marginBottom: 18 }} ref={manageRef}>
                 <section className="card">
                   <h2 style={{ marginTop: 0 }}>Gestionar caso</h2>
                   {!selected ? (
@@ -789,6 +822,60 @@ export default function AdminDashboard() {
                         </h3>
                         <p style={{ marginTop: 0, color: '#64748b' }}>
                           {selected.code} · {selected.patients?.affected_zone || '-'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="label">Tipo de ayuda</label>
+                        <div className="tag-row">
+                          {NEEDS.map((tag) => {
+                            const on = caseNeeds.includes(tag)
+                            return (
+                              <button
+                                type="button"
+                                key={tag}
+                                className={`tag ${on ? 'selected' : ''}`}
+                                onClick={() => {
+                                  const next = on
+                                    ? caseNeeds.filter((t) => t !== tag)
+                                    : [...caseNeeds, tag]
+                                  setCaseNeeds(next)
+                                  setCaseSpecs(eligibleSpecialties(next[0] || null, next))
+                                }}
+                              >
+                                {tag}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="label">Especialidades que pueden ver este caso</label>
+                        <div className="tag-row">
+                          {SPECIALTIES.map((s) => {
+                            const on = caseSpecs.includes(s)
+                            return (
+                              <button
+                                type="button"
+                                key={s}
+                                className={`tag ${on ? 'selected' : ''}`}
+                                onClick={() =>
+                                  setCaseSpecs((prev) =>
+                                    on ? prev.filter((x) => x !== s) : [...prev, s]
+                                  )
+                                }
+                              >
+                                {s}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <p className="hint" style={{ marginTop: 6 }}>
+                          {sameSpecialtySet(
+                            caseSpecs,
+                            eligibleSpecialties(caseNeeds[0] || null, caseNeeds)
+                          )
+                            ? 'Derivadas del tipo de ayuda.'
+                            : 'Personalizadas (anulan el tipo de ayuda).'}
                         </p>
                       </div>
                       <div>
@@ -915,33 +1002,6 @@ export default function AdminDashboard() {
                       )}
                     </div>
                   )}
-                </section>
-
-                <section className="card">
-                  <h2 style={{ marginTop: 0 }}>Derivaciones por especialidad</h2>
-                  {bySpecialty.length === 0 ? (
-                    <p style={{ color: '#64748b' }}>No hay derivaciones pendientes.</p>
-                  ) : (
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th>Especialidad</th>
-                          <th>Cantidad</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {bySpecialty.map(([s, count]) => (
-                          <tr key={s}>
-                            <td>{s}</td>
-                            <td>{count}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                  <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 12 }}>
-                    Especialidades disponibles para derivar: {SPECIALTIES.length}.
-                  </p>
                 </section>
               </div>
 
@@ -1113,11 +1173,24 @@ export default function AdminDashboard() {
                               </select>
                               <Line
                                 label="Especialidades"
-                                value={eligibleSpecialties(
+                                value={effectiveSpecialties(
+                                  c.required_specialties,
                                   c.category,
                                   c.patients?.needs_tags || null
                                 ).join(', ')}
                               />
+                              {c.attended_via_whatsapp && (
+                                <div
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    color: '#16a34a',
+                                    marginTop: 4
+                                  }}
+                                >
+                                  Doctor contactará vía WhatsApp
+                                </div>
+                              )}
                               <Line label="Derivado a" value={c.referred_specialty} />
                             </td>
                             <td>
@@ -1138,7 +1211,7 @@ export default function AdminDashboard() {
                                 <span
                                   style={{
                                     fontWeight: 700,
-                                    fontSize: 13,
+                                    fontSize: 11,
                                     color: c.contacted ? '#16a34a' : '#64748b'
                                   }}
                                 >

@@ -117,6 +117,9 @@ alter table public.consultations add column if not exists nota_admin text;
 -- Doctor chose to attend this case directly via WhatsApp (their personal number) instead of video;
 -- the case-detail page then shows the WhatsApp status controls and hides the video/close buttons.
 alter table public.consultations add column if not exists attended_via_whatsapp boolean not null default false;
+-- Admin override of which specialties may attend the case. NULL/empty = derive from the tipo de
+-- ayuda (category/needs); when set, it takes precedence over that derivation.
+alter table public.consultations add column if not exists required_specialties text[];
 
 -- Allow the 'patient_no_show' and 'closed_by_admin' statuses on existing databases (idempotent).
 alter table public.consultations drop constraint if exists consultations_status_check;

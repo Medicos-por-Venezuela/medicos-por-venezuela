@@ -3,7 +3,6 @@ import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { STATUS_LABELS, minutesSince } from '../../../lib/utils'
-import { browserRoomUrl } from '../../../lib/jitsi'
 
 type Patient = {
   id: string
@@ -59,12 +58,13 @@ const ADMIN_ROLES = ['admin', 'super_admin'] as const
 const PANEL_ALLOWED_ROLES = ['doctor', 'specialist', ...ADMIN_ROLES] as const
 const PRESENCE_WINDOW_MS = 30 * 60 * 1000 // generous; see note in panel-medico.tsx
 
-// Status options shown for WhatsApp-attended cases (the doctor handles these outside video).
-const WHATSAPP_STATUS_OPTIONS: { value: string; label: string }[] = [
+// Case status options the attending doctor can set from "Gestión de la consulta".
+const DOCTOR_STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'in_progress', label: 'Abierta' },
-  { value: 'referred_to_specialist', label: 'Referenciado a otro médico' },
   { value: 'contacted_whatsapp', label: 'Ya contactado vía WhatsApp' },
+  { value: 'referred_to_specialist', label: 'Referenciado a otro médico' },
   { value: 'urgent_in_person', label: 'Necesita ir a centro de atención' },
+  { value: 'patient_no_show', label: 'Paciente no se presentó' },
   { value: 'closed', label: 'Cerrado' }
 ]
 
@@ -264,12 +264,12 @@ export default function ConsultaDetalle() {
   async function updateStatus(newStatus: string) {
     if (!consultation || !profile) return
     setMessage('')
-    const isClosed = newStatus === 'closed'
+    const isTerminal = ['closed', 'closed_by_admin', 'patient_no_show'].includes(newStatus)
     const { error } = await supabase
       .from('consultations')
       .update({
         status: newStatus,
-        ...(isClosed ? { closed_at: new Date().toISOString() } : {})
+        ...(isTerminal ? { closed_at: new Date().toISOString() } : {})
       })
       .eq('id', consultation.id)
     if (error) {
@@ -283,30 +283,6 @@ export default function ConsultaDetalle() {
       `Estado: ${STATUS_LABELS[newStatus] || newStatus} (${profile.full_name})`
     )
     setMessage('Estado actualizado.')
-  }
-
-  async function closeConsultation(outcome: 'closed' | 'patient_no_show' = 'closed') {
-    if (!consultation || !profile) return
-    setMessage('')
-    const noShow = outcome === 'patient_no_show'
-    const { error } = await supabase
-      .from('consultations')
-      .update({ status: outcome, internal_note: note, closed_at: new Date().toISOString() })
-      .eq('id', consultation.id)
-
-    if (error) {
-      setMessage(noShow ? 'No se pudo marcar como ausente.' : 'No se pudo cerrar la consulta.')
-      return
-    }
-
-    await addEvent(
-      consultation.id,
-      noShow ? 'patient_no_show' : 'closed',
-      noShow
-        ? `Paciente no estaba en la sala de espera (${profile.full_name})`
-        : `Cerrada por ${profile.full_name}`
-    )
-    router.push('/panel-medico?actualizado=1')
   }
 
   if (loading) {
@@ -351,9 +327,26 @@ export default function ConsultaDetalle() {
                 Caso {consultation.code} · hace {minutesSince(consultation.created_at)} min
               </p>
             </div>
-            <span className={`badge ${statusBadgeClass(consultation.status)}`}>
-              {STATUS_LABELS[consultation.status] || consultation.status}
-            </span>
+            <div style={{ textAlign: 'right', maxWidth: 280 }}>
+              <span className={`badge ${statusBadgeClass(consultation.status)}`}>
+                {STATUS_LABELS[consultation.status] || consultation.status}
+              </span>
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: '#b91c1c',
+                  background: 'var(--red-light)',
+                  border: '1px solid #fca5a5',
+                  borderRadius: 8,
+                  padding: '8px 10px'
+                }}
+              >
+                Si tienes problemas con este caso, por favor contáctanos vía{' '}
+                <strong>+4915203003171</strong> en WhatsApp.
+              </div>
+            </div>
           </div>
 
           {message && (
@@ -417,6 +410,37 @@ export default function ConsultaDetalle() {
             </section>
 
             <section className="card detail-full-span">
+              <h2 style={{ marginTop: 0 }}>Gestión de la consulta</h2>
+              <div className="detail-actions">
+                <div>
+                  <label className="label">Estado del caso</label>
+                  <select
+                    value={consultation.status}
+                    onChange={(e) => updateStatus(e.target.value)}
+                  >
+                    {DOCTOR_STATUS_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Notas del médico</label>
+                  <textarea
+                    rows={6}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Evita escribir historia clínica completa. Solo información necesaria para coordinación."
+                  />
+                </div>
+                <button className="btn btn-secondary" onClick={saveNote}>
+                  Guardar nota
+                </button>
+              </div>
+            </section>
+
+            <section className="card detail-full-span">
               <h2 style={{ marginTop: 0 }}>Referencia y trazabilidad</h2>
               <div className="detail-timeline">
                 <div className="notice">
@@ -473,65 +497,6 @@ export default function ConsultaDetalle() {
                       )
                     })}
                   </div>
-                )}
-              </div>
-            </section>
-
-            <section className="card detail-full-span">
-              <h2 style={{ marginTop: 0 }}>Gestión de la consulta</h2>
-              <div className="detail-actions">
-                {consultation.attended_via_whatsapp && (
-                  <div>
-                    <label className="label">Estado del caso</label>
-                    <select
-                      value={consultation.status}
-                      onChange={(e) => updateStatus(e.target.value)}
-                    >
-                      {WHATSAPP_STATUS_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                <div>
-                  <label className="label">Notas del médico</label>
-                  <textarea
-                    rows={6}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Evita escribir historia clínica completa. Solo información necesaria para coordinación."
-                  />
-                </div>
-                {!consultation.attended_via_whatsapp && consultation.video_room_url && (
-                  <a
-                    className="btn btn-primary"
-                    href={browserRoomUrl(consultation.video_room_url)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Unirse a videoconsulta
-                  </a>
-                )}
-                <button className="btn btn-secondary" onClick={saveNote}>
-                  Guardar nota
-                </button>
-                {!consultation.attended_via_whatsapp && (
-                  <>
-                    <button
-                      className="btn btn-primary btn-full"
-                      onClick={() => closeConsultation('closed')}
-                    >
-                      Cerrar consulta
-                    </button>
-                    <button
-                      className="btn btn-outline btn-full"
-                      onClick={() => closeConsultation('patient_no_show')}
-                    >
-                      Paciente no estaba en la sala de espera
-                    </button>
-                  </>
                 )}
               </div>
             </section>
