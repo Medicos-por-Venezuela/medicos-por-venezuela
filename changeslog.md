@@ -30,6 +30,16 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   requiere info externa): expandir la lista de profesiones más allá de médico/psicólogo una vez
   que las Drs del grupo confirmen cuáles agregar — dejado como TODO en el código (`STEPS` en
   `pages/index.tsx`). File: `pages/index.tsx`.
+- **Registro médico: maqueta de formulario consolidado en un solo paso (sin endpoints)** — ticket
+  `refactor(registro-medicos)`, rama base `dev_aws`. `registro-medico.tsx` ahora junta en una sola
+  pantalla lo que hoy está dividido entre esa página (cuenta) y `/elegir-rol` (especialidad/país/
+  whatsapp): tipo de profesional, cédula con selector V/E y verificación en vivo (mock de
+  `verificacion-sacs`/`verificacion-psicologo`, que autocompleta y bloquea Nombre/Licencia),
+  WhatsApp con prefijo de país, y Especialidad oculta cuando no es médico. Colores/foco de esta
+  pantalla alineados al azul del home (`--home-blue`), scopeados vía `.registro-medico-page` para no
+  afectar el resto de la app (sigue en verde). Sin wiring real a la API todavía — pendiente de que
+  se mergeen los endpoints de backend y de un catálogo público de `professional-types`. No
+  mergeado a `dev_aws` todavía. Files: `pages/registro-medico.tsx`, `styles/globals.css`.
 - **Trazabilidad as compact rows** — the case-detail "Referencia y trazabilidad" event history now
   renders each event as a single divider-separated row (label — note · author, with the date on the
   right) instead of stacked cards, so the section is much shorter. File:

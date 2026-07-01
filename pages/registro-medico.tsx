@@ -1,49 +1,195 @@
 import Head from 'next/head'
 import Link from 'next/link'
-import { useRouter } from 'next/router'
 import { useState } from 'react'
-import { supabase } from '../lib/supabase'
 import { signInWithGoogle } from '../lib/auth'
+import { SPECIALTIES } from '../lib/utils'
 import GoogleButton from '../components/GoogleButton'
 
-// Step 1 of doctor registration: create the account (email+password or Google).
-// Step 2 (specialty/country/WhatsApp) happens on /elegir-rol, so email and Google
-// doctors follow the same path. The "doctor" intent is passed via the redirect query
-// (email) or localStorage (Google, since OAuth can't carry it).
+// MAQUETA (sin endpoints todavía): consolida en un solo paso lo que hoy está
+// dividido entre este archivo (cuenta) y /elegir-rol (especialidad/país/whatsapp),
+// según el diagrama de secuencia + wireframe del ticket "refactor(registro-medicos)".
+// El submit y las verificaciones de cédula son simuladas (mockVerificarSacs /
+// mockVerificarPsicologo) hasta que el backend exponga los endpoints reales:
+//   - GET /api/v1/verificacion-sacs/{cedula}         (V-12345678 / E-12345678)
+//   - GET /api/v1/verificacion-psicologo/{cedula}    (solo dígitos)
+//   - GET /api/v1/professional-types                 (hoy es staff-only; para un
+//     selector público como este hace falta un catálogo público, como
+//     /specialties/catalog. Ver nota en TIPOS_PROFESIONAL abajo.)
+//
+// El botón de Google sigue el flujo viejo (-> /elegir-rol) sin cambios: no forma
+// parte de este ticket. Queda como gap conocido a resolver en otra pasada.
+
+// TODO: reemplazar por fetch a GET /api/v1/professional-types (necesita catálogo
+// público equivalente a /specialties/catalog; hoy ese endpoint es staff-only).
+const TIPOS_PROFESIONAL = ['Médico', 'Psicólogo', 'Nutricionista', 'Otro']
+
+const PAISES = [
+  { nombre: 'Venezuela', dial: '+58' },
+  { nombre: 'Colombia', dial: '+57' },
+  { nombre: 'España', dial: '+34' },
+  { nombre: 'Chile', dial: '+56' },
+  { nombre: 'Argentina', dial: '+54' },
+  { nombre: 'Perú', dial: '+51' },
+  { nombre: 'Ecuador', dial: '+593' },
+  { nombre: 'México', dial: '+52' },
+  { nombre: 'Estados Unidos', dial: '+1' },
+  { nombre: 'Panamá', dial: '+507' },
+  { nombre: 'República Dominicana', dial: '+1' },
+  { nombre: 'Uruguay', dial: '+598' },
+  { nombre: 'Italia', dial: '+39' },
+  { nombre: 'Portugal', dial: '+351' },
+  { nombre: 'Dinamarca', dial: '+45' }
+]
+
+const soloDigitos = (value: string) => value.replace(/\D/g, '')
+
+type VerificacionResponse = {
+  encontrado: boolean
+  nombre?: string | null
+  apellido?: string | null
+  licencia?: string | null
+}
+
+// Mock de GET /verificacion-sacs/{cedula}. Cédula "V-00000000" / "E-00000000"
+// simula "no encontrado" para poder probar ese estado en la maqueta.
+async function mockVerificarSacs(cedula: string): Promise<VerificacionResponse> {
+  await new Promise((r) => setTimeout(r, 600))
+  if (cedula.endsWith('00000000')) return { encontrado: false }
+  return {
+    encontrado: true,
+    nombre: 'Nombre (mock SACS)',
+    apellido: 'Apellido (mock SACS)',
+    licencia: `SACS-${cedula.replace(/\D/g, '')}`
+  }
+}
+
+// Mock de GET /verificacion-psicologo/{cedula}. Cédula "00000000" simula
+// "no encontrado".
+async function mockVerificarPsicologo(cedula: string): Promise<VerificacionResponse> {
+  await new Promise((r) => setTimeout(r, 600))
+  if (cedula === '00000000') return { encontrado: false }
+  return {
+    encontrado: true,
+    nombre: 'Nombre (mock FPV)',
+    apellido: 'Apellido (mock FPV)',
+    licencia: `FPV-${cedula}`
+  }
+}
+
 export default function RegistroMedico() {
-  const router = useRouter()
-  const [fullName, setFullName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [tipoProfesional, setTipoProfesional] = useState('')
+  const [cedulaPrefijo, setCedulaPrefijo] = useState<'V' | 'E'>('V')
+  const [cedulaNumero, setCedulaNumero] = useState('')
+  const [nombreCompleto, setNombreCompleto] = useState('')
+  const [licencia, setLicencia] = useState('')
+  const [whatsappPrefijo, setWhatsappPrefijo] = useState('+58')
+  const [whatsappNumero, setWhatsappNumero] = useState('')
+  const [correo, setCorreo] = useState('')
+  const [paisReside, setPaisReside] = useState('')
+  const [especialidad, setEspecialidad] = useState('')
+  const [contrasena, setContrasena] = useState('')
+
+  // null = sin verificar todavía, true = encontrado (campos bloqueados),
+  // false = no encontrado (campos liberados para carga manual).
+  const [verificado, setVerificado] = useState<boolean | null>(null)
+  const [verificando, setVerificando] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [ok, setOk] = useState(false)
+
+  const requiereVerificacion = tipoProfesional === 'Médico' || tipoProfesional === 'Psicólogo'
+  const mostrarEspecialidad = tipoProfesional === 'Médico'
+  // Si es psicólogo, la especialidad se fija sola y no se muestra el selector.
+  const especialidadFinal = tipoProfesional === 'Psicólogo' ? 'Psicología' : especialidad
+
+  function onChangeTipoProfesional(value: string) {
+    setTipoProfesional(value)
+    setVerificado(null)
+    setNombreCompleto('')
+    setLicencia('')
+  }
+
+  // Cambiar la cédula invalida cualquier verificación previa: si los campos
+  // estaban bloqueados (autocompletados por una cédula anterior), se limpian
+  // para no dejar pegados datos de una identidad que ya no corresponde.
+  function limpiarSiEstabaBloqueado() {
+    if (verificado === true) {
+      setNombreCompleto('')
+      setLicencia('')
+    }
+  }
+
+  function onChangeCedulaPrefijo(value: 'V' | 'E') {
+    limpiarSiEstabaBloqueado()
+    setCedulaPrefijo(value)
+    setVerificado(null)
+  }
+
+  function onChangeCedulaNumero(value: string) {
+    limpiarSiEstabaBloqueado()
+    setCedulaNumero(soloDigitos(value))
+    setVerificado(null)
+  }
+
+  async function verificarCedula() {
+    if (!requiereVerificacion || cedulaNumero.length < 6) return
+    setVerificando(true)
+    setError('')
+    try {
+      const resp =
+        tipoProfesional === 'Médico'
+          ? await mockVerificarSacs(`${cedulaPrefijo}-${cedulaNumero}`)
+          : await mockVerificarPsicologo(cedulaNumero)
+      if (resp.encontrado) {
+        setNombreCompleto([resp.nombre, resp.apellido].filter(Boolean).join(' '))
+        setLicencia(resp.licencia || '')
+        setVerificado(true)
+      } else {
+        setVerificado(false)
+      }
+    } catch (e) {
+      console.error(e)
+      setVerificado(false)
+      setError('No se pudo verificar la cédula en este momento. Completa tus datos manualmente.')
+    } finally {
+      setVerificando(false)
+    }
+  }
+
+  const camposBloqueados = verificado === true
 
   const submit = async () => {
     setError('')
-    if (!fullName.trim() || !email.trim() || password.length < 6) {
-      setError('Completa nombre, email y una contraseña de al menos 6 caracteres.')
+    setOk(false)
+    if (
+      !tipoProfesional ||
+      !cedulaNumero ||
+      !nombreCompleto.trim() ||
+      !whatsappNumero ||
+      !correo.trim() ||
+      !paisReside ||
+      (mostrarEspecialidad && !especialidad) ||
+      contrasena.length < 6
+    ) {
+      setError('Completa todos los campos obligatorios (contraseña mínimo 6 caracteres).')
       return
     }
     setLoading(true)
     try {
-      // No role in metadata → trigger creates an unfinalized profile (role_chosen=false),
-      // so the next step (/elegir-rol) can set role=doctor + details via set_my_role.
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(),
-        password,
-        options: { data: { full_name: fullName.trim() } }
+      // MAQUETA: acá va el POST real al backend una vez esté disponible
+      // (ver notas al inicio del archivo). No se crea ninguna cuenta todavía.
+      await new Promise((r) => setTimeout(r, 500))
+      console.log('[maqueta] payload de registro', {
+        tipo_profesional: tipoProfesional,
+        cedula: `${cedulaPrefijo}-${cedulaNumero}`,
+        nombre_completo: nombreCompleto,
+        licencia,
+        whatsapp: `${whatsappPrefijo}${whatsappNumero}`,
+        correo,
+        pais_reside: paisReside,
+        especialidad: especialidadFinal || null
       })
-      if (error) throw error
-      if (!data.session) {
-        setError('Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión.')
-        return
-      }
-      router.push('/elegir-rol?rol=medico')
-    } catch (e) {
-      console.error(e)
-      setError(
-        'No se pudo crear la cuenta. Puede que este email ya esté registrado o haya un error de conexión.'
-      )
+      setOk(true)
     } finally {
       setLoading(false)
     }
@@ -66,40 +212,160 @@ export default function RegistroMedico() {
       <Head>
         <title>Registro médico — Médicos por Venezuela</title>
       </Head>
-      <main className="page">
+      <main className="page registro-medico-page">
         <div className="narrow">
           <Link href="/" className="link-button">
             ← Volver
           </Link>
           <div className="card" style={{ marginTop: 14 }}>
-            <h1 style={{ marginTop: 0 }}>Crea tu cuenta de Médico/Psicólogo</h1>
+            <h1 style={{ marginTop: 0 }}>Registro de profesional</h1>
             <p style={{ color: '#64748b' }}>
-              Paso 1 de 2: crea tu cuenta. Luego completarás tu especialidad y datos de contacto.
+              Completa tus datos para unirte como voluntario (médico, psicólogo u otro profesional
+              de salud).
             </p>
 
             <div className="grid">
               <div>
-                <label className="label">Nombre completo *</label>
-                <input value={fullName} onChange={(e) => setFullName(e.target.value)} />
+                <label className="label">Tipo de profesional *</label>
+                <select
+                  value={tipoProfesional}
+                  onChange={(e) => onChangeTipoProfesional(e.target.value)}
+                >
+                  <option value="">Selecciona...</option>
+                  {TIPOS_PROFESIONAL.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
               </div>
+
+              <div>
+                <label className="label">Cédula *</label>
+                <div className="input-group">
+                  <select
+                    value={cedulaPrefijo}
+                    onChange={(e) => onChangeCedulaPrefijo(e.target.value as 'V' | 'E')}
+                  >
+                    <option value="V">V</option>
+                    <option value="E">E</option>
+                  </select>
+                  <input
+                    value={cedulaNumero}
+                    onChange={(e) => onChangeCedulaNumero(e.target.value)}
+                    onBlur={verificarCedula}
+                    inputMode="numeric"
+                    placeholder="Solo números"
+                  />
+                </div>
+                {verificando && <div className="hint">Verificando cédula...</div>}
+                {verificado === true && (
+                  <div className="notice notice-success" style={{ marginTop: 8 }}>
+                    Cédula verificada ✓ Datos cargados automáticamente.
+                  </div>
+                )}
+                {verificado === false && (
+                  <div className="notice notice-warning" style={{ marginTop: 8 }}>
+                    No encontramos esta cédula en el registro. Completa tus datos manualmente.
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-2">
                 <div>
-                  <label className="label">Email *</label>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  <label className="label">Nombre completo *</label>
+                  <input
+                    value={nombreCompleto}
+                    onChange={(e) => setNombreCompleto(e.target.value)}
+                    readOnly={camposBloqueados}
+                  />
                 </div>
                 <div>
-                  <label className="label">Contraseña *</label>
+                  <label className="label">Licencia / colegiatura</label>
                   <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
+                    value={licencia}
+                    onChange={(e) => setLicencia(e.target.value)}
+                    readOnly={camposBloqueados}
+                    placeholder="Opcional si no aplica"
                   />
                 </div>
               </div>
+
+              <div>
+                <label className="label">WhatsApp *</label>
+                <div className="input-group">
+                  <select
+                    value={whatsappPrefijo}
+                    onChange={(e) => setWhatsappPrefijo(e.target.value)}
+                  >
+                    {PAISES.map((p) => (
+                      <option key={p.nombre} value={p.dial}>
+                        {p.dial}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={whatsappNumero}
+                    onChange={(e) => setWhatsappNumero(soloDigitos(e.target.value))}
+                    inputMode="numeric"
+                    placeholder="Solo números"
+                  />
+                </div>
+                <div className="hint">
+                  Solo para uso administrativo. Nunca se comparte con pacientes ni con terceros.
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Correo *</label>
+                <input type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="label">País donde reside *</label>
+                <select value={paisReside} onChange={(e) => setPaisReside(e.target.value)}>
+                  <option value="">Selecciona...</option>
+                  {PAISES.map((p) => (
+                    <option key={p.nombre} value={p.nombre}>
+                      {p.nombre}
+                    </option>
+                  ))}
+                  <option value="Otro">Otro</option>
+                </select>
+              </div>
+
+              {mostrarEspecialidad && (
+                <div>
+                  <label className="label">Especialidad *</label>
+                  <select value={especialidad} onChange={(e) => setEspecialidad(e.target.value)}>
+                    <option value="">Selecciona...</option>
+                    {SPECIALTIES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="label">Contraseña *</label>
+                <input
+                  type="password"
+                  value={contrasena}
+                  onChange={(e) => setContrasena(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                />
+              </div>
+
               {error && <div className="notice notice-danger">{error}</div>}
+              {ok && (
+                <div className="notice notice-success">
+                  Maqueta: formulario válido (sin backend conectado todavía).
+                </div>
+              )}
               <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>
-                {loading ? 'Creando cuenta...' : 'Continuar'}
+                {loading ? 'Registrando...' : 'Registrarse'}
               </button>
               <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>
               <GoogleButton onClick={googleSignup} disabled={loading} />
@@ -107,7 +373,7 @@ export default function RegistroMedico() {
 
             <p style={{ marginTop: 18, color: '#64748b' }}>
               ¿Ya tienes cuenta?{' '}
-              <Link href="/login-medico" style={{ color: '#0f6e56', fontWeight: 800 }}>
+              <Link href="/login-medico" style={{ color: 'var(--home-blue)', fontWeight: 800 }}>
                 Entrar al panel médico
               </Link>
             </p>
