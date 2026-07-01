@@ -7,6 +7,18 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-01
 
+- **Attend a patient via WhatsApp (doctor's personal number)** — waiting patient cards on
+  `/panel-medico` now have a "Puedo atender a este paciente vía WhatsApp con mi número personal"
+  button. It opens a commitment modal ("…te comprometes a contactar al paciente vía WhatsApp… al
+  +4915203003171"); only on **Aceptar** does it atomically claim the case (assign + `in_progress` +
+  `attended_via_whatsapp = true`), so it leaves every other doctor's queue — if someone grabbed it
+  first it shows "Ya fue asignado a otro doctor". WhatsApp-attended cases open the detail page with a
+  **status dropdown** (Abierta / Referenciado a otro médico / Ya contactado vía WhatsApp / Necesita ir
+  a centro de atención / Cerrado), keep "Guardar nota", and hide the Videoconsulta / no-show / Cerrar
+  consulta buttons; the note label is now "Notas del médico". New `contacted_whatsapp` status +
+  `attended_via_whatsapp` flag. Files: `supabase_schema.sql`, `lib/utils.ts`, `pages/panel-medico.tsx`,
+  `pages/panel-medico/consulta/[id].tsx`, `pages/admin/dashboard.tsx`. Needs an additive prod
+  migration (new status in the check constraint + the flag column).
 - **Inline searchable "Médico" reassignment + assigned-name resolution** — the cases-table Médico
   cell is now a search-as-you-type combobox (queries the DB, reaches all doctors) so admins can
   reassign the attending doctor straight from the row, no need to open "Gestionar caso". Also fixed a

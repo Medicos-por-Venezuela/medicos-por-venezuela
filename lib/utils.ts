@@ -11,7 +11,8 @@ export const STATUS_LABELS: Record<string, string> = {
   closed: 'Cerrada',
   cancelled: 'Cancelada',
   patient_no_show: 'Paciente no se presentó',
-  closed_by_admin: 'Cerrada por admin'
+  closed_by_admin: 'Cerrada por admin',
+  contacted_whatsapp: 'Ya contactado vía WhatsApp'
 }
 
 export const SPECIALTIES = [

@@ -31,6 +31,7 @@ type Consultation = {
   video_room_url: string | null
   patient_last_seen_at: string | null
   assigned_doctor_id: string | null
+  attended_via_whatsapp: boolean
   patients: Patient | null
 }
 
@@ -77,6 +78,8 @@ export default function PanelMedico() {
   const [message, setMessage] = useState('')
   const [myClosed, setMyClosed] = useState(0)
   const [assignedDoctorsById, setAssignedDoctorsById] = useState<Record<string, AssignedDoctor>>({})
+  // Waiting case the doctor wants to attend via WhatsApp — set while the commitment modal is open.
+  const [whatsappTarget, setWhatsappTarget] = useState<Consultation | null>(null)
   const isCurrentUserAdmin = isAdminRole(profile?.role)
 
   useEffect(() => {
@@ -298,6 +301,39 @@ export default function PanelMedico() {
     await router.push(`/panel-medico/consulta/${c.id}`)
   }
 
+  // Claim a waiting patient to attend directly via WhatsApp (no video). Same atomic claim as
+  // openConsultation: the update only matches while the case is 'waiting', so if another doctor took
+  // it first we show "Ya fue asignado a otro doctor" instead. Runs only after the doctor accepts the
+  // commitment modal.
+  async function attendViaWhatsapp(c: Consultation) {
+    if (!profile) return
+    const now = new Date().toISOString()
+    const { data: claimed, error } = await supabase
+      .from('consultations')
+      .update({
+        status: 'in_progress',
+        assigned_doctor_id: profile.id,
+        opened_at: c.opened_at || now,
+        attended_via_whatsapp: true
+      })
+      .eq('id', c.id)
+      .eq('status', 'waiting')
+      .select('id')
+
+    setWhatsappTarget(null)
+    if (error) {
+      setMessage('No se pudo asignar la consulta.')
+      return
+    }
+    if (!claimed || claimed.length === 0) {
+      setMessage('Ya fue asignado a otro doctor.')
+      await loadConsultations()
+      return
+    }
+    await addEvent(c.id, 'opened', `Atendido vía WhatsApp por ${profile.full_name}`)
+    await router.push(`/panel-medico/consulta/${c.id}`)
+  }
+
   // Take the next waiting patient: prefer one matching the doctor's specialty (oldest first),
   // otherwise fall back to the oldest waiting patient so nobody is left unattended.
   async function attendNext() {
@@ -428,7 +464,12 @@ export default function PanelMedico() {
               ) : (
                 <div className="grid">
                   {waiting.map((c) => (
-                    <ConsultationCard key={c.id} c={c} onOpen={() => openConsultation(c)} />
+                    <ConsultationCard
+                      key={c.id}
+                      c={c}
+                      onOpen={() => openConsultation(c)}
+                      onWhatsapp={() => setWhatsappTarget(c)}
+                    />
                   ))}
                 </div>
               )}
@@ -459,6 +500,53 @@ export default function PanelMedico() {
           </div>
         </div>
       </main>
+
+      {whatsappTarget && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setWhatsappTarget(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            zIndex: 1000
+          }}
+        >
+          <div
+            className="card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 460, width: '100%' }}
+          >
+            <h2 style={{ marginTop: 0 }}>Atender vía WhatsApp</h2>
+            <p>
+              Al cliquear aquí te comprometes a contactar al paciente vía WhatsApp con el número
+              disponible, de no ser posible por favor contacta a nuestro equipo al{' '}
+              <strong>+4915203003171</strong>.
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
+              <button
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                onClick={() => attendViaWhatsapp(whatsappTarget)}
+              >
+                Aceptar
+              </button>
+              <button
+                className="btn btn-muted"
+                style={{ flex: 1 }}
+                onClick={() => setWhatsappTarget(null)}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx global>{`
         .panel-topbar {
@@ -579,7 +667,15 @@ function AdminActiveCaseCard({
   )
 }
 
-function ConsultationCard({ c, onOpen }: { c: Consultation; onOpen: () => void }) {
+function ConsultationCard({
+  c,
+  onOpen,
+  onWhatsapp
+}: {
+  c: Consultation
+  onOpen: () => void
+  onWhatsapp: () => void
+}) {
   return (
     <div className="card-flat">
       <div className="panel-card-header">
@@ -617,6 +713,9 @@ function ConsultationCard({ c, onOpen }: { c: Consultation; onOpen: () => void }
       </div>
       <button className="btn btn-primary btn-full" onClick={onOpen}>
         Atender
+      </button>
+      <button className="btn btn-secondary btn-full" style={{ marginTop: 8 }} onClick={onWhatsapp}>
+        Puedo atender a este paciente vía WhatsApp con mi número personal
       </button>
     </div>
   )

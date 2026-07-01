@@ -93,7 +93,7 @@ create table if not exists public.consultations (
   opened_at timestamptz,
   closed_at timestamptz,
   created_at timestamptz not null default now(),
-  constraint consultations_status_check check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show', 'closed_by_admin'))
+  constraint consultations_status_check check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show', 'closed_by_admin', 'contacted_whatsapp'))
 );
 
 alter table public.consultations add column if not exists category text;
@@ -114,11 +114,14 @@ alter table public.consultations add column if not exists contacted boolean not 
 -- note (nota_admin). Both are edited from the admin dashboard cases table.
 alter table public.consultations add column if not exists admin_seguimiento uuid references public.profiles(id);
 alter table public.consultations add column if not exists nota_admin text;
+-- Doctor chose to attend this case directly via WhatsApp (their personal number) instead of video;
+-- the case-detail page then shows the WhatsApp status controls and hides the video/close buttons.
+alter table public.consultations add column if not exists attended_via_whatsapp boolean not null default false;
 
 -- Allow the 'patient_no_show' and 'closed_by_admin' statuses on existing databases (idempotent).
 alter table public.consultations drop constraint if exists consultations_status_check;
 alter table public.consultations add constraint consultations_status_check
-  check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show', 'closed_by_admin'));
+  check (status in ('waiting', 'in_progress', 'referred_to_specialist', 'urgent_in_person', 'closed', 'cancelled', 'patient_no_show', 'closed_by_admin', 'contacted_whatsapp'));
 
 -- 5) Events/audit trail for status changes.
 create table if not exists public.consultation_events (
