@@ -7,6 +7,11 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-01
 
+- **Case detail: WhatsApp contact guidance next to patient phone** — added a red note under the
+  patient's phone in `/panel-medico/consulta/[id]` explaining to prefer WhatsApp chat (better
+  connectivity), to agree a call time there, to wait up to 24h for a reply, and to log missing/wrong
+  contacts in the medical notes. File: `pages/panel-medico/consulta/[id].tsx`.
+
 - **Admin: editable "Especialidades que pueden ver este caso" (override)** — "Gestionar caso" now has
   an editable specialties selector: editing the Tipo de ayuda re-derives it, but the admin can also
   toggle specialties directly to override the routing. Saved as `consultations.required_specialties`

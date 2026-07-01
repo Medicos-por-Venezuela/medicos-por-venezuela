@@ -369,6 +369,21 @@ export default function ConsultaDetalle() {
               <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
                 Tel. (solo seguimiento): {consultation.patients?.phone_whatsapp || '—'}
               </p>
+              <p
+                style={{
+                  margin: '4px 0 0',
+                  color: '#b91c1c',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  lineHeight: 1.4
+                }}
+              >
+                De ser posible por favor contacta al paciente vía WhatsApp. Por temas de
+                conectividad es mejor si se escribe por chat para agendar una llamada y asegurar
+                mejor conexión del paciente. Por favor espera hasta 24 horas por una respuesta del
+                paciente. Si no hay respuesta alguna o el contacto es incorrecto, coméntalo en las
+                notas médicas.
+              </p>
               <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
                 Email (opcional): {consultation.patients?.email || '—'}
               </p>
