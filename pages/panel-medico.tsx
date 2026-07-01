@@ -40,6 +40,10 @@ type Consultation = {
 // this many minutes without a doctor assigned.
 const WAITING_FALLBACK_MIN = 20
 
+// "Atender al siguiente" attends patients actively waiting in the video call: those who entered the
+// call within this window and aren't assigned yet.
+const LIVE_CALL_WINDOW_MIN = 60
+
 // "Still open" case statuses = not yet resolved. Includes patient_no_show (the patient registered
 // but never connected to the video call, so they still need follow-up) but excludes the truly
 // resolved statuses (closed, closed_by_admin, cancelled).
@@ -159,12 +163,14 @@ export default function PanelMedico() {
   }
 
   async function loadConsultations(currentProfile: Profile | null = profile) {
-    const twentyMinAgo = new Date(Date.now() - WAITING_FALLBACK_MIN * 60000).toISOString()
+    const now = Date.now()
+    const twentyMinAgo = new Date(now - WAITING_FALLBACK_MIN * 60000).toISOString()
+    const liveWindowAgo = new Date(now - LIVE_CALL_WINDOW_MIN * 60000).toISOString()
 
-    // "Pacientes que no han podido ser atendidos": three filters, all in the DB so a large backlog
-    // can't push recent patients past the row cap — (1) case still open (not resolved), (2) not
-    // assigned to any doctor, (3) waiting longer than WAITING_FALLBACK_MIN minutes.
-    const { data: unattended, error } = await supabase
+    // "Pacientes que no han podido ser atendidos": open, not assigned to any doctor, registered more
+    // than WAITING_FALLBACK_MIN minutes ago. Filtered in the DB so a backlog can't push them past the
+    // row cap.
+    const qUnattended = supabase
       .from('consultations')
       .select(`*, patients(${PATIENT_COLS})`)
       .in('status', OPEN_STATUSES)
@@ -172,8 +178,19 @@ export default function PanelMedico() {
       .lte('created_at', twentyMinAgo)
       .order('created_at', { ascending: true })
 
-    if (error) {
-      console.error(error)
+    // Live video queue (for "Atender al siguiente"): open, not assigned, and the patient entered the
+    // video call within the last LIVE_CALL_WINDOW_MIN minutes.
+    const qLive = supabase
+      .from('consultations')
+      .select(`*, patients(${PATIENT_COLS})`)
+      .in('status', OPEN_STATUSES)
+      .is('assigned_doctor_id', null)
+      .gte('entered_call_at', liveWindowAgo)
+      .order('entered_call_at', { ascending: true })
+
+    const [unattendedRes, liveRes] = await Promise.all([qUnattended, qLive])
+    if (unattendedRes.error || liveRes.error) {
+      console.error(unattendedRes.error || liveRes.error)
       setMessage('No se pudieron cargar las consultas.')
       return
     }
@@ -191,7 +208,16 @@ export default function PanelMedico() {
       mine = (mineData || []) as Consultation[]
     }
 
-    setConsultations([...((unattended || []) as Consultation[]), ...mine])
+    // Merge the three sources, de-duplicated by id (a live case may also be >20 min old).
+    const byId = new Map<string, Consultation>()
+    for (const c of [
+      ...((unattendedRes.data || []) as Consultation[]),
+      ...((liveRes.data || []) as Consultation[]),
+      ...mine
+    ]) {
+      byId.set(c.id, c)
+    }
+    setConsultations(Array.from(byId.values()))
 
     // How many cases this doctor has closed.
     if (id) {
@@ -214,6 +240,18 @@ export default function PanelMedico() {
       ),
     [consultations]
   )
+  // Live video queue for "Atender al siguiente": unassigned patients who entered the video call
+  // within the last LIVE_CALL_WINDOW_MIN minutes (i.e. actually waiting in the room right now).
+  const liveWaiting = useMemo(
+    () =>
+      consultations.filter(
+        (c) =>
+          c.assigned_doctor_id === null &&
+          c.entered_call_at !== null &&
+          Date.now() - new Date(c.entered_call_at).getTime() < LIVE_CALL_WINDOW_MIN * 60000
+      ),
+    [consultations]
+  )
   // The doctor's own active cases they can reopen: in-progress ones plus WhatsApp cases already
   // marked "Ya contactado vía WhatsApp" (which otherwise would drop off the panel). Only the
   // attending doctor sees them here.
@@ -226,27 +264,16 @@ export default function PanelMedico() {
       ),
     [consultations, profile?.id]
   )
-  // Waiting patients that align with this doctor's specialty (and that they're allowed to take).
-  const mySpecialtyWaiting = useMemo(
-    () =>
-      waiting.filter(
-        (c) =>
-          isCurrentUserAdmin ||
-          (canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null) &&
-            matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null))
-      ),
-    [waiting, profile?.specialty, isCurrentUserAdmin]
-  )
-  // Everyone — including admins/super_admins — sees /panel-medico as a doctor: the waiting queue and
-  // their own open cases, no admin-only "system cases" section.
+  // Everyone — including admins/super_admins — sees /panel-medico as a doctor: the live video queue,
+  // the unattended queue, and their own open cases; no admin-only "system cases" section.
   const kpis = [
-    { value: waiting.length, label: 'Pacientes esperando' },
-    { value: mySpecialtyWaiting.length, label: 'Esperando para tu especialidad' },
+    { value: liveWaiting.length, label: 'En videollamada ahora' },
+    { value: waiting.length, label: 'Sin atender (+20 min)' },
     { value: myClosed, label: 'Consultas cerradas por mí' }
   ]
 
   const waitingEmptyMessage =
-    'No hay pacientes nuevos en cola (waiting). Si ya tomaste un caso, aparecerá en “Mis consultas abiertas”.'
+    'No hay pacientes sin atender por ahora. Si ya tomaste un caso, aparecerá en “Mis consultas abiertas”.'
 
   async function addEvent(consultationId: string, eventType: string, eventNote?: string) {
     await supabase.from('consultation_events').insert({
@@ -321,12 +348,12 @@ export default function PanelMedico() {
     await router.push(`/panel-medico/consulta/${c.id}`)
   }
 
-  // Take the next waiting patient: prefer one matching the doctor's specialty (oldest first),
-  // otherwise fall back to the oldest waiting patient so nobody is left unattended.
+  // Take the next patient waiting in the video call: prefer one matching the doctor's specialty
+  // (oldest first), otherwise fall back to the oldest so nobody is left unattended.
   async function attendNext() {
     setMessage('')
 
-    const eligible = waiting.filter(
+    const eligible = liveWaiting.filter(
       (c) =>
         isCurrentUserAdmin ||
         canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null)
@@ -334,7 +361,9 @@ export default function PanelMedico() {
 
     if (eligible.length === 0) {
       setMessage(
-        waiting.length ? 'No hay pacientes para tu especialidad ahora.' : waitingEmptyMessage
+        liveWaiting.length
+          ? 'No hay pacientes para tu especialidad en videollamada ahora.'
+          : 'No hay pacientes en videollamada esperando ahora.'
       )
       return
     }
@@ -410,11 +439,11 @@ export default function PanelMedico() {
             className="btn btn-primary btn-full"
             style={{ marginBottom: 18, fontSize: 16, padding: '15px 18px' }}
             onClick={attendNext}
-            disabled={waiting.length === 0}
+            disabled={liveWaiting.length === 0}
           >
-            {waiting.length
-              ? `Atender al siguiente paciente · ${waiting.length} esperando`
-              : 'No hay pacientes nuevos en cola'}
+            {liveWaiting.length
+              ? `Atender al siguiente paciente · ${liveWaiting.length} en videollamada`
+              : 'No hay pacientes en videollamada ahora'}
           </button>
 
           <div className="panel-sections">

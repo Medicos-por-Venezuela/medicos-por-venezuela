@@ -7,6 +7,17 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-01
 
+- **Admin cases: show eligible specialties (replaces "Prioridad")** — under the Estado column, the
+  cases table now lists which specialties can pick up each case (`eligibleSpecialties` = specialties
+  whose scope fits the case AND are allowed by the psychology reservation), replacing the "Prioridad"
+  line. Files: `lib/utils.ts` (helper), `pages/admin/dashboard.tsx`.
+- **Split live video queue vs. unattended queue** — "Atender al siguiente paciente" now only counts
+  and attends patients **actively waiting in the video call** (entered the call within the last
+  `LIVE_CALL_WINDOW_MIN` = 60 min, unassigned), and the button is disabled unless one exists. The
+  "Pacientes que no han podido ser atendidos hasta ahora" section keeps its own rule (unassigned,
+  registered > 20 min). Added a third DB query for the live queue and merged the sources deduped by
+  id; KPIs are now "En videollamada ahora" / "Sin atender (+20 min)" / "Consultas cerradas por mí".
+  File: `pages/panel-medico.tsx`.
 - **Trazabilidad as compact rows** — the case-detail "Referencia y trazabilidad" event history now
   renders each event as a single divider-separated row (label — note · author, with the date on the
   right) instead of stacked cards, so the section is much shorter. File:
