@@ -7,6 +7,45 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-01
 
+- **Trazabilidad as compact rows** — the case-detail "Referencia y trazabilidad" event history now
+  renders each event as a single divider-separated row (label — note · author, with the date on the
+  right) instead of stacked cards, so the section is much shorter. File:
+  `pages/panel-medico/consulta/[id].tsx`.
+- **Claim on "unassigned", not `status='waiting'`** — the atomic claim in both `attendViaWhatsapp`
+  and `openConsultation` now matches `assigned_doctor_id IS NULL` instead of `status = 'waiting'`, so
+  claiming a `patient_no_show` case from the queue works (it previously failed with "Ya fue asignado a
+  otro doctor"). After the WhatsApp claim the case becomes `in_progress` assigned to the doctor, opens
+  the case detail, and shows under **"Mis consultas abiertas"**. File: `pages/panel-medico.tsx`.
+- **Unattended queue includes "no-show" cases** — "Pacientes que no han podido ser atendidos hasta
+  ahora" now treats a case as "still open" if it's anything except `closed` / `closed_by_admin` /
+  `cancelled` — importantly including **`patient_no_show`** (the patient registered but never
+  connected to the video call, so they still need WhatsApp follow-up). Renamed `ACTIVE_STATUSES` →
+  `OPEN_STATUSES`. Verified against prod: the queue was empty because every unassigned case was a
+  no-show; it now correctly surfaces those unassigned no-shows > 20 min old. File:
+  `pages/panel-medico.tsx`.
+- **Unattended cards: WhatsApp-only action** — removed the per-card "Atender" (video) button so each
+  patient card in the queue offers only "Puedo atender a este paciente vía WhatsApp con mi número
+  personal". File: `pages/panel-medico.tsx`.
+- **"Pacientes que no han podido ser atendidos hasta ahora" queue (3 filters, DB-side)** — renamed
+  "Consultas disponibles" and redefined it by three filters applied **in the query** so a large
+  backlog can't hide recent patients past the 1000-row cap: (1) still a registered case
+  (`ACTIVE_STATUSES`), (2) **not assigned to any doctor** (`assigned_doctor_id is null`), (3) waiting
+  **> 20 min** (`created_at ≤ now − WAITING_FALLBACK_MIN`). No longer keys off `status = 'waiting'`,
+  so an unassigned case whose status was changed still shows. Split `loadConsultations` into two
+  targeted queries (unattended list + the doctor's own open cases) so neither can be dropped by the
+  cap. Replaced the 30-min heartbeat presence entirely (removed `isPatientPresent` /
+  `PRESENCE_WINDOW_MS` and the present-patient preference in "Atender al siguiente") and relabeled the
+  KPIs ("Pacientes esperando", "Esperando para tu especialidad"). File: `pages/panel-medico.tsx`.
+- **"Disponible" badge on available cases** — each card in "Consultas disponibles" now shows a green
+  "● Disponible" badge so doctors can see the case is still open/unclaimed. Cases claimed by another
+  doctor are unassigned `waiting` rows only, so they drop off the list on the next refresh (~20s), and
+  the atomic claim still guards the race ("ya fue tomado por otro médico"). File: `pages/panel-medico.tsx`.
+- **`/panel-medico` is a pure-doctor view for everyone** — removed the admin-only "Casos activos del
+  sistema" section (and its "Ver / gestionar caso" cards, KPI, and empty-message branches) so
+  admins/super_admins see the panel exactly like a doctor: waiting queue + their own open cases. The
+  "Panel admin" nav button and `/admin/dashboard` (panel administrativo) are unchanged. Cleaned up the
+  now-dead helpers (`activeSystemConsultations`, `assignmentLabel`, `AdminActiveCaseCard`,
+  `assignedDoctorsById`). File: `pages/panel-medico.tsx`.
 - **Attend a patient via WhatsApp (doctor's personal number)** — waiting patient cards on
   `/panel-medico` now have a "Puedo atender a este paciente vía WhatsApp con mi número personal"
   button. It opens a commitment modal ("…te comprometes a contactar al paciente vía WhatsApp… al
@@ -16,7 +55,9 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   **status dropdown** (Abierta / Referenciado a otro médico / Ya contactado vía WhatsApp / Necesita ir
   a centro de atención / Cerrado), keep "Guardar nota", and hide the Videoconsulta / no-show / Cerrar
   consulta buttons; the note label is now "Notas del médico". New `contacted_whatsapp` status +
-  `attended_via_whatsapp` flag. Files: `supabase_schema.sql`, `lib/utils.ts`, `pages/panel-medico.tsx`,
+  `attended_via_whatsapp` flag. WhatsApp cases marked "Ya contactado vía WhatsApp" stay visible under
+  **the attending doctor's** "Mis consultas abiertas" (only they can reopen them; still fully managed
+  in the admin dashboard). Files: `supabase_schema.sql`, `lib/utils.ts`, `pages/panel-medico.tsx`,
   `pages/panel-medico/consulta/[id].tsx`, `pages/admin/dashboard.tsx`. Needs an additive prod
   migration (new status in the check constraint + the flag column).
 - **Inline searchable "Médico" reassignment + assigned-name resolution** — the cases-table Médico

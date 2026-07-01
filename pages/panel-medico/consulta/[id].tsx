@@ -441,29 +441,34 @@ export default function ConsultaDetalle() {
                     Todavía no hay historial registrado para este caso.
                   </p>
                 ) : (
-                  <div className="grid">
-                    {events.map((event) => {
+                  <div>
+                    {events.map((event, i) => {
                       const author = event.created_by ? eventAuthorsById[event.created_by] : null
                       return (
-                        <div key={event.id} className="card-flat">
-                          <div
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              gap: 10,
-                              flexWrap: 'wrap'
-                            }}
-                          >
+                        <div
+                          key={event.id}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            gap: 12,
+                            padding: '8px 0',
+                            borderTop: i === 0 ? 'none' : '1px solid var(--border)'
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
                             <strong>{eventLabel(event.event_type)}</strong>
-                            <span style={{ color: '#64748b', fontSize: 13 }}>
-                              {fmtDateTime(event.created_at)}
+                            {event.note && (
+                              <span style={{ color: '#475569' }}> — {event.note}</span>
+                            )}
+                            <span style={{ color: '#94a3b8', fontSize: 12 }}>
+                              {' · '}
+                              {author?.full_name || 'usuario del sistema'}
+                              {author?.role ? ` (${author.role})` : ''}
                             </span>
                           </div>
-                          <p style={{ color: '#64748b', margin: '4px 0 0', fontSize: 13 }}>
-                            Por {author?.full_name || 'usuario del sistema'}
-                            {author?.role ? ` · ${author.role}` : ''}
-                          </p>
-                          {event.note && <p style={{ marginBottom: 0 }}>{event.note}</p>}
+                          <span style={{ color: '#64748b', fontSize: 13, whiteSpace: 'nowrap' }}>
+                            {fmtDateTime(event.created_at)}
+                          </span>
                         </div>
                       )
                     })}
