@@ -108,3 +108,12 @@ export function canAttend(
   }
   return true
 }
+
+// The specialties a case is routed to: those whose scope fits it (matchesSpecialty) AND that are
+// allowed to attend it (canAttend, which enforces the psychology reservation). Used by the admin
+// panel to show, per case, which specialties can pick it up.
+export function eligibleSpecialties(category: string | null, needsTags: string[] | null): string[] {
+  return SPECIALTIES.filter(
+    (s) => matchesSpecialty(s, category, needsTags) && canAttend(s, category, needsTags)
+  )
+}

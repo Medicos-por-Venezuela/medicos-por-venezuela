@@ -2,7 +2,7 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { SPECIALTIES, STATUS_LABELS } from '../../lib/utils'
+import { SPECIALTIES, STATUS_LABELS, eligibleSpecialties } from '../../lib/utils'
 
 type Profile = {
   id: string
@@ -1111,7 +1111,13 @@ export default function AdminDashboard() {
                                   </option>
                                 ))}
                               </select>
-                              <Line label="Prioridad" value={c.priority} />
+                              <Line
+                                label="Especialidades"
+                                value={eligibleSpecialties(
+                                  c.category,
+                                  c.patients?.needs_tags || null
+                                ).join(', ')}
+                              />
                               <Line label="Derivado a" value={c.referred_specialty} />
                             </td>
                             <td>
