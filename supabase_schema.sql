@@ -120,6 +120,10 @@ alter table public.consultations add column if not exists attended_via_whatsapp 
 -- Admin override of which specialties may attend the case. NULL/empty = derive from the tipo de
 -- ayuda (category/needs); when set, it takes precedence over that derivation.
 alter table public.consultations add column if not exists required_specialties text[];
+-- How the patient chose to be attended after registering (on /sala-espera): 'video' (wait in the
+-- Jitsi room for immediate help) or 'whatsapp' (be contacted by a doctor via WhatsApp). A 'whatsapp'
+-- case enters the doctors' contact pool immediately, bypassing the "waited >20 min" fallback.
+alter table public.consultations add column if not exists contact_preference text not null default 'video';
 
 -- Allow the 'patient_no_show' and 'closed_by_admin' statuses on existing databases (idempotent).
 alter table public.consultations drop constraint if exists consultations_status_check;
@@ -321,16 +325,62 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_first_entry boolean;
 begin
+  select entered_call_at is null into v_first_entry
+  from public.consultations
+  where id = p_consultation_id
+    and status in ('waiting', 'in_progress');
+
   update public.consultations
   set entered_call_at = coalesce(entered_call_at, now()),
       patient_last_seen_at = now()
   where id = p_consultation_id
     and status in ('waiting', 'in_progress');
+
+  -- Log once, on the patient's first entry into the video call (trazabilidad timeline).
+  if v_first_entry then
+    insert into public.consultation_events (consultation_id, event_type)
+    values (p_consultation_id, 'patient_entered_call');
+  end if;
 end;
 $$;
 
 grant execute on function public.mark_patient_entered_call(uuid) to anon, authenticated;
+
+-- Patient chose "Prefiero ser contactado/a por WhatsApp" on /sala-espera. Flags the case so it enters
+-- the doctors' WhatsApp contact pool right away (no 20-min wait). Security definer so anonymous
+-- patients can set only this preference, and only on still-open cases.
+create or replace function public.mark_patient_wants_whatsapp(p_consultation_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_first_choice boolean;
+begin
+  select contact_preference is distinct from 'whatsapp' into v_first_choice
+  from public.consultations
+  where id = p_consultation_id
+    and status in ('waiting', 'in_progress');
+
+  update public.consultations
+  set contact_preference = 'whatsapp',
+      patient_last_seen_at = now()
+  where id = p_consultation_id
+    and status in ('waiting', 'in_progress');
+
+  -- Log once, when the patient first chooses WhatsApp contact (trazabilidad timeline).
+  if v_first_choice then
+    insert into public.consultation_events (consultation_id, event_type)
+    values (p_consultation_id, 'patient_wants_whatsapp');
+  end if;
+end;
+$$;
+
+grant execute on function public.mark_patient_wants_whatsapp(uuid) to anon, authenticated;
 
 -- Hard-delete a patient and everything tied to them (consultations + their audit events). Reserved
 -- for super_admins (used by the admin dashboard to remove test/junk records). Security definer so it
