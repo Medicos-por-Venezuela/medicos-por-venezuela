@@ -64,6 +64,24 @@ type Consultation = {
   patients: Patient | null
 }
 
+type ConsultationEvent = {
+  id: string
+  event_type: string
+  created_by: string | null
+  note: string | null
+  created_at: string
+}
+
+function eventLabel(type: string): string {
+  const labels: Record<string, string> = {
+    opened: 'Consulta abierta',
+    closed: 'Consulta cerrada',
+    patient_no_show: 'Paciente ausente',
+    admin_update: 'Actualización administrativa'
+  }
+  return labels[type] || type
+}
+
 const STATUS_OPTIONS = [
   'waiting',
   'in_progress',
@@ -166,6 +184,11 @@ export default function AdminDashboard() {
   // Which specialties can see the case. Starts from the derived/override set; if the admin changes it
   // away from what the tipo de ayuda derives, it's saved as an override (required_specialties).
   const [caseSpecs, setCaseSpecs] = useState<string[]>([])
+  // Audit trail ("Referencia y trazabilidad") for the selected case.
+  const [caseEvents, setCaseEvents] = useState<ConsultationEvent[]>([])
+  const [caseEventAuthorsById, setCaseEventAuthorsById] = useState<
+    Record<string, { full_name: string; role: string }>
+  >({})
   // The "Gestionar caso" panel, so clicking a case scrolls up to it.
   const manageRef = useRef<HTMLDivElement | null>(null)
   // Searchable "Médico asignado" combobox (queries the DB so it reaches all doctors, not the 1000 cap).
@@ -501,8 +524,46 @@ export default function AdminDashboard() {
     }
   }
 
+  async function loadCaseEvents(consultationId: string) {
+    const { data, error } = await supabase
+      .from('consultation_events')
+      .select('id, event_type, created_by, note, created_at')
+      .eq('consultation_id', consultationId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error(error)
+      setCaseEvents([])
+      setCaseEventAuthorsById({})
+      return
+    }
+
+    const rows = (data || []) as ConsultationEvent[]
+    setCaseEvents(rows)
+
+    const authorIds = Array.from(
+      new Set(rows.map((e) => e.created_by).filter((id): id is string => !!id))
+    )
+    if (authorIds.length === 0) {
+      setCaseEventAuthorsById({})
+      return
+    }
+
+    const { data: authors } = await supabase
+      .from('profiles')
+      .select('id, full_name, role')
+      .in('id', authorIds)
+
+    setCaseEventAuthorsById(
+      Object.fromEntries(
+        (authors || []).map((a) => [a.id, { full_name: a.full_name, role: a.role }])
+      )
+    )
+  }
+
   function selectCase(c: Consultation) {
     setSelected(c)
+    void loadCaseEvents(c.id)
     setCaseStatus(c.status)
     setCaseDoctor(c.assigned_doctor_id || '')
     setCaseNote(c.internal_note || '')
@@ -626,6 +687,7 @@ export default function AdminDashboard() {
       event_type: 'admin_update',
       note: `Estado: ${STATUS_LABELS[newStatus] || newStatus}`
     })
+    if (selected?.id === c.id) void loadCaseEvents(c.id)
     setMessage('Estado actualizado.')
   }
 
@@ -1000,6 +1062,60 @@ export default function AdminDashboard() {
                           Eliminar paciente y todos sus casos
                         </button>
                       )}
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                        <h3 style={{ margin: '0 0 8px' }}>Referencia y trazabilidad</h3>
+                        {caseEvents.length === 0 ? (
+                          <p style={{ color: '#64748b', margin: 0, fontSize: 13 }}>
+                            Todavía no hay historial registrado para este caso.
+                          </p>
+                        ) : (
+                          <div>
+                            {caseEvents.map((event, i) => {
+                              const author = event.created_by
+                                ? caseEventAuthorsById[event.created_by]
+                                : null
+                              return (
+                                <div
+                                  key={event.id}
+                                  style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    gap: 12,
+                                    padding: '8px 0',
+                                    borderTop: i === 0 ? 'none' : '1px solid var(--border)'
+                                  }}
+                                >
+                                  <div style={{ minWidth: 0 }}>
+                                    <strong style={{ fontSize: 13 }}>
+                                      {eventLabel(event.event_type)}
+                                    </strong>
+                                    {event.note && (
+                                      <span style={{ color: '#475569', fontSize: 13 }}>
+                                        {' '}
+                                        — {event.note}
+                                      </span>
+                                    )}
+                                    <span style={{ color: '#94a3b8', fontSize: 12 }}>
+                                      {' · '}
+                                      {author?.full_name || 'usuario del sistema'}
+                                      {author?.role ? ` (${author.role})` : ''}
+                                    </span>
+                                  </div>
+                                  <span
+                                    style={{
+                                      color: '#64748b',
+                                      fontSize: 12,
+                                      whiteSpace: 'nowrap'
+                                    }}
+                                  >
+                                    {fmtDateTime(event.created_at)}
+                                  </span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </section>

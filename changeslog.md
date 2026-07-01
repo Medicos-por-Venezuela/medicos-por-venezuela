@@ -7,6 +7,11 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-01
 
+- **Admin: "Referencia y trazabilidad" in "Gestionar caso"** — selecting a case now loads its
+  `consultation_events` audit trail and shows the history (event label, note, author + role, and the
+  timestamp in Venezuela time) at the bottom of the manage panel, so admins can see what has happened.
+  Refreshes after an inline status change on the selected case. File: `pages/admin/dashboard.tsx`.
+
 - **Case detail: WhatsApp contact guidance next to patient phone** — added a red note under the
   patient's phone in `/panel-medico/consulta/[id]` explaining to prefer WhatsApp chat (better
   connectivity), to agree a call time there, to wait up to 24h for a reply, and to log missing/wrong
