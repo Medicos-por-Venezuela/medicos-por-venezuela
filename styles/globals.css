@@ -294,3 +294,51 @@ select:focus {
   color: var(--green);
   border-color: var(--green);
 }
+
+/* Admin dashboard — denser + mobile-friendly. All rules are scoped to `.dash-page`
+   (only /admin/dashboard uses it), so other pages are untouched. */
+/* Give the data-heavy dashboard more horizontal room on desktop (wider than the default 1100px),
+   so the columns expand and there's less blank margin on large screens. */
+.dash-page .container {
+  max-width: 1400px;
+}
+.dash-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.dash-page .cases-table {
+  min-width: 900px;
+}
+.dash-page .users-table {
+  min-width: 720px;
+}
+.dash-page .cases-table td {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 850px) {
+  .page.dash-page {
+    padding: 16px 10px;
+  }
+  .dash-page .card {
+    padding: 14px;
+  }
+  .dash-page .kpi {
+    padding: 12px;
+  }
+  .dash-page .kpi-value {
+    font-size: 26px;
+  }
+  .dash-page .kpi-label {
+    font-size: 12px;
+    margin-top: 2px;
+  }
+  .dash-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .dash-page .topbar {
+    flex-wrap: wrap;
+  }
+}

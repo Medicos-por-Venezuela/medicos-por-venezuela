@@ -5,6 +5,92 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-07-01
+
+- **Inline searchable "Médico" reassignment + assigned-name resolution** — the cases-table Médico
+  cell is now a search-as-you-type combobox (queries the DB, reaches all doctors) so admins can
+  reassign the attending doctor straight from the row, no need to open "Gestionar caso". Also fixed a
+  display bug: assigned doctors living beyond the loaded 1000 profiles showed as a generic "Médico";
+  `loadAll` now resolves assigned-doctor names from the DB into a name cache, so the real name shows.
+  (Note: a doctor who takes a case via "Atender" is already auto-assigned — `opened_at` and
+  `assigned_doctor_id` are set together in `openConsultation`; the bug was only in how the name
+  displayed.) File: `pages/admin/dashboard.tsx`.
+- **Restored missing `admin_seguimiento` / `nota_admin` columns in the schema** — the two admin
+  follow-up columns had been dropped from `supabase_schema.sql` during the branch/stash mess, even
+  though the dashboard reads and writes them. Re-added the idempotent `add column if not exists`
+  alters so a fresh setup (or a re-run) has them. File: `supabase_schema.sql`.
+- **Instruction screenshot in the pre-join modal** — added `public/instruccion-jitsi.png` and showed
+  it inside the `/sala-espera` "Antes de entrar" warning modal, captioned "Si te aparece esta
+  pantalla, toca «Unirse en el navegador»", so patients who still hit Jitsi's app/browser screen know
+  which option to tap. Files: `public/instruccion-jitsi.png` (new), `pages/sala-espera.tsx`.
+- **Skip Jitsi "descarga la app" screen — open straight in the browser** — added a `browserRoomUrl`
+  helper that appends `config.disableDeepLinking=true` (+ nested `deeplinking.disabled`) to the room
+  URL, so mobile users skip the "open in app / continue in browser" interstitial and land directly in
+  the call. Applied at every open point (patient waiting room, doctor "Atender", doctor case-detail
+  link), so it also fixes rooms already stored in the DB. Files: `lib/jitsi.ts`, `pages/sala-espera.tsx`,
+  `pages/panel-medico.tsx`, `pages/panel-medico/consulta/[id].tsx`.
+- **Cases table "Fechas": A/B/C/D milestones + legend** — the Fechas column now shows four
+  timestamps with a color legend above the table: **A** El paciente registró su caso (`created_at`),
+  **B** El paciente ingresó en la videollamada (`entered_call_at`, new), **C** Un médico de la
+  especialidad ingresó en la videollamada (`opened_at`), **D** El médico asignado cerró el caso
+  (`closed_at`). Added `entered_call_at` to the dashboard `Consultation` type. File:
+  `pages/admin/dashboard.tsx`.
+- **Admin-panel contacted label** — the cases-table toggle now reads **"Ya fue contactado" /
+  "No ha sido contactado"** instead of "Sí/No". File: `pages/admin/dashboard.tsx`.
+- **KPI semantics: "esperando" = entered the call; "en progreso" broadened** — "Consultas esperando"
+  now counts a case **only after the patient clicks "Entrar a la videoconsulta"** (not the moment
+  they submit the form). Added `consultations.entered_call_at` + a `mark_patient_entered_call` RPC
+  called from `/sala-espera` on that click (fire-and-forget, sets the timestamp once via `coalesce`);
+  the KPI query gates on `status='waiting' AND entered_call_at IS NOT NULL`. Renamed "Consultas
+  abiertas" → **"Consultas en progreso"**, now counting `in_progress + referred_to_specialist +
+  urgent_in_person + patient_no_show + cancelled` (everything past the queue that isn't a formal
+  close). Files: `supabase_schema.sql` (column + RPC), `pages/sala-espera.tsx`,
+  `pages/admin/dashboard.tsx`. Needs one additive prod migration (the column + RPC).
+- **Resolved stray `git stash` conflicts** — `dashboard.tsx` and `changeslog.md` had unresolved
+  `Updated upstream`/`Stashed changes` markers that broke the build; kept our current work and
+  restored two definitions the stash had dropped (`Consultation.admin_seguimiento` / `nota_admin`
+  fields and the `superAdmins` list). Files: `pages/admin/dashboard.tsx`, `changeslog.md`.
+- **Admin dashboard mobile polish + searchable doctor picker** — made `/admin/dashboard` denser on
+  phones (scoped `.dash-page` styles): KPIs show **2 per row** on mobile (not a tall 1-col stack),
+  tighter page/card padding, and the cases/médicos tables now **scroll horizontally with readable
+  columns** (`min-width`) instead of crushing. Replaced the "Médico asignado" `<select>` with a
+  **searchable combobox that queries the DB** (debounced `ilike` on name/specialty/email, 20 results)
+  so it reaches all ~2386 doctors, not just the loaded 1000. File: `pages/admin/dashboard.tsx`.
+- **Cases table: open/closed row colors + wider search + trash icon** — rows are tinted **red while
+  open, green when closed** (closed = only `closed`/`closed_by_admin`; everything else, incl.
+  cancelled/no-show, counts as open). The cases search now also matches **teléfono, cédula, email**
+  (not just name/código/zona). The delete action is a consistent inline **SVG trash icon** and the
+  "Acciones" header is now a minimal **×**. File: `pages/admin/dashboard.tsx`.
+- **Cases table: fully inline editing + column consolidation** — consolidated related fields into
+  fewer, wider columns and made them editable straight from the row (no "Gestionar" needed): an
+  **"Admin panel"** column (Sí/No contactado + super_admin follow-up dropdown + admin-note box), the
+  **"Nota médico"** editor moved under the **Médico** column, and a **"Contacto"** column stacking
+  phone/cédula/email **color-coded** (no labels; hover shows which is which). Removed the "Gestionar"
+  button (the patient name is now the click target to open the manage panel) and replaced the 🗑 with
+  a clear red **"Eliminar"** button. Timestamps now render in **Venezuela time (America/Caracas)**
+  regardless of the viewer's browser. Files: `pages/admin/dashboard.tsx`,
+  `pages/panel-medico/consulta/[id].tsx`.
+- **Cases table: inline "Estado" dropdown + date-times** — the Estado column is now a `<select>` that
+  changes the case status **inline** (optimistic save + audit event, sets `closed_at` on close
+  statuses) without opening "Gestionar caso". The Fechas column now shows **date + time** for Creada
+  / Abierta / Cerrada (new `fmtDateTime` helper). File: `pages/admin/dashboard.tsx`.
+- **Contactado column simplified** — the cell now shows a compact clickable **"Sí"/"No"** (green/grey)
+  instead of a checkbox + badge, and the header was renamed to **"Paciente contactado por admins"**.
+  File: `pages/admin/dashboard.tsx`.
+- **Cases table layout tweaks** — gave the phone its own **"Teléfono"** column (out of the Paciente
+  cell), dropped the redundant **"Necesidades"** line (Categoría already shows it) and renamed that
+  column **"Categoría / motivo"**, and re-balanced the fixed column widths. File:
+  `pages/admin/dashboard.tsx`.
+- **Admin case follow-up fields + "Nota médico" rename** — added two admin-only fields on
+  `consultations`: `admin_seguimiento` (uuid FK to `profiles` — which super_admin is following up the
+  case, chosen from a dropdown of super_admins) and `nota_admin` (free-text admin note). Both are
+  edited in the "Gestionar caso" panel and shown in a new "Seguimiento" column of the cases table.
+  Renamed the doctor's note label "Nota interna" / "Nota operativa interna" (`internal_note`) →
+  **"Nota médico"** across the dashboard and the doctor case-detail page. Files:
+  `supabase_schema.sql`, `pages/admin/dashboard.tsx`, `pages/panel-medico/consulta/[id].tsx`. Needs
+  one additive prod migration (the two columns). Also parked a per-specialty fixed-Jitsi-room idea in
+  `.knowledge/TODOs.md`.
+
 ## 2026-06-30
 
 - **Médicos table: server-side pagination + staff-only** — replaced the client-side filter over the

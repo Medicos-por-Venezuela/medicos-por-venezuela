@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { browserRoomUrl } from '../lib/jitsi'
 
 export default function SalaEspera() {
   const router = useRouter()
@@ -16,7 +17,14 @@ export default function SalaEspera() {
   // window.open() call still runs inside a user gesture and isn't blocked as a pop-up.
   const openRoom = () => {
     setShowWarning(false)
-    if (room) window.open(room, '_blank', 'noopener,noreferrer')
+    // Record that the patient actually entered the call (admin metrics count a case as "esperando"
+    // only from this point on). Fire-and-forget so it never delays opening the room.
+    if (cid) {
+      supabase.rpc('mark_patient_entered_call', { p_consultation_id: cid }).then(({ error }) => {
+        if (error) console.error('Error marcando entrada a la videollamada:', error)
+      })
+    }
+    if (room) window.open(browserRoomUrl(room), '_blank', 'noopener,noreferrer')
   }
 
   // Waiting-room heartbeat: while this page is open, tell the backend the patient is present every
@@ -189,6 +197,23 @@ export default function SalaEspera() {
               </li>
               <li>Mantén también esta página abierta en otra pestaña.</li>
             </ul>
+            <div style={{ margin: '0 0 16px', textAlign: 'center' }}>
+              <p style={{ margin: '0 0 8px', fontWeight: 700 }}>
+                Si te aparece esta pantalla, toca{' '}
+                <span style={{ color: '#dc2626' }}>«Unirse en el navegador»</span>:
+              </p>
+              <img
+                src="/instruccion-jitsi.png"
+                alt="Pantalla de Jitsi: toca «Unirse en el navegador» para continuar sin descargar la app"
+                style={{
+                  width: '100%',
+                  maxWidth: 260,
+                  height: 'auto',
+                  borderRadius: 8,
+                  border: '1px solid #e5e7eb'
+                }}
+              />
+            </div>
             <button className="btn btn-primary btn-full" onClick={openRoom}>
               Entendido, entrar a la videoconsulta
             </button>

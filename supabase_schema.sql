@@ -89,6 +89,7 @@ create table if not exists public.consultations (
   internal_note text,
   video_room_url text,
   patient_last_seen_at timestamptz, -- heartbeat: last time the patient's waiting-room page pinged
+  entered_call_at timestamptz, -- first time the patient clicked "Entrar a la videoconsulta"
   opened_at timestamptz,
   closed_at timestamptz,
   created_at timestamptz not null default now(),
@@ -102,12 +103,17 @@ alter table public.consultations add column if not exists referred_specialty tex
 alter table public.consultations add column if not exists internal_note text;
 alter table public.consultations add column if not exists video_room_url text;
 alter table public.consultations add column if not exists patient_last_seen_at timestamptz;
+alter table public.consultations add column if not exists entered_call_at timestamptz;
 alter table public.consultations add column if not exists opened_at timestamptz;
 alter table public.consultations add column if not exists closed_at timestamptz;
 alter table public.consultations add column if not exists created_at timestamptz default now();
 -- Admin follow-up flag: whether an admin has contacted the patient about this case (set from the
 -- admin dashboard, independent of status).
 alter table public.consultations add column if not exists contacted boolean not null default false;
+-- Admin case follow-up: which super_admin is following up (admin_seguimiento) and a free-text admin
+-- note (nota_admin). Both are edited from the admin dashboard cases table.
+alter table public.consultations add column if not exists admin_seguimiento uuid references public.profiles(id);
+alter table public.consultations add column if not exists nota_admin text;
 
 -- Allow the 'patient_no_show' and 'closed_by_admin' statuses on existing databases (idempotent).
 alter table public.consultations drop constraint if exists consultations_status_check;
@@ -298,6 +304,27 @@ end;
 $$;
 
 grant execute on function public.mark_patient_waiting(uuid) to anon, authenticated;
+
+-- Patient clicked "Entrar a la videoconsulta". Records the first click (entered_call_at is only set
+-- once, via coalesce) and refreshes the presence heartbeat. Used so admin metrics count a case as
+-- "esperando" only after the patient has actually entered the call — not the moment they submitted.
+-- Security definer so anonymous patients can set only this timestamp, and only on still-open cases.
+create or replace function public.mark_patient_entered_call(p_consultation_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.consultations
+  set entered_call_at = coalesce(entered_call_at, now()),
+      patient_last_seen_at = now()
+  where id = p_consultation_id
+    and status in ('waiting', 'in_progress');
+end;
+$$;
+
+grant execute on function public.mark_patient_entered_call(uuid) to anon, authenticated;
 
 -- Hard-delete a patient and everything tied to them (consultations + their audit events). Reserved
 -- for super_admins (used by the admin dashboard to remove test/junk records). Security definer so it

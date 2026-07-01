@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { STATUS_LABELS, minutesSince } from '../../../lib/utils'
+import { browserRoomUrl } from '../../../lib/jitsi'
 
 type Patient = {
   id: string
@@ -84,7 +85,12 @@ function eventLabel(type: string): string {
 }
 
 function fmtDateTime(value: string): string {
-  return new Date(value).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' })
+  // Always render in Venezuela time (America/Caracas), regardless of the viewer's browser timezone.
+  return new Date(value).toLocaleString('es-VE', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'America/Caracas'
+  })
 }
 
 export default function ConsultaDetalle() {
@@ -446,7 +452,7 @@ export default function ConsultaDetalle() {
                 {consultation.video_room_url && (
                   <a
                     className="btn btn-primary"
-                    href={consultation.video_room_url}
+                    href={browserRoomUrl(consultation.video_room_url)}
                     target="_blank"
                     rel="noreferrer"
                   >
