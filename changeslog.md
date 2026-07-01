@@ -7,6 +7,13 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-01
 
+- **Home page: tarjeta de paciente inclusiva + paso redundante eliminado** — ticket
+  `refactor(Home-page)`, seguimiento del cambio anterior. La tarjeta "Soy Paciente" ahora dice
+  "Necesito hablar con un médico, psicólogo u otro profesional de la salud." (antes solo
+  mencionaba médico/psicólogo). Se eliminó el paso 1 de "¿Cómo funciona?" ("Entra a la
+  plataforma / Ingresa a www.medicosporvenezuela.org") por redundante — quien lee la página ya
+  está en el sitio; los pasos se renumeraron solos (ahora son 4). Se eliminó el ícono
+  `IconGlobe`, que quedó sin uso. File: `pages/index.tsx`.
 - **Home page: "Soy profesional de la salud" + sala de espera en el paso 4** — ticket
   `refactor(Home-page)`, rama base `dev_aws`. Renombrado "Soy Médico" → "Soy profesional de la
   salud" en el nav y en la hero card (más inclusivo, no solo médicos). El paso 4 de "¿Cómo

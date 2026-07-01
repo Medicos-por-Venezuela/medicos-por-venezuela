@@ -22,23 +22,6 @@ function LogoIcon() {
   )
 }
 
-function IconGlobe() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="26"
-      height="26"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18" />
-    </svg>
-  )
-}
 function IconUser() {
   return (
     <svg
@@ -207,15 +190,10 @@ function useReveal<T extends HTMLElement>() {
 /* ---------- Data ---------- */
 
 // TODO(refactor(Home-page) #2/#5): pendiente confirmar con las Drs del grupo la lista completa
-// de profesiones a mostrar (hoy solo se menciona médico/psicólogo en varios puntos: STEPS[1],
-// STEPS[4], la meta description del <Head>, y el copy del hero). No se expande todavía porque
+// de profesiones a mostrar (hoy solo se menciona médico/psicólogo en varios puntos: STEPS[0],
+// STEPS[3], la meta description del <Head>, y el copy del hero). No se expande todavía porque
 // no sabemos qué otras profesiones agregar.
 const STEPS = [
-  {
-    icon: <IconGlobe />,
-    title: 'Entra a la plataforma',
-    text: 'Ingresa a www.medicosporvenezuela.org'
-  },
   {
     icon: <IconUser />,
     title: 'Haz clic en “Soy paciente”',
@@ -342,7 +320,7 @@ export default function Home() {
                   <IconUser />
                 </div>
                 <h2>Soy Paciente</h2>
-                <p>Necesito hablar con un médico o psicólogo.</p>
+                <p>Necesito hablar con un médico, psicólogo u otro profesional de la salud.</p>
                 <button className="btn-pill btn-blue btn-block" onClick={goPaciente}>
                   Solicitar consulta →
                 </button>
