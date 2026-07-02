@@ -79,6 +79,25 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   `styles/globals.css` (`.input-group`). Pendiente (requiere `.env.example`, sin acceso de
   archivo en esta sesión): documentar `NEXT_PUBLIC_API_BASE_URL`.
 
+## 2026-07-02
+
+- **Registro médico: verificación de cédula conectada al backend real** — `verificarSacs` /
+  `verificarPsicologo` (nuevo `lib/verificacion.ts`) reemplazan los mocks de
+  `registro-medico.tsx`, pegando contra `GET /api/v1/verificacion-sacs/{cedula}` y
+  `GET /api/v1/verificacion-psicologo/{cedula}` de `api-medicos-por-venezuela` (ya mergeados a
+  `dev`, confirmados en Swagger). Base URL configurable vía `NEXT_PUBLIC_API_URL` (default
+  `http://localhost:8000`). Probado en vivo: cédula sin registro real muestra correctamente "No
+  encontramos esta cédula...". Files: `lib/verificacion.ts`, `pages/registro-medico.tsx`,
+  `.env.example`.
+- **Especialidad excluye "Psicología" cuando el tipo de profesional es Médico** — esa
+  especialidad queda reservada al flujo de `Psicólogo` (se asigna sola, sin selector). File:
+  `pages/registro-medico.tsx`.
+- **Botón y foco de `/registro-medico` alineados al dorado del home** — el botón "Registrarse"
+  (`.registro-medico-page .btn-primary`) pasa de fondo azul sólido a fondo blanco + borde dorado
+  de 2px (mismo criterio que `btn-gold-outline` del home para la tarjeta "Soy Médico"); el foco de
+  inputs/selects de esa pantalla también pasa de azul a dorado. Nueva variable `--home-gold`.
+  Files: `styles/globals.css`.
+
 ## 2026-07-01
 
 - **Home page: extendido "médico o psicólogo" → "profesional de la salud" en toda la página** —
