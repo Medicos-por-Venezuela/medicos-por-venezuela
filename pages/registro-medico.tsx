@@ -3,15 +3,14 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { signInWithGoogle } from '../lib/auth'
 import { SPECIALTIES } from '../lib/utils'
+import { verificarSacs, verificarPsicologo } from '../lib/verificacion'
 import GoogleButton from '../components/GoogleButton'
 
-// MAQUETA (sin endpoints todavía): consolida en un solo paso lo que hoy está
+// MAQUETA (submit sin endpoint todavía): consolida en un solo paso lo que hoy está
 // dividido entre este archivo (cuenta) y /elegir-rol (especialidad/país/whatsapp),
 // según el diagrama de secuencia + wireframe del ticket "refactor(registro-medicos)".
-// El submit y las verificaciones de cédula son simuladas (mockVerificarSacs /
-// mockVerificarPsicologo) hasta que el backend exponga los endpoints reales:
-//   - GET /api/v1/verificacion-sacs/{cedula}         (V-12345678 / E-12345678)
-//   - GET /api/v1/verificacion-psicologo/{cedula}    (solo dígitos)
+// La verificación de cédula (SACS/FPV) ya pega contra el backend real — ver
+// lib/verificacion.ts. El submit del formulario sigue simulado:
 //   - GET /api/v1/professional-types                 (hoy es staff-only; para un
 //     selector público como este hace falta un catálogo público, como
 //     /specialties/catalog. Ver nota en TIPOS_PROFESIONAL abajo.)
@@ -42,39 +41,6 @@ const PAISES = [
 ]
 
 const soloDigitos = (value: string) => value.replace(/\D/g, '')
-
-type VerificacionResponse = {
-  encontrado: boolean
-  nombre?: string | null
-  apellido?: string | null
-  licencia?: string | null
-}
-
-// Mock de GET /verificacion-sacs/{cedula}. Cédula "V-00000000" / "E-00000000"
-// simula "no encontrado" para poder probar ese estado en la maqueta.
-async function mockVerificarSacs(cedula: string): Promise<VerificacionResponse> {
-  await new Promise((r) => setTimeout(r, 600))
-  if (cedula.endsWith('00000000')) return { encontrado: false }
-  return {
-    encontrado: true,
-    nombre: 'Nombre (mock SACS)',
-    apellido: 'Apellido (mock SACS)',
-    licencia: `SACS-${cedula.replace(/\D/g, '')}`
-  }
-}
-
-// Mock de GET /verificacion-psicologo/{cedula}. Cédula "00000000" simula
-// "no encontrado".
-async function mockVerificarPsicologo(cedula: string): Promise<VerificacionResponse> {
-  await new Promise((r) => setTimeout(r, 600))
-  if (cedula === '00000000') return { encontrado: false }
-  return {
-    encontrado: true,
-    nombre: 'Nombre (mock FPV)',
-    apellido: 'Apellido (mock FPV)',
-    licencia: `FPV-${cedula}`
-  }
-}
 
 export default function RegistroMedico() {
   const [tipoProfesional, setTipoProfesional] = useState('')
@@ -138,8 +104,8 @@ export default function RegistroMedico() {
     try {
       const resp =
         tipoProfesional === 'Médico'
-          ? await mockVerificarSacs(`${cedulaPrefijo}-${cedulaNumero}`)
-          : await mockVerificarPsicologo(cedulaNumero)
+          ? await verificarSacs(`${cedulaPrefijo}-${cedulaNumero}`)
+          : await verificarPsicologo(cedulaNumero)
       if (resp.encontrado) {
         setNombreCompleto([resp.nombre, resp.apellido].filter(Boolean).join(' '))
         setLicencia(resp.licencia || '')
@@ -339,7 +305,7 @@ export default function RegistroMedico() {
                   <label className="label">Especialidad *</label>
                   <select value={especialidad} onChange={(e) => setEspecialidad(e.target.value)}>
                     <option value="">Selecciona...</option>
-                    {SPECIALTIES.map((s) => (
+                    {SPECIALTIES.filter((s) => s !== 'Psicología').map((s) => (
                       <option key={s} value={s}>
                         {s}
                       </option>

@@ -6,6 +6,7 @@
      .registro-medico-page — ver esa regla más abajo. */
   --home-blue: #1a3a6b;
   --home-blue-deep: #122a4f;
+  --home-gold: #f5c400;
   --red: #b91c1c;
   --red-light: #fee2e2;
   --orange: #b45309;
@@ -258,14 +259,17 @@ input[readonly] {
 /* Alineado al azul del home (pages/index.tsx) solo en esta pantalla — el
    resto de la app sigue en --green hasta que se decida un rebrand completo. */
 .registro-medico-page .btn-primary {
-  background: var(--home-blue);
+  background: #fff;
+  color: var(--home-blue);
+  border: 2px solid var(--home-gold);
 }
 .registro-medico-page .btn-primary:hover {
-  background: var(--home-blue-deep);
+  background: var(--home-gold);
+  color: var(--home-blue);
 }
 .registro-medico-page input:focus,
 .registro-medico-page select:focus {
-  border-color: var(--home-blue);
+  border-color: var(--home-gold);
 }
 .registro-medico-page .link-button {
   color: var(--home-blue);
