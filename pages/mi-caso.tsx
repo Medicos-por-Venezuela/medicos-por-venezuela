@@ -14,6 +14,7 @@ type Consultation = {
   category: string | null
   chief_complaint: string | null
   referred_specialty: string | null
+  internal_note: string | null
   created_at: string
 }
 
@@ -70,7 +71,9 @@ export default function MiCaso() {
     if (ids.length) {
       const { data: cons } = await supabase
         .from('consultations')
-        .select('id, code, status, category, chief_complaint, referred_specialty, created_at')
+        .select(
+          'id, code, status, category, chief_complaint, referred_specialty, internal_note, created_at'
+        )
         .in('patient_id', ids)
         .order('created_at', { ascending: false })
       setConsultations((cons || []) as Consultation[])
@@ -218,6 +221,11 @@ export default function MiCaso() {
                     <p>
                       <span className="badge badge-blue">Derivado a {c.referred_specialty}</span>
                     </p>
+                  )}
+                  {c.internal_note && (
+                    <div className="notice" style={{ marginTop: 8 }}>
+                      <strong>Nota del médico:</strong> {c.internal_note}
+                    </div>
                   )}
                 </div>
               ))}

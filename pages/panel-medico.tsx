@@ -264,11 +264,14 @@ export default function PanelMedico() {
   )
   // Live video queue for "Atender al siguiente": unassigned patients who entered the video call
   // within the last LIVE_CALL_WINDOW_MIN minutes (i.e. actually waiting in the room right now).
+  // WhatsApp-preference cases are excluded here so they can ONLY be taken from the WhatsApp section
+  // ("Puedo atender… vía WhatsApp"), never through the video "Atender al siguiente" flow.
   const liveWaiting = useMemo(
     () =>
       consultations.filter(
         (c) =>
           c.assigned_doctor_id === null &&
+          c.contact_preference !== 'whatsapp' &&
           c.entered_call_at !== null &&
           Date.now() - new Date(c.entered_call_at).getTime() < LIVE_CALL_WINDOW_MIN * 60000 &&
           specialtyCanSee(

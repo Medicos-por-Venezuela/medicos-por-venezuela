@@ -282,6 +282,58 @@ as $$
   select coalesce(public.current_user_role() in ('doctor', 'specialist', 'admin', 'super_admin'), false);
 $$;
 
+-- The current authenticated user's doctor specialty (null if none). Security definer so it can be used
+-- inside RLS policies without exposing the profiles table directly.
+create or replace function public.current_user_specialty()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select specialty from public.profiles where id = auth.uid();
+$$;
+
+-- A patient's needs_tags (empty array if none). Security definer so RLS on consultations can read the
+-- linked patient's needs without granting broad table access.
+create or replace function public.patient_needs(p_patient_id uuid)
+returns text[]
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(needs_tags, '{}') from public.patients where id = p_patient_id;
+$$;
+
+-- Whether a doctor with p_specialty may be ASSIGNED to a case, enforcing the psychology reservation:
+--   * If an admin set required_specialties, that explicit list governs (specialty must be in it).
+--   * Otherwise reserved mental-health needs (Apoyo emocional / Crisis de ansiedad) may ONLY go to
+--     Psicología/Psiquiatría; every other case is unrestricted here (specialty matching for non-
+--     psychology cases stays a client-side/queue concern).
+-- Mirrors the client-side reservation in lib/utils.ts (RESERVED_NEEDS / canAttend). Keep the two in
+-- sync if the reserved needs change.
+create or replace function public.specialty_may_attend(
+  p_category text,
+  p_needs text[],
+  p_required text[],
+  p_specialty text
+)
+returns boolean
+language sql
+immutable
+set search_path = public
+as $$
+  select case
+    when p_required is not null and array_length(p_required, 1) > 0
+      then p_specialty = any(p_required)
+    when coalesce(p_category, '') in ('Apoyo emocional', 'Crisis de ansiedad')
+      or coalesce(p_needs, '{}') && array['Apoyo emocional', 'Crisis de ansiedad']
+      then p_specialty in ('Psicología', 'Psiquiatría')
+    else true
+  end;
+$$;
+
 -- Doctors call this RPC from the browser; they cannot update their profile role/permissions directly.
 create or replace function public.mark_myself_online()
 returns void
@@ -518,6 +570,19 @@ using (
 with check (
   public.current_user_role() in ('doctor', 'specialist')
   and (assigned_doctor_id = auth.uid() or assigned_doctor_id is null)
+  -- A doctor may only assign the case to THEMSELVES if their specialty is allowed to attend it.
+  -- Enforces the psychology reservation server-side: e.g. a 'Medicina general'/'Otra' doctor cannot
+  -- claim an "Apoyo emocional"/"Crisis de ansiedad" case. Unassigning (setting NULL) is unaffected.
+  -- Admins bypass this via the separate consultations_update_admin policy.
+  and (
+    assigned_doctor_id is distinct from auth.uid()
+    or public.specialty_may_attend(
+      category,
+      public.patient_needs(patient_id),
+      required_specialties,
+      public.current_user_specialty()
+    )
+  )
 );
 
 create policy consultations_update_admin

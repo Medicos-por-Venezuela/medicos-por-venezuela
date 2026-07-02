@@ -515,7 +515,23 @@ export default function ConsultaDetalle() {
                   </select>
                 </div>
                 <div>
-                  <label className="label">Notas del médico</label>
+                  <label className="label">Notas médico/paciente</label>
+                  <div
+                    style={{
+                      margin: '0 0 8px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: '#b91c1c',
+                      background: 'var(--red-light)',
+                      border: '1px solid #fca5a5',
+                      borderRadius: 8,
+                      padding: '8px 10px'
+                    }}
+                  >
+                    Esta nota puede ser vista por el paciente si tiene una cuenta. Si el paciente no
+                    creó una cuenta, es posible que no tenga acceso a la información escrita en esta
+                    sección.
+                  </div>
                   <textarea
                     rows={6}
                     value={note}

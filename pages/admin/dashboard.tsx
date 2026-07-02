@@ -1,6 +1,6 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import {
   NEEDS,
@@ -60,8 +60,22 @@ type Consultation = {
   admin_seguimiento: string | null // super_admin id following up the case
   nota_admin: string | null
   attended_via_whatsapp: boolean
+  contact_preference: string | null
   required_specialties: string[] | null
   patients: Patient | null
+}
+
+// Whether the case is / will be handled by a doctor over WhatsApp. True when the doctor explicitly
+// marked it (attended_via_whatsapp), the status is "Ya contactado vía WhatsApp", or the patient asked
+// for WhatsApp and a doctor has taken the case. This is broader than the raw attended_via_whatsapp
+// flag, which only the panel's WhatsApp button sets — a case claimed via the normal open flow (like
+// CONS-…-0186) would otherwise never light up even though it's a WhatsApp case.
+function contactedByWhatsapp(c: Consultation): boolean {
+  return (
+    c.attended_via_whatsapp ||
+    c.status === 'contacted_whatsapp' ||
+    (c.contact_preference === 'whatsapp' && !!c.assigned_doctor_id)
+  )
 }
 
 type ConsultationEvent = {
@@ -139,13 +153,9 @@ const fmtDateTime = (s?: string | null) =>
       })
     : '—'
 
-// True if an ISO timestamp falls within an inclusive [from, to] date range (either bound optional).
-// `from`/`to` come from <input type="date"> as 'YYYY-MM-DD'.
-function inDateRange(iso: string, from: string, to: string): boolean {
-  const t = new Date(iso).getTime()
-  if (from && t < new Date(from + 'T00:00:00').getTime()) return false
-  if (to && t > new Date(to + 'T23:59:59.999').getTime()) return false
-  return true
+// Toggle a value in a multi-select filter array (add if missing, remove if present).
+function toggleInArray(arr: string[], value: string): string[] {
+  return arr.includes(value) ? arr.filter((x) => x !== value) : [...arr, value]
 }
 
 export default function AdminDashboard() {
@@ -235,11 +245,12 @@ export default function AdminDashboard() {
   const [usersLoading, setUsersLoading] = useState(false)
   const [debouncedUserSearch, setDebouncedUserSearch] = useState('')
 
-  // Consultations table filters
+  // Consultations table filters. Each is a multi-select (empty array = no filter / show all).
   const [caseSearch, setCaseSearch] = useState('')
-  const [caseStatusFilter, setCaseStatusFilter] = useState('all')
-  const [caseFrom, setCaseFrom] = useState('')
-  const [caseTo, setCaseTo] = useState('')
+  const [caseStatusFilters, setCaseStatusFilters] = useState<string[]>([])
+  const [caseSpecFilters, setCaseSpecFilters] = useState<string[]>([])
+  // WhatsApp-by-doctor filter: values 'yes' | 'no' (attended_via_whatsapp).
+  const [caseWhatsappFilters, setCaseWhatsappFilters] = useState<string[]>([])
   // Cases table sorting (defaults to newest-first, matching the query order).
   const [sortKey, setSortKey] = useState('dates')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
@@ -474,8 +485,19 @@ export default function AdminDashboard() {
   const filteredConsultations = useMemo(() => {
     const q = caseSearch.trim().toLowerCase()
     return consultations.filter((c) => {
-      if (caseStatusFilter !== 'all' && c.status !== caseStatusFilter) return false
-      if (!inDateRange(c.created_at, caseFrom, caseTo)) return false
+      if (caseStatusFilters.length > 0 && !caseStatusFilters.includes(c.status)) return false
+      if (caseSpecFilters.length > 0) {
+        const specs = effectiveSpecialties(
+          c.required_specialties,
+          c.category,
+          c.patients?.needs_tags || null
+        )
+        if (!specs.some((s) => caseSpecFilters.includes(s))) return false
+      }
+      if (caseWhatsappFilters.length > 0) {
+        const key = contactedByWhatsapp(c) ? 'yes' : 'no'
+        if (!caseWhatsappFilters.includes(key)) return false
+      }
       if (
         q &&
         !`${c.patients?.full_name || ''} ${c.code} ${c.patients?.affected_zone || ''} ${
@@ -487,7 +509,34 @@ export default function AdminDashboard() {
         return false
       return true
     })
-  }, [consultations, caseSearch, caseStatusFilter, caseFrom, caseTo])
+  }, [consultations, caseSearch, caseStatusFilters, caseSpecFilters, caseWhatsappFilters])
+
+  // Stable case number for easy reference: oldest case = 1. Numbered across ALL loaded cases (by
+  // created_at ascending) so a case keeps the same number regardless of sorting/filtering.
+  const caseNumberById = useMemo(() => {
+    const ordered = [...consultations].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )
+    const m = new Map<string, number>()
+    ordered.forEach((c, idx) => m.set(c.id, idx + 1))
+    return m
+  }, [consultations])
+
+  // Specialties that actually appear among the loaded cases (in SPECIALTIES order), so the specialty
+  // filter only offers relevant options rather than the full list.
+  const availableCaseSpecialties = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of consultations) {
+      for (const s of effectiveSpecialties(
+        c.required_specialties,
+        c.category,
+        c.patients?.needs_tags || null
+      )) {
+        set.add(s)
+      }
+    }
+    return SPECIALTIES.filter((s) => set.has(s))
+  }, [consultations])
 
   const sortedConsultations = useMemo(() => {
     const value = (c: Consultation): string | number => {
@@ -1184,39 +1233,81 @@ export default function AdminDashboard() {
                     ({filteredConsultations.length} de {consultations.length})
                   </span>
                 </h2>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                <div style={{ marginBottom: 12 }}>
                   <input
-                    style={{ flex: '1 1 160px' }}
+                    style={{ width: '100%' }}
                     placeholder="Buscar nombre, teléfono, cédula, email, código o zona"
                     value={caseSearch}
                     onChange={(e) => setCaseSearch(e.target.value)}
                   />
-                  <select
-                    style={{ flex: '0 1 160px' }}
-                    value={caseStatusFilter}
-                    onChange={(e) => setCaseStatusFilter(e.target.value)}
-                  >
-                    <option value="all">Todos los estados</option>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                  <FilterGroup label="Estado" activeCount={caseStatusFilters.length}>
                     {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
+                      <FilterChip
+                        key={s}
+                        active={caseStatusFilters.includes(s)}
+                        onClick={() => setCaseStatusFilters((prev) => toggleInArray(prev, s))}
+                      >
                         {STATUS_LABELS[s] || s}
-                      </option>
+                      </FilterChip>
                     ))}
-                  </select>
-                  <input
-                    type="date"
-                    style={{ flex: '0 1 140px' }}
-                    value={caseFrom}
-                    onChange={(e) => setCaseFrom(e.target.value)}
-                    title="Creada desde"
-                  />
-                  <input
-                    type="date"
-                    style={{ flex: '0 1 140px' }}
-                    value={caseTo}
-                    onChange={(e) => setCaseTo(e.target.value)}
-                    title="Creada hasta"
-                  />
+                  </FilterGroup>
+                  <FilterGroup label="Especialidad" activeCount={caseSpecFilters.length}>
+                    {availableCaseSpecialties.length === 0 ? (
+                      <span style={{ fontSize: 12, color: '#94a3b8' }}>—</span>
+                    ) : (
+                      availableCaseSpecialties.map((s) => (
+                        <FilterChip
+                          key={s}
+                          active={caseSpecFilters.includes(s)}
+                          onClick={() => setCaseSpecFilters((prev) => toggleInArray(prev, s))}
+                        >
+                          {s}
+                        </FilterChip>
+                      ))
+                    )}
+                  </FilterGroup>
+                  <FilterGroup
+                    label="Contacto por WhatsApp (médico)"
+                    activeCount={caseWhatsappFilters.length}
+                  >
+                    {[
+                      { v: 'yes', l: 'Sí' },
+                      { v: 'no', l: 'No' }
+                    ].map((o) => (
+                      <FilterChip
+                        key={o.v}
+                        active={caseWhatsappFilters.includes(o.v)}
+                        onClick={() => setCaseWhatsappFilters((prev) => toggleInArray(prev, o.v))}
+                      >
+                        {o.l}
+                      </FilterChip>
+                    ))}
+                  </FilterGroup>
+                  {(caseStatusFilters.length > 0 ||
+                    caseSpecFilters.length > 0 ||
+                    caseWhatsappFilters.length > 0) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCaseStatusFilters([])
+                        setCaseSpecFilters([])
+                        setCaseWhatsappFilters([])
+                      }}
+                      style={{
+                        alignSelf: 'flex-start',
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#2563eb',
+                        cursor: 'pointer',
+                        fontSize: 12,
+                        padding: 0
+                      }}
+                    >
+                      Limpiar filtros
+                    </button>
+                  )}
                 </div>
                 <div
                   style={{
@@ -1231,12 +1322,13 @@ export default function AdminDashboard() {
                   <span style={{ fontWeight: 600, color: '#334155' }}>Fechas:</span>
                   {[
                     { l: 'A', c: '#dc2626', t: 'El paciente registró su caso' },
-                    { l: 'B', c: '#2563eb', t: 'El paciente ingresó en la videollamada' },
+                    { l: 'B1', c: '#2563eb', t: 'El paciente ingresó a la videollamada' },
                     {
-                      l: 'C',
-                      c: '#ca8a04',
-                      t: 'Un médico de la especialidad ingresó en la videollamada'
+                      l: 'B2',
+                      c: '#7c3aed',
+                      t: 'El paciente prefirió ser contactado por WhatsApp'
                     },
+                    { l: 'C', c: '#ca8a04', t: 'Un médico tomó el caso' },
                     { l: 'D', c: '#16a34a', t: 'El médico asignado cerró el caso' }
                   ].map((item) => (
                     <span key={item.l} style={{ whiteSpace: 'nowrap' }}>
@@ -1247,6 +1339,7 @@ export default function AdminDashboard() {
                 <div style={{ overflowX: 'auto' }}>
                   <table className="table cases-table" style={{ tableLayout: 'fixed' }}>
                     <colgroup>
+                      <col style={{ width: '6%', minWidth: 40 }} />
                       {CASE_COLS.map((col) => (
                         <col key={col.key} style={{ width: col.width }} />
                       ))}
@@ -1254,6 +1347,7 @@ export default function AdminDashboard() {
                     </colgroup>
                     <thead>
                       <tr>
+                        <th style={{ textAlign: 'center' }}>#</th>
                         {CASE_COLS.map((col) => (
                           <th
                             key={col.key}
@@ -1276,13 +1370,23 @@ export default function AdminDashboard() {
                     <tbody>
                       {sortedConsultations.length === 0 ? (
                         <tr>
-                          <td colSpan={8} style={{ color: '#64748b' }}>
+                          <td colSpan={9} style={{ color: '#64748b' }}>
                             No hay consultas que coincidan con el filtro.
                           </td>
                         </tr>
                       ) : (
                         sortedConsultations.map((c) => (
                           <tr key={c.id}>
+                            <td
+                              style={{
+                                textAlign: 'center',
+                                color: '#94a3b8',
+                                fontWeight: 700,
+                                fontSize: 12
+                              }}
+                            >
+                              {caseNumberById.get(c.id)}
+                            </td>
                             <td>
                               <button
                                 type="button"
@@ -1424,7 +1528,7 @@ export default function AdminDashboard() {
                                   c.patients?.needs_tags || null
                                 ).join(', ')}
                               />
-                              {c.attended_via_whatsapp && (
+                              {contactedByWhatsapp(c) && (
                                 <div
                                   style={{
                                     fontSize: 12,
@@ -1636,18 +1740,29 @@ export default function AdminDashboard() {
                               {c.entered_call_at && (
                                 <div style={{ fontSize: 12, color: '#64748b' }}>
                                   <span
-                                    title="El paciente ingresó en la videollamada"
+                                    title="El paciente ingresó a la videollamada"
                                     style={{ fontWeight: 700, color: '#2563eb' }}
                                   >
-                                    B
+                                    B1
                                   </span>{' '}
                                   {fmtDateTime(c.entered_call_at)}
+                                </div>
+                              )}
+                              {c.contact_preference === 'whatsapp' && (
+                                <div style={{ fontSize: 12, color: '#64748b' }}>
+                                  <span
+                                    title="El paciente prefirió ser contactado por WhatsApp"
+                                    style={{ fontWeight: 700, color: '#7c3aed' }}
+                                  >
+                                    B2
+                                  </span>{' '}
+                                  Prefirió WhatsApp
                                 </div>
                               )}
                               {c.opened_at && (
                                 <div style={{ fontSize: 12, color: '#64748b' }}>
                                   <span
-                                    title="Un médico de la especialidad ingresó en la videollamada"
+                                    title="Un médico tomó el caso"
                                     style={{ fontWeight: 700, color: '#ca8a04' }}
                                   >
                                     C
@@ -1965,5 +2080,73 @@ function Kpi({ value, label }: { value: number; label: string }) {
       <div className="kpi-value">{value}</div>
       <div className="kpi-label">{label}</div>
     </div>
+  )
+}
+
+// A collapsible group of multi-select filter chips for the cases table. Collapsed by default: only
+// the labeled pill shows (with a count of active selections); clicking it reveals the options.
+function FilterGroup({
+  label,
+  activeCount,
+  children
+}: {
+  label: string
+  activeCount: number
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  const on = activeCount > 0
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: 6 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          fontSize: 12,
+          fontWeight: 700,
+          padding: '3px 12px',
+          borderRadius: 999,
+          cursor: 'pointer',
+          minWidth: 84,
+          textAlign: 'left',
+          border: on ? '1px solid #2563eb' : '1px solid var(--border)',
+          background: on ? '#eff6ff' : '#f8fafc',
+          color: on ? '#1d4ed8' : '#334155'
+        }}
+      >
+        {label}
+        {activeCount > 0 ? ` (${activeCount})` : ''} {open ? '▴' : '▾'}
+      </button>
+      {open && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{children}</div>}
+    </div>
+  )
+}
+
+function FilterChip({
+  active,
+  onClick,
+  children
+}: {
+  active: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        fontSize: 12,
+        fontWeight: 600,
+        padding: '3px 10px',
+        borderRadius: 999,
+        cursor: 'pointer',
+        border: active ? '1px solid #2563eb' : '1px solid var(--border)',
+        background: active ? '#2563eb' : '#fff',
+        color: active ? '#fff' : '#475569'
+      }}
+    >
+      {children}
+    </button>
   )
 }

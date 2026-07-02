@@ -5,7 +5,48 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-07-02
+
+- **Doctor note shared with account patients + warning** — `/mi-caso` now shows the doctor's note
+  (`internal_note`) to account-holding patients, and the case-detail "Notas del médico" section has a
+  red warning that the note may be seen by the patient (and that patients without an account may not
+  have access). Files: `pages/mi-caso.tsx`, `pages/panel-medico/consulta/[id].tsx`.
+
+- **Admin "Fechas" legend updated for the WhatsApp flow** — split B into B1 (ingresó a la videollamada)
+  and B2 (prefirió WhatsApp, shown when `contact_preference='whatsapp'`), and reworded C to "Un médico
+  tomó el caso" (accurate for both video and WhatsApp claims). File: `pages/admin/dashboard.tsx`.
+
+- **Verified B1/B2 event logging** — controlled test confirmed `mark_patient_entered_call` writes a
+  `patient_entered_call` (B1) event; `patient_wants_whatsapp` (B2) verified against production
+  (12/12 WhatsApp cases had the event). Earlier `B1=0` was just because no video entries occurred since
+  the logging deployed.
+
+- **Enforce psychology reservation server-side (RLS)** — a doctor can no longer *claim* a reserved
+  mental-health case (Apoyo emocional / Crisis de ansiedad) unless their specialty is Psicología or
+  Psiquiatría; when an admin set `required_specialties`, that explicit list governs instead. Added SQL
+  helpers `current_user_specialty()`, `patient_needs()`, `specialty_may_attend()` and a `WITH CHECK`
+  guard on `consultations_update_staff`. Admins still override via `consultations_update_admin`.
+  Mirrors the client rule in `lib/utils.ts`. File: `supabase_schema.sql` (**needs prod migration**).
+
+- **WhatsApp cases locked to the WhatsApp section** — excluded `contact_preference='whatsapp'` cases
+  from the `liveWaiting`/"Atender al siguiente" video queue so they can only be taken via the
+  "Puedo atender… vía WhatsApp" button (which sets the flag/badge). File: `pages/panel-medico.tsx`.
+
+- **Admin: "Doctor contactará vía WhatsApp" now reflects reality** — the indicator (and the WhatsApp
+  filter) were driven solely by `attended_via_whatsapp`, which only the panel's WhatsApp button sets.
+  A WhatsApp-preference case claimed via the normal open flow (e.g. CONS-20260701-0186, María Elena
+  León) stayed dark. New `contactedByWhatsapp()` helper lights up when the doctor marked WhatsApp, the
+  status is `contacted_whatsapp`, or the patient chose WhatsApp and a doctor took the case — fixing
+  existing records with no migration. File: `pages/admin/dashboard.tsx`.
+
 ## 2026-07-01
+
+- **Admin cases table: case number + multi-select filters** — added a leftmost `#` column numbering
+  cases by age (oldest = 1, stable across sort/filter). Replaced the date-range filters with three
+  collapsible multi-select filter pills — Estado, Especialidad (only specialties present in the cases),
+  and Contacto por WhatsApp (médico) — each expands on click, shows an active-count badge, and combines
+  as AND across groups / OR within a group; plus a "Limpiar filtros" reset. File:
+  `pages/admin/dashboard.tsx`.
 
 - **Case detail: clearer patient header** — Zona, Edad (años) and Cédula now render as three clearly
   labeled columns side by side, and the case **Categoría** (e.g. "Crisis de ansiedad") shows as a badge
