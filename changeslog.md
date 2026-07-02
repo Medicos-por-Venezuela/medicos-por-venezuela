@@ -7,6 +7,10 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-02
 
+- **Doctor panel: "Mis casos cerrados" section** — doctors can now see their own resolved/closed cases
+  (closed, closed_by_admin, patient_no_show, referred, urgent, cancelled; most-recent first, capped at
+  50) with a "Ver detalle" link to review what happened. File: `pages/panel-medico.tsx`.
+
 - **Doctor note shared with account patients + warning** — `/mi-caso` now shows the doctor's note
   (`internal_note`) to account-holding patients, and the case-detail "Notas del médico" section has a
   red warning that the note may be seen by the patient (and that patients without an account may not

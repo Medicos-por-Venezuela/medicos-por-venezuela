@@ -58,6 +58,18 @@ const OPEN_STATUSES = [
   'patient_no_show'
 ]
 
+// Terminal / resolved statuses shown to a doctor in their read-only "Mis casos cerrados" section, so
+// they can review what happened on cases they handled. patient_no_show is included (the doctor's own
+// no-show outcome). Excludes the doctor's still-active statuses (in_progress / contacted_whatsapp).
+const MY_CLOSED_STATUSES = [
+  'closed',
+  'closed_by_admin',
+  'patient_no_show',
+  'referred_to_specialist',
+  'urgent_in_person',
+  'cancelled'
+]
+
 const PATIENT_COLS =
   'id, full_name, cedula, phone_whatsapp, affected_zone, age_range, needs_tags, description'
 
@@ -210,6 +222,7 @@ export default function PanelMedico() {
     // The doctor's own open cases, fetched separately so the cap can't drop them either.
     const id = currentProfile?.id
     let mine: Consultation[] = []
+    let mineClosed: Consultation[] = []
     if (id) {
       const { data: mineData } = await supabase
         .from('consultations')
@@ -218,6 +231,16 @@ export default function PanelMedico() {
         .in('status', ['in_progress', 'contacted_whatsapp'])
         .order('created_at', { ascending: true })
       mine = (mineData || []) as Consultation[]
+
+      // The doctor's own resolved/closed cases (read-only review). Most-recent first, capped.
+      const { data: closedData } = await supabase
+        .from('consultations')
+        .select(`*, patients(${PATIENT_COLS})`)
+        .eq('assigned_doctor_id', id)
+        .in('status', MY_CLOSED_STATUSES)
+        .order('closed_at', { ascending: false, nullsFirst: false })
+        .limit(50)
+      mineClosed = (closedData || []) as Consultation[]
     }
 
     // Merge the sources, de-duplicated by id (a live case may also be >20 min old, etc.).
@@ -226,7 +249,8 @@ export default function PanelMedico() {
       ...((unattendedRes.data || []) as Consultation[]),
       ...((liveRes.data || []) as Consultation[]),
       ...((whatsappRes.data || []) as Consultation[]),
-      ...mine
+      ...mine,
+      ...mineClosed
     ]) {
       byId.set(c.id, c)
     }
@@ -292,6 +316,14 @@ export default function PanelMedico() {
         (c) =>
           c.assigned_doctor_id === profile?.id &&
           (c.status === 'in_progress' || c.status === 'contacted_whatsapp')
+      ),
+    [consultations, profile?.id]
+  )
+  // The doctor's own resolved/closed cases — read-only, so they can review what happened.
+  const myClosedConsultations = useMemo(
+    () =>
+      consultations.filter(
+        (c) => c.assigned_doctor_id === profile?.id && MY_CLOSED_STATUSES.includes(c.status)
       ),
     [consultations, profile?.id]
   )
@@ -499,6 +531,35 @@ export default function PanelMedico() {
                 <div className="grid">
                   {waiting.map((c) => (
                     <ConsultationCard key={c.id} c={c} onWhatsapp={() => setWhatsappTarget(c)} />
+                  ))}
+                </div>
+              )}
+            </section>
+            <section className="card">
+              <h2 style={{ marginTop: 0 }}>Mis casos cerrados</h2>
+              {myClosedConsultations.length === 0 ? (
+                <p style={{ color: '#64748b' }}>Aún no has cerrado ningún caso.</p>
+              ) : (
+                <div className="grid">
+                  {myClosedConsultations.map((c) => (
+                    <div key={c.id} className="card-flat">
+                      <div className="panel-card-header">
+                        <div>
+                          <strong>{c.patients?.full_name || 'Paciente'}</strong>
+                          <div style={{ color: '#64748b', fontSize: 13 }}>{c.code}</div>
+                        </div>
+                        <span className={`badge ${statusBadgeClass(c.status)}`}>
+                          {STATUS_LABELS[c.status] || c.status}
+                        </span>
+                      </div>
+                      <p>{c.chief_complaint || c.patients?.description || 'Sin descripción'}</p>
+                      <button
+                        className="btn btn-secondary btn-full"
+                        onClick={() => router.push(`/panel-medico/consulta/${c.id}`)}
+                      >
+                        Ver detalle
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}
