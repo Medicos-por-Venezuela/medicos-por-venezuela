@@ -1,5 +1,29 @@
 # TODOs / Pending points
 
+## Doctor credential verification (Artículo 8 / MPPS) — NOT implemented
+
+Today there is **no real check** that a registered doctor is a licensed physician:
+
+- The license field (`medical_license`) on `/elegir-rol` is **optional, free text** — no format
+  validation, no check against MPPS/SACS or any registry.
+- **No Artículo 8** declaration is collected anywhere.
+- Doctors get **instant access** (`set_my_role` sets `verified = true`, `active = true`), so a
+  self-registered "doctor" immediately reads all patient PII via the `is_staff` RLS. The only control
+  is **admin revocation** after the fact (`active = false`). Documented trade-off in CLAUDE.md.
+- A previous branch (`b0413a2`, PR #18 `feat/verificacion-medico-articulo-8`) added an MPPS-prefixed
+  license + Artículo 8 self-declaration + an admin verification column, but it was **dropped by later
+  merge conflict resolutions** and is not in `main`. Even that was only self-declaration + manual SACS
+  review, not automated validation.
+
+Options to close the gap:
+
+- [ ] **Approval gate (recommended, low effort):** set doctors `verified = false` on signup and gate
+      `current_user_role()` on `verified = true`, so an admin must approve before a doctor can see
+      patients (flips instant-access to pre-approval).
+- [ ] **Capture credentials:** re-apply `b0413a2` — make MPPS license mandatory with format validation,
+      re-add the Artículo 8 declaration, and the admin "verificado" column.
+- [ ] **Both:** capture credentials *and* gate access on admin approval.
+
 ## Google authentication
 
 ### Dashboard configuration (not in code — must be done manually)

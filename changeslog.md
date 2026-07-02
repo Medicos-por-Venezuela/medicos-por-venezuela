@@ -7,6 +7,9 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-02
 
+- **Admin KPIs on one line** — `.dash-kpis` now uses 6 columns on desktop so all six metric cards sit
+  in a single row (still 2-per-row on phones). File: `styles/globals.css`.
+
 - **Doctor panel: "Mis casos cerrados" section** — doctors can now see their own resolved/closed cases
   (closed, closed_by_admin, patient_no_show, referred, urgent, cancelled; most-recent first, capped at
   50) with a "Ver detalle" link to review what happened. File: `pages/panel-medico.tsx`.
