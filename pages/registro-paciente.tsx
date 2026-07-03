@@ -3,127 +3,199 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { signInWithGoogle } from '../lib/auth'
-import GoogleButton from '../components/GoogleButton'
+import { fetchAffectedZoneCatalog, fetchSpecialtyCatalog } from '../lib/api'
+import CedulaField from '../components/CedulaField'
+import PhoneField from '../components/PhoneField'
 
-const ZONAS = [
-  'La Guaira - Catia La Mar',
-  'La Guaira - Maiquetía',
-  'La Guaira - La Guaira (centro)',
-  'La Guaira - Macuto',
-  'La Guaira - Caraballeda',
-  'La Guaira - Naiguatá',
-  'La Guaira - Carayaca',
-  'La Guaira - Caruao',
-  'La Guaira - Otro sector',
-  'Caracas - Centro',
-  'Caracas - Este',
-  'Caracas - Oeste',
-  'Caracas - Sur',
-  'Miranda',
-  'Aragua',
-  'Carabobo',
+const PARENTESCOS = [
+  'Padre',
+  'Madre',
+  'Representante legal',
+  'Abuelo/a',
+  'Tío/a',
+  'Hermano/a mayor',
   'Otro'
-]
-const NECESIDADES = [
-  'Medicina general',
-  'Lesión física',
-  'Primeros auxilios',
-  'Apoyo emocional',
-  'Crisis de ansiedad',
-  'Niño / pediatría',
-  'Embarazo',
-  'Medicamentos',
-  'Enfermedad crónica',
-  'Otra'
 ]
 
 export default function RegistroPaciente() {
   const router = useRouter()
-  const [nombre, setNombre] = useState('')
+
+  // Branch toggle: adult (self) vs. minor (represented by an adult).
+  const [isMinor, setIsMinor] = useState(false)
+
+  // Catalogs (backend-sourced when available; static fallback otherwise — see lib/api.ts).
+  const [specialties, setSpecialties] = useState<string[]>([])
+  const [zonas, setZonas] = useState<string[]>([])
+
+  // True when the patient (or the guardian, for a minor) is already logged in.
+  // Hides the email/password block.
+  const [authedPatient, setAuthedPatient] = useState(false)
+
+  // Adult / self patient.
   const [cedula, setCedula] = useState('')
-  const [telefono, setTelefono] = useState('')
-  const [contactEmail, setContactEmail] = useState('')
-  const [zona, setZona] = useState('')
+  const [fullName, setFullName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [edad, setEdad] = useState('')
+  const [wantsSpecialty, setWantsSpecialty] = useState(false)
+  const [specialty, setSpecialty] = useState('')
+  const [hasAllergy, setHasAllergy] = useState(false)
+  const [allergyDetail, setAllergyDetail] = useState('')
+
+  // Guardian (only used when isMinor).
+  const [gCedula, setGCedula] = useState('')
+  const [gFullName, setGFullName] = useState('')
+  const [gPhone, setGPhone] = useState('')
+  const [gEmail, setGEmail] = useState('')
+  const [gPassword, setGPassword] = useState('')
+  const [gRelationship, setGRelationship] = useState('')
+
+  // Minor (only used when isMinor).
+  const [mCedula, setMCedula] = useState('')
+  const [mFullName, setMFullName] = useState('')
+  const [mEdad, setMEdad] = useState('')
+  const [mHasAllergy, setMHasAllergy] = useState(false)
+  const [mAllergyDetail, setMAllergyDetail] = useState('')
+
+  // Shared.
+  const [zona, setZona] = useState('')
   const [descripcion, setDescripcion] = useState('')
-  const [tags, setTags] = useState<string[]>([])
   const [consent, setConsent] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-
-  // Optional account creation
-  const [wantsAccount, setWantsAccount] = useState(false)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  // True when the patient is already logged in (e.g. arrived from the Google role-picker).
-  const [authedPatient, setAuthedPatient] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) setAuthedPatient(true)
     })
+    fetchSpecialtyCatalog().then(setSpecialties)
+    fetchAffectedZoneCatalog().then(setZonas)
   }, [])
-
-  const toggleTag = (tag: string) => {
-    setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
-  }
 
   const submit = async () => {
     setError('')
-    if (!nombre.trim() || !cedula.trim() || !telefono.trim() || !zona) {
-      setError('Completa nombre, cédula, teléfono y zona.')
-      return
-    }
-    if (tags.length === 0) {
-      setError('Selecciona al menos un tipo de ayuda.')
-      return
+
+    if (isMinor) {
+      if (!gCedula || !gFullName.trim() || !gPhone || !gRelationship) {
+        setError('Completa la cédula, nombre, WhatsApp y parentesco del representante.')
+        return
+      }
+      if (!authedPatient && (!gEmail.trim() || gPassword.length < 6)) {
+        setError('Completa el correo del representante y una contraseña de al menos 6 caracteres.')
+        return
+      }
+      if (!mFullName.trim() || !zona) {
+        setError('Completa el nombre del menor y la zona afectada.')
+        return
+      }
+      const ageNum = Number(mEdad)
+      if (!mEdad || Number.isNaN(ageNum) || ageNum < 0 || ageNum > 17) {
+        setError('La edad del menor debe estar entre 0 y 17 años.')
+        return
+      }
+      if (!descripcion.trim()) {
+        setError('Describe brevemente el motivo de la consulta del menor.')
+        return
+      }
+      if (mHasAllergy && !mAllergyDetail.trim()) {
+        setError('Indica a qué es alérgico el menor, o desmarca la opción.')
+        return
+      }
+    } else {
+      if (!cedula || !fullName.trim() || !phone || !zona) {
+        setError('Completa cédula, nombre completo, WhatsApp y zona afectada.')
+        return
+      }
+      if (!authedPatient && (!email.trim() || password.length < 6)) {
+        setError('Completa el correo y una contraseña de al menos 6 caracteres.')
+        return
+      }
+      const ageNum = Number(edad)
+      if (!edad || Number.isNaN(ageNum) || ageNum < 18 || ageNum > 120) {
+        setError('La edad debe estar entre 18 y 120 años.')
+        return
+      }
+      if (wantsSpecialty && !specialty) {
+        setError('Selecciona una especialidad o desmarca "Conozco la especialidad".')
+        return
+      }
+      if (!descripcion.trim()) {
+        setError('Describe brevemente el motivo de la consulta.')
+        return
+      }
+      if (hasAllergy && !allergyDetail.trim()) {
+        setError('Indica a qué eres alérgico, o desmarca la opción.')
+        return
+      }
     }
     if (!consent) {
       setError('Debes aceptar el consentimiento para poder continuar.')
       return
     }
-    if (wantsAccount && !authedPatient && (!email.trim() || password.length < 6)) {
-      setError('Para crear una cuenta indica un email y una contraseña de al menos 6 caracteres.')
-      return
-    }
 
     setLoading(true)
     try {
-      // Determine the owning account, if any.
       let userId: string | null = null
+      let contactEmail = ''
 
       if (authedPatient) {
         const { data: sessionData } = await supabase.auth.getSession()
         userId = sessionData.session?.user.id ?? null
-      } else if (wantsAccount) {
+        contactEmail = sessionData.session?.user.email ?? ''
+      } else {
+        const accountEmail = (isMinor ? gEmail : email).trim().toLowerCase()
+        const accountPassword = isMinor ? gPassword : password
+        const accountName = isMinor ? gFullName.trim() : fullName.trim()
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: email.trim().toLowerCase(),
-          password,
-          options: { data: { full_name: nombre.trim(), role: 'patient' } }
+          email: accountEmail,
+          password: accountPassword,
+          options: { data: { full_name: accountName, role: 'patient' } }
         })
         if (signUpError) throw signUpError
-        userId = signUpData.user?.id ?? null
+        contactEmail = accountEmail
         if (!signUpData.session) {
           setError(
             'Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión en "Seguir mi caso".'
           )
           return
         }
+        userId = signUpData.user?.id ?? null
       }
+
+      // Sin selector de "tipo de ayuda", los adultos caen en el bucket general (cubre
+      // cualquier especialidad vía SPECIALTY_NEEDS['Medicina general'] = ['*']); la
+      // especialidad indicada (si la conoce) queda como dato informativo en chief_complaint.
+      const needsTags = isMinor ? ['Niño / pediatría'] : ['Medicina general']
+
+      // La alergia es un checkbox + input aparte (no un campo propio en `patients`), así que
+      // se antepone como nota estructurada a la descripción/motivo — mismo criterio "puente"
+      // que ya usamos para el representante y la especialidad solicitada.
+      const allergyNote =
+        (isMinor ? mHasAllergy : hasAllergy) && (isMinor ? mAllergyDetail : allergyDetail).trim()
+          ? `Alergias: ${(isMinor ? mAllergyDetail : allergyDetail).trim()}. `
+          : ''
+      const descripcionFinal = `${allergyNote}${descripcion.trim()}`.trim()
+
+      const patientDescription = isMinor
+        ? `Representante: ${gFullName.trim()}, CI ${gCedula}, Parentesco: ${gRelationship}${
+            descripcionFinal ? ` — ${descripcionFinal}` : ''
+          }`
+        : descripcionFinal || null
 
       const { data: patient, error: patientError } = await supabase
         .from('patients')
         .insert({
           user_id: userId,
-          full_name: nombre.trim(),
-          cedula: cedula.trim(),
-          phone_whatsapp: telefono.trim(),
-          email: contactEmail.trim() || null,
+          full_name: isMinor ? mFullName.trim() : fullName.trim(),
+          cedula: isMinor ? mCedula || null : cedula,
+          // The guardian is who must be contacted and who owns the account.
+          phone_whatsapp: isMinor ? gPhone : phone,
+          email: contactEmail || null,
           affected_zone: zona,
-          age_range: edad || null,
-          needs_tags: tags,
-          description: descripcion.trim() || null,
+          age_range: (isMinor ? mEdad : edad) || null,
+          needs_tags: needsTags,
+          description: patientDescription,
           consent: true,
           consent_at: new Date().toISOString()
         })
@@ -132,16 +204,23 @@ export default function RegistroPaciente() {
 
       if (patientError) throw patientError
 
+      const chiefComplaint =
+        !isMinor && wantsSpecialty && specialty
+          ? `Especialidad solicitada: ${specialty}. ${descripcionFinal}`
+          : descripcionFinal
+
       const { data: consultation, error: consultationError } = await supabase
         .from('consultations')
         .insert({
           patient_id: patient.id,
           status: 'waiting',
-          priority: tags.some((t) => ['Lesión física', 'Embarazo', 'Niño / pediatría'].includes(t))
+          priority: needsTags.some((t) =>
+            ['Lesión física', 'Embarazo', 'Niño / pediatría'].includes(t)
+          )
             ? 'review'
             : 'normal',
-          category: tags[0],
-          chief_complaint: descripcion.trim() || tags.join(', '),
+          category: needsTags[0],
+          chief_complaint: chiefComplaint,
           code: `MPV-${Date.now()}`
         })
         .select('id, code')
@@ -183,7 +262,7 @@ export default function RegistroPaciente() {
       <Head>
         <title>Solicitar consulta — Médicos por Venezuela</title>
       </Head>
-      <main className="page">
+      <main className="page patient-theme">
         <div className="narrow">
           <Link href="/" className="link-button">
             ← Volver
@@ -200,120 +279,175 @@ export default function RegistroPaciente() {
               emergencias.
             </div>
 
-            <div className="grid">
-              <div className="grid grid-2">
-                <div>
-                  <label className="label">Nombre completo *</label>
-                  <input
-                    value={nombre}
-                    onChange={(e) => setNombre(e.target.value)}
-                    placeholder="Ej. María González"
-                  />
-                </div>
-                <div>
-                  <label className="label">Número de cédula *</label>
-                  <input
-                    value={cedula}
-                    onChange={(e) => setCedula(e.target.value)}
-                    placeholder="Ej. V-12345678"
-                  />
-                  <div className="hint">Nos ayuda a dar seguimiento a tu caso.</div>
-                </div>
-              </div>
-              <div>
-                <label className="label">Teléfono con código de país *</label>
-                <input
-                  value={telefono}
-                  onChange={(e) => setTelefono(e.target.value)}
-                  placeholder="Ej. 584121234567"
-                />
-                <div className="hint">Solo lo usaremos si tu caso necesita seguimiento.</div>
-              </div>
-              <div>
-                <label className="label">Correo electrónico (opcional)</label>
-                <input
-                  type="email"
-                  value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
-                  placeholder="Ej. tucorreo@gmail.com"
-                />
-                <div className="hint">Opcional. Útil si no podemos contactarte por teléfono.</div>
-              </div>
-              <div className="grid grid-2">
-                <div>
-                  <label className="label">Zona afectada *</label>
-                  <select value={zona} onChange={(e) => setZona(e.target.value)}>
-                    <option value="">Selecciona...</option>
-                    {ZONAS.map((z) => (
-                      <option key={z} value={z}>
-                        {z}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Edad aproximada</label>
-                  <select value={edad} onChange={(e) => setEdad(e.target.value)}>
-                    <option value="">Selecciona...</option>
-                    <option value="0-2">0-2 años</option>
-                    <option value="3-12">3-12 años</option>
-                    <option value="13-17">13-17 años</option>
-                    <option value="18-40">18-40 años</option>
-                    <option value="41-65">41-65 años</option>
-                    <option value="65+">65+ años</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="label">Tipo de ayuda *</label>
-                <div className="tag-row">
-                  {NECESIDADES.map((tag) => (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => toggleTag(tag)}
-                      className={`tag ${tags.includes(tag) ? 'selected' : ''}`}
-                    >
-                      {tag}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="label">Descripción breve</label>
-                <textarea
-                  rows={4}
-                  value={descripcion}
-                  onChange={(e) => setDescripcion(e.target.value)}
-                  placeholder="Describe en pocas palabras qué ocurre. Evita datos innecesarios."
-                />
-              </div>
+            <label
+              className="notice notice-info"
+              style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 16 }}
+            >
+              <input
+                type="checkbox"
+                checked={isMinor}
+                onChange={(e) => setIsMinor(e.target.checked)}
+                style={{ width: 'auto', marginTop: 3 }}
+              />
+              <span>
+                <strong>Voy a registrar un menor de edad (&lt;18)</strong>. La consulta se asignará
+                a Pediatría y debe registrarse junto a un adulto responsable.
+              </span>
+            </label>
 
-              {!authedPatient && (
-                <div className="notice" style={{ background: '#f8fafc' }}>
-                  <label
-                    style={{
-                      display: 'flex',
-                      gap: 10,
-                      alignItems: 'flex-start',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={wantsAccount}
-                      onChange={(e) => setWantsAccount(e.target.checked)}
-                      style={{ width: 'auto', marginTop: 5 }}
-                    />
-                    <span>
-                      <strong>Crear una cuenta para seguir mi caso</strong> (opcional). Podrás
-                      iniciar sesión y ver el estado de tu solicitud.
-                    </span>
-                  </label>
-                  {wantsAccount && (
-                    <div className="grid grid-2" style={{ marginTop: 12 }}>
+            <div className="grid">
+              {isMinor ? (
+                <>
+                  <h2 style={{ margin: 0, fontSize: 16 }}>Datos del adulto (representante)</h2>
+                  <CedulaField
+                    label="Cédula del representante"
+                    value={gCedula}
+                    onChange={setGCedula}
+                    required
+                  />
+                  <div>
+                    <label className="label">Nombre completo del representante *</label>
+                    <input value={gFullName} onChange={(e) => setGFullName(e.target.value)} />
+                  </div>
+                  <PhoneField
+                    label="WhatsApp del representante"
+                    value={gPhone}
+                    onChange={setGPhone}
+                    required
+                  />
+                  {!authedPatient && (
+                    <div className="grid grid-2">
                       <div>
-                        <label className="label">Email</label>
+                        <label className="label">Correo *</label>
+                        <input
+                          type="email"
+                          value={gEmail}
+                          onChange={(e) => setGEmail(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Contraseña *</label>
+                        <input
+                          type="password"
+                          value={gPassword}
+                          onChange={(e) => setGPassword(e.target.value)}
+                          placeholder="Mínimo 6 caracteres"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <h2 style={{ margin: 0, fontSize: 16 }}>Datos del menor</h2>
+                  <CedulaField
+                    label="Cédula del menor"
+                    value={mCedula}
+                    onChange={setMCedula}
+                    hint="Si no tiene cédula propia, puedes dejarlo en blanco."
+                  />
+                  <div>
+                    <label className="label">Nombre completo del menor *</label>
+                    <input value={mFullName} onChange={(e) => setMFullName(e.target.value)} />
+                  </div>
+                  <div className="grid grid-2">
+                    <div>
+                      <label className="label">Zona afectada *</label>
+                      <select value={zona} onChange={(e) => setZona(e.target.value)}>
+                        <option value="">Selecciona...</option>
+                        {zonas.map((z) => (
+                          <option key={z} value={z}>
+                            {z}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Edad del menor *</label>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        max={17}
+                        value={mEdad}
+                        onChange={(e) => setMEdad(e.target.value)}
+                        placeholder="Ej. 7"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="notice notice-info">
+                    Esta consulta se asignará automáticamente a <strong>Pediatría</strong>.
+                  </div>
+
+                  <div>
+                    <label
+                      style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={mHasAllergy}
+                        onChange={(e) => setMHasAllergy(e.target.checked)}
+                        style={{ width: 'auto' }}
+                      />
+                      ¿El menor tiene alguna alergia?
+                    </label>
+                    {mHasAllergy && (
+                      <div style={{ marginTop: 10 }}>
+                        <label className="label">¿A qué es alérgico? *</label>
+                        <input
+                          value={mAllergyDetail}
+                          onChange={(e) => setMAllergyDetail(e.target.value)}
+                          placeholder="Ej. Penicilina"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="label">Descripción breve *</label>
+                    <textarea
+                      rows={4}
+                      value={descripcion}
+                      onChange={(e) => setDescripcion(e.target.value)}
+                      placeholder="Describe en pocas palabras qué le ocurre al menor y si ya está tomando algún medicamento."
+                    />
+                  </div>
+
+                  <div>
+                    <label className="label">Parentesco con el menor *</label>
+                    <select
+                      value={gRelationship}
+                      onChange={(e) => setGRelationship(e.target.value)}
+                    >
+                      <option value="">Selecciona...</option>
+                      {PARENTESCOS.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <CedulaField
+                    label="Número de cédula"
+                    value={cedula}
+                    onChange={setCedula}
+                    required
+                  />
+                  <div>
+                    <label className="label">Nombre completo *</label>
+                    <input
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Ej. María González"
+                    />
+                  </div>
+                  <PhoneField label="WhatsApp" value={phone} onChange={setPhone} required />
+                  {!authedPatient && (
+                    <div className="grid grid-2">
+                      <div>
+                        <label className="label">Correo *</label>
                         <input
                           type="email"
                           value={email}
@@ -321,7 +455,7 @@ export default function RegistroPaciente() {
                         />
                       </div>
                       <div>
-                        <label className="label">Contraseña</label>
+                        <label className="label">Contraseña *</label>
                         <input
                           type="password"
                           value={password}
@@ -331,7 +465,94 @@ export default function RegistroPaciente() {
                       </div>
                     </div>
                   )}
-                </div>
+
+                  <div className="grid grid-2">
+                    <div>
+                      <label className="label">Zona afectada *</label>
+                      <select value={zona} onChange={(e) => setZona(e.target.value)}>
+                        <option value="">Selecciona...</option>
+                        {zonas.map((z) => (
+                          <option key={z} value={z}>
+                            {z}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Edad *</label>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={18}
+                        max={120}
+                        value={edad}
+                        onChange={(e) => setEdad(e.target.value)}
+                        placeholder="Ej. 34"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label
+                      style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={wantsSpecialty}
+                        onChange={(e) => setWantsSpecialty(e.target.checked)}
+                        style={{ width: 'auto' }}
+                      />
+                      Conozco la especialidad que necesito
+                    </label>
+                    {wantsSpecialty && (
+                      <div style={{ marginTop: 10 }}>
+                        <label className="label">Especialidad *</label>
+                        <select value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
+                          <option value="">Selecciona...</option>
+                          {specialties.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label
+                      style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={hasAllergy}
+                        onChange={(e) => setHasAllergy(e.target.checked)}
+                        style={{ width: 'auto' }}
+                      />
+                      ¿Tienes alguna alergia?
+                    </label>
+                    {hasAllergy && (
+                      <div style={{ marginTop: 10 }}>
+                        <label className="label">¿A qué eres alérgico? *</label>
+                        <input
+                          value={allergyDetail}
+                          onChange={(e) => setAllergyDetail(e.target.value)}
+                          placeholder="Ej. Penicilina"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="label">Descripción breve *</label>
+                    <textarea
+                      rows={4}
+                      value={descripcion}
+                      onChange={(e) => setDescripcion(e.target.value)}
+                      placeholder="Describe en pocas palabras qué ocurre y si ya estás tomando algún medicamento."
+                    />
+                  </div>
+                </>
               )}
 
               <label
@@ -353,34 +574,16 @@ export default function RegistroPaciente() {
               </label>
               {error && <div className="notice notice-danger">{error}</div>}
               <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>
-                {loading ? 'Enviando...' : 'Solicitar consulta gratuita'}
+                {loading ? 'Enviando...' : 'Registrarse'}
               </button>
 
               {!authedPatient && (
-                <>
-                  <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
-                    o crea tu cuenta con
-                  </div>
-                  <GoogleButton
-                    disabled={loading}
-                    onClick={async () => {
-                      setError('')
-                      try {
-                        if (typeof window !== 'undefined')
-                          localStorage.setItem('mpv_role', 'patient')
-                        await signInWithGoogle()
-                      } catch {
-                        setError('No se pudo iniciar sesión con Google.')
-                      }
-                    }}
-                  />
-                  <p style={{ textAlign: 'center', color: '#64748b', fontSize: 13, margin: 0 }}>
-                    ¿Ya tienes cuenta?{' '}
-                    <Link href="/mi-caso" style={{ color: '#0f6e56', fontWeight: 700 }}>
-                      Seguir mi caso
-                    </Link>
-                  </p>
-                </>
+                <p style={{ textAlign: 'center', color: '#64748b', fontSize: 13, margin: 0 }}>
+                  ¿Ya tienes cuenta?{' '}
+                  <Link href="/mi-caso" style={{ color: 'var(--green)', fontWeight: 700 }}>
+                    Seguir mi caso
+                  </Link>
+                </p>
               )}
             </div>
           </div>
