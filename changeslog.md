@@ -5,6 +5,66 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-07-03
+
+- **Registro de paciente: paleta azul en vez de verde, para coincidir con el home** — el home
+  (`pages/index.tsx`) ya usa azul (`#1a3a6b`) para la tarjeta "Soy paciente" (el médico pasó a
+  amarillo/dorado ahí), así que `/registro-paciente` debía dejar de usar el verde genérico del
+  sitio. Se agregó `.patient-theme` en `styles/globals.css`, que sobreescribe localmente las
+  custom properties `--green`/`--green-light` (a `#1a3a6b`/`#e8effb`, los mismos valores exactos
+  del home) — como `.btn-primary`, `.link-button` y el `border-color` de foco en inputs ya leen
+  esas variables, todo el acento de la página cambia a azul sin tocar ninguna otra página (verificado
+  que `/registro-medico` sigue en verde). Se aplicó la clase al `<main>` de
+  `pages/registro-paciente.tsx` y se cambió el único hex verde hardcodeado (link "Seguir mi caso")
+  a `var(--green)` para que también herede el override.
+- **Registro de paciente: la alergia pasa de texto libre a checkbox + input** — ajuste sobre el
+  cambio anterior: "¿Tienes alguna alergia?" / "¿El menor tiene alguna alergia?" ya no va dentro
+  de "Descripción breve", ahora es un checkbox propio (mismo patrón que "Conozco la
+  especialidad") que al marcarse muestra un input obligatorio para escribir a qué es alérgico.
+  Los medicamentos actuales, por decisión del usuario, se quedan como texto libre dentro de la
+  descripción. Como `patients` no tiene columna de alergias (sin migración de esquema, ver nota de
+  más abajo), el dato se antepone como `Alergias: {detalle}.` a la descripción/`chief_complaint`
+  antes de aplicar el resto de los "puentes" ya existentes (representante, especialidad
+  solicitada). File: `pages/registro-paciente.tsx`.
+- **Registro de paciente: se quita "Tipo de ayuda", Google y se pide alergias/medicamentos en la
+  descripción** — ajustes de feedback sobre el rediseño anterior de `/registro-paciente`. Se
+  elimina por completo el selector de tags "Tipo de ayuda" (rama adulto) y el registro con Google
+  (ambas ramas, incluida la lógica `signInWithGoogle`/`localStorage` y el componente
+  `GoogleButton`) — la cuenta ahora solo se crea con email+contraseña. Sin el tag picker, los
+  adultos ya no aportan una señal de `needs_tags`: se asigna por defecto `['Medicina general']`
+  (cubre cualquier especialidad vía el `'*'` de `SPECIALTY_NEEDS`, sin tocar `lib/utils.ts`); la
+  especialidad indicada en "Conozco la especialidad" sigue siendo solo informativa en
+  `chief_complaint`. Efecto secundario esperado: la prioridad automática "review" que antes
+  disparaban tags como "Lesión física"/"Embarazo" ya no aplica a adultos (solo sigue aplicando a
+  menores, vía `needs_tags = ['Niño / pediatría']`) — a validar con el usuario si hace falta un
+  mecanismo de prioridad distinto más adelante. La "Descripción breve" (obligatoria en ambas
+  ramas) ahora pide explícitamente alergias y medicamentos actuales en el placeholder. File:
+  `pages/registro-paciente.tsx`.
+- **Registro de paciente: flujo menor de edad + representante, cuenta obligatoria y
+  catálogos del backend** — rediseño de `/registro-paciente` a partir del boceto del usuario,
+  manteniendo el layout visual de `registro-medico.tsx`. Checkbox "Voy a registrar un menor de
+  edad (<18)" bifurca el formulario: rama adulto (cédula, nombre, WhatsApp, correo, contraseña,
+  zona, edad, checkbox "Conozco la especialidad" + selector, tipo de ayuda, descripción) vs. rama
+  menor (datos del adulto/representante + datos del menor + selector de parentesco al final). La
+  creación de cuenta (email+contraseña o Google) pasa a ser obligatoria — se elimina el flujo
+  anónimo y el checkbox "crear cuenta" que existían antes. Los menores se auto-etiquetan con
+  `needs_tags = ['Niño / pediatría']` (sin selector, ya enruta a Pediatría vía `SPECIALTY_NEEDS`
+  existente, sin tocar `lib/utils.ts`). Nuevos componentes reutilizables `CedulaField` (prefijo
+  V/E + número) y `PhoneField` (código de país + número), ambos con filtrado de solo-dígitos y
+  validación de edad numérica por rango (18–120 adulto, 0–17 menor). Los selects de Zona afectada
+  y Especialidad ahora se pueblan desde el backend FastAPI (`GET /specialties`,
+  `GET /affected-zones/list`, ya sincronizado a `dev`), con fallback silencioso a los catálogos
+  hardcodeados si `NEXT_PUBLIC_API_BASE_URL` no está seteada o el backend no responde (nuevo
+  `lib/api.ts`). **Puente explícito sin migración de esquema** (decisión del usuario: no tocar
+  `supabase_schema.sql` ni el repo backend todavía): el nombre/cédula/parentesco del representante
+  no tienen columna dedicada en `patients`, así que se embeben como texto estructurado al inicio de
+  `description`; igual criterio para la especialidad elegida por un adulto, que se antepone al
+  `chief_complaint` de la consulta en vez de crear una columna `requested_specialty`. El matching
+  real de la cola sigue basado en `needs_tags` sin cambios. Files: `pages/registro-paciente.tsx`,
+  `components/CedulaField.tsx` (nuevo), `components/PhoneField.tsx` (nuevo), `lib/api.ts` (nuevo),
+  `styles/globals.css` (`.input-group`). Pendiente (requiere `.env.example`, sin acceso de
+  archivo en esta sesión): documentar `NEXT_PUBLIC_API_BASE_URL`.
+
 ## 2026-07-01
 
 - **Home page: extendido "médico o psicólogo" → "profesional de la salud" en toda la página** —
