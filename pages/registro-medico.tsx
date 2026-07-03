@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useState } from 'react'
+import { z } from 'zod'
 import { SPECIALTIES } from '../lib/utils'
 import { verificarSacs, verificarPsicologo } from '../lib/verificacion'
 
@@ -39,6 +40,34 @@ const PAISES = [
 ]
 
 const soloDigitos = (value: string) => value.replace(/\D/g, '')
+
+// Validación del formulario. mostrarEspecialidad/especialidad viajan juntos porque la
+// especialidad solo es obligatoria cuando el tipo de profesional es "Médico" (para
+// Psicólogo se fija sola, para el resto no aplica) — ver mostrarEspecialidad más abajo.
+const registroMedicoSchema = z
+  .object({
+    tipoProfesional: z.string().min(1, 'Selecciona el tipo de profesional.'),
+    cedulaNumero: z
+      .string()
+      .regex(/^\d+$/, 'La cédula solo debe contener números.')
+      .min(6, 'La cédula debe tener al menos 6 dígitos.')
+      .max(9, 'La cédula no puede tener más de 9 dígitos.'),
+    nombreCompleto: z.string().trim().min(2, 'Completa el nombre completo.'),
+    whatsappNumero: z
+      .string()
+      .regex(/^\d+$/, 'El WhatsApp solo debe contener números.')
+      .min(7, 'El WhatsApp debe tener al menos 7 dígitos.')
+      .max(11, 'El WhatsApp no puede tener más de 11 dígitos.'),
+    correo: z.string().trim().min(1, 'Ingresa tu correo.').email('Ingresa un correo válido.'),
+    paisReside: z.string().min(1, 'Selecciona el país donde resides.'),
+    mostrarEspecialidad: z.boolean(),
+    especialidad: z.string(),
+    contrasena: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres.')
+  })
+  .refine((data) => !data.mostrarEspecialidad || data.especialidad.length > 0, {
+    message: 'Selecciona una especialidad.',
+    path: ['especialidad']
+  })
 
 export default function RegistroMedico() {
   const [tipoProfesional, setTipoProfesional] = useState('')
@@ -125,19 +154,23 @@ export default function RegistroMedico() {
   const submit = async () => {
     setError('')
     setOk(false)
-    if (
-      !tipoProfesional ||
-      !cedulaNumero ||
-      !nombreCompleto.trim() ||
-      !whatsappNumero ||
-      !correo.trim() ||
-      !paisReside ||
-      (mostrarEspecialidad && !especialidad) ||
-      contrasena.length < 6
-    ) {
-      setError('Completa todos los campos obligatorios (contraseña mínimo 6 caracteres).')
+
+    const result = registroMedicoSchema.safeParse({
+      tipoProfesional,
+      cedulaNumero,
+      nombreCompleto,
+      whatsappNumero,
+      correo,
+      paisReside,
+      mostrarEspecialidad,
+      especialidad,
+      contrasena
+    })
+    if (!result.success) {
+      setError(result.error.issues[0]?.message || 'Revisa los campos del formulario.')
       return
     }
+
     setLoading(true)
     try {
       // MAQUETA: acá va el POST real al backend una vez esté disponible

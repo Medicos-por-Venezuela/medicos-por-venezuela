@@ -21,6 +21,18 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   quedan como `.refine()` encadenados. Probado en el navegador: ambas ramas completas llegan hasta
   el error de consentimiento (última validación) sin falsos positivos. File:
   `pages/registro-paciente.tsx`.
+- **Registro médico: se quita Google, se agrega zod y validaciones por campo** — en la rama
+  `refactor(registro-medicos)` (rebaseada sobre `refactor(Home-page)`, que trae el trabajo de
+  `/registro-paciente` de más abajo). Se elimina el botón "Continuar con Google" y su wiring
+  (`signInWithGoogle`/`localStorage`) de `registro-medico.tsx` — la cuenta se crea solo con
+  correo+contraseña, igual que en `/registro-paciente`. Se instala `zod` (`^4.4.3`) y se reemplaza
+  el bloque de validación manual (un único `if` con un mensaje genérico) por un schema
+  `registroMedicoSchema` con mensajes específicos por campo: cédula y WhatsApp exigen solo dígitos
+  y un rango de longitud (6–9 y 7–11 respectivamente — los inputs ya filtran no-dígitos con
+  `soloDigitos`, el schema es la segunda capa de defensa), correo con `.email()`, y un `.refine()`
+  que exige especialidad únicamente cuando el tipo de profesional es "Médico"
+  (`mostrarEspecialidad`). Probado en el navegador: cada regla dispara su mensaje en cascada
+  (tipo de profesional → cédula → WhatsApp → correo). File: `pages/registro-medico.tsx`.
 - **Registro de paciente: paleta azul en vez de verde, para coincidir con el home** — el home
   (`pages/index.tsx`) ya usa azul (`#1a3a6b`) para la tarjeta "Soy paciente" (el médico pasó a
   amarillo/dorado ahí), así que `/registro-paciente` debía dejar de usar el verde genérico del
