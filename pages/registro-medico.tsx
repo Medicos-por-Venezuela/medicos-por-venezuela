@@ -1,10 +1,8 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useState } from 'react'
-import { signInWithGoogle } from '../lib/auth'
 import { SPECIALTIES } from '../lib/utils'
 import { verificarSacs, verificarPsicologo } from '../lib/verificacion'
-import GoogleButton from '../components/GoogleButton'
 
 // MAQUETA (submit sin endpoint todavía): consolida en un solo paso lo que hoy está
 // dividido entre este archivo (cuenta) y /elegir-rol (especialidad/país/whatsapp),
@@ -15,8 +13,8 @@ import GoogleButton from '../components/GoogleButton'
 //     selector público como este hace falta un catálogo público, como
 //     /specialties/catalog. Ver nota en TIPOS_PROFESIONAL abajo.)
 //
-// El botón de Google sigue el flujo viejo (-> /elegir-rol) sin cambios: no forma
-// parte de este ticket. Queda como gap conocido a resolver en otra pasada.
+// El registro con Google se eliminó de esta pantalla: la cuenta se crea únicamente
+// con correo + contraseña.
 
 // TODO: reemplazar por fetch a GET /api/v1/professional-types (necesita catálogo
 // público equivalente a /specialties/catalog; hoy ese endpoint es staff-only).
@@ -157,18 +155,6 @@ export default function RegistroMedico() {
       })
       setOk(true)
     } finally {
-      setLoading(false)
-    }
-  }
-
-  const googleSignup = async () => {
-    setError('')
-    setLoading(true)
-    try {
-      if (typeof window !== 'undefined') localStorage.setItem('mpv_role', 'doctor')
-      await signInWithGoogle()
-    } catch {
-      setError('No se pudo iniciar sesión con Google. Intenta de nuevo.')
       setLoading(false)
     }
   }
@@ -333,8 +319,6 @@ export default function RegistroMedico() {
               <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>
                 {loading ? 'Registrando...' : 'Registrarse'}
               </button>
-              <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>
-              <GoogleButton onClick={googleSignup} disabled={loading} />
             </div>
 
             <p style={{ marginTop: 18, color: '#64748b' }}>
