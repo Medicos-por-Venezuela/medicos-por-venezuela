@@ -5,6 +5,19 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-07-03
+
+- **Registro médico: se quita Google, se agrega zod y validaciones por campo** — se elimina el
+  botón "Continuar con Google" y su wiring (`signInWithGoogle`/`localStorage`) de
+  `registro-medico.tsx` — la cuenta se crea solo con correo+contraseña. Se instala `zod`
+  (`^4.4.3`) y se reemplaza el bloque de validación manual (un único `if` con un mensaje genérico)
+  por un schema `registroMedicoSchema` con mensajes específicos por campo: cédula y WhatsApp
+  exigen solo dígitos y un rango de longitud (6–9 y 7–11 respectivamente — los inputs ya filtran
+  no-dígitos con `soloDigitos`, el schema es la segunda capa de defensa), correo con `.email()`, y
+  un `.refine()` que exige especialidad únicamente cuando el tipo de profesional es "Médico"
+  (`mostrarEspecialidad`). Probado en el navegador: cada regla dispara su mensaje en cascada (tipo
+  de profesional → cédula → WhatsApp → correo). File: `pages/registro-medico.tsx`.
+
 ## 2026-07-02
 
 - **Registro médico: verificación de cédula conectada al backend real** — `verificarSacs` /
