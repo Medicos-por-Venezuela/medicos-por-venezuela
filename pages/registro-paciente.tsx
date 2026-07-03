@@ -2,6 +2,7 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
+import { z } from 'zod'
 import { supabase } from '../lib/supabase'
 import { fetchAffectedZoneCatalog, fetchSpecialtyCatalog } from '../lib/api'
 import CedulaField from '../components/CedulaField'
@@ -16,6 +17,104 @@ const PARENTESCOS = [
   'Hermano/a mayor',
   'Otro'
 ]
+
+// Formatos emitidos por CedulaField ("V-12345678") y PhoneField ("584121234567") —
+// ambos ya filtran no-dígitos por keystroke, esto es la segunda capa de defensa.
+const CEDULA_REGEX = /^[VE]-\d{6,9}$/
+const PHONE_REGEX = /^\d{8,15}$/
+
+function edadEnRango(min: number, max: number) {
+  return (valor: string) => {
+    const n = Number(valor)
+    return valor.trim() !== '' && !Number.isNaN(n) && n >= min && n <= max
+  }
+}
+
+// Rama adulto (paciente registrándose a sí mismo).
+const adultSchema = z
+  .object({
+    cedula: z.string().regex(CEDULA_REGEX, 'Ingresa un número de cédula válido (ej. V-12345678).'),
+    fullName: z.string().trim().min(2, 'Completa tu nombre completo.'),
+    phone: z.string().regex(PHONE_REGEX, 'Ingresa un número de WhatsApp válido.'),
+    zona: z.string().min(1, 'Selecciona la zona afectada.'),
+    edad: z.string().refine(edadEnRango(18, 120), 'La edad debe estar entre 18 y 120 años.'),
+    authedPatient: z.boolean(),
+    email: z.string(),
+    password: z.string(),
+    wantsSpecialty: z.boolean(),
+    specialty: z.string(),
+    hasAllergy: z.boolean(),
+    allergyDetail: z.string(),
+    descripcion: z.string().trim().min(1, 'Describe brevemente el motivo de la consulta.'),
+    consent: z.boolean()
+  })
+  .refine((d) => d.authedPatient || d.email.trim().length > 0, {
+    message: 'Ingresa tu correo.',
+    path: ['email']
+  })
+  .refine((d) => d.authedPatient || d.password.length >= 6, {
+    message: 'La contraseña debe tener al menos 6 caracteres.',
+    path: ['password']
+  })
+  .refine((d) => !d.wantsSpecialty || d.specialty.length > 0, {
+    message: 'Selecciona una especialidad o desmarca "Conozco la especialidad".',
+    path: ['specialty']
+  })
+  .refine((d) => !d.hasAllergy || d.allergyDetail.trim().length > 0, {
+    message: 'Indica a qué eres alérgico, o desmarca la opción.',
+    path: ['allergyDetail']
+  })
+  .refine((d) => d.consent, {
+    message: 'Debes aceptar el consentimiento para poder continuar.',
+    path: ['consent']
+  })
+
+// Rama menor de edad (representante + menor).
+const minorSchema = z
+  .object({
+    gCedula: z
+      .string()
+      .regex(CEDULA_REGEX, 'Ingresa un número de cédula válido para el representante.'),
+    gFullName: z.string().trim().min(2, 'Completa el nombre completo del representante.'),
+    gPhone: z
+      .string()
+      .regex(PHONE_REGEX, 'Ingresa un número de WhatsApp válido para el representante.'),
+    gRelationship: z.string().min(1, 'Selecciona el parentesco con el menor.'),
+    authedPatient: z.boolean(),
+    gEmail: z.string(),
+    gPassword: z.string(),
+    mCedula: z.string(),
+    mFullName: z.string().trim().min(2, 'Completa el nombre completo del menor.'),
+    zona: z.string().min(1, 'Selecciona la zona afectada.'),
+    mEdad: z.string().refine(edadEnRango(0, 17), 'La edad del menor debe estar entre 0 y 17 años.'),
+    mHasAllergy: z.boolean(),
+    mAllergyDetail: z.string(),
+    descripcion: z
+      .string()
+      .trim()
+      .min(1, 'Describe brevemente el motivo de la consulta del menor.'),
+    consent: z.boolean()
+  })
+  .refine((d) => d.authedPatient || d.gEmail.trim().length > 0, {
+    message: 'Ingresa el correo del representante.',
+    path: ['gEmail']
+  })
+  .refine((d) => d.authedPatient || d.gPassword.length >= 6, {
+    message: 'La contraseña debe tener al menos 6 caracteres.',
+    path: ['gPassword']
+  })
+  .refine((d) => d.mCedula === '' || CEDULA_REGEX.test(d.mCedula), {
+    message: 'Ingresa un número de cédula válido para el menor, o déjalo en blanco.',
+    path: ['mCedula']
+  })
+  .refine((d) => !d.mHasAllergy || d.mAllergyDetail.trim().length > 0, {
+    message: 'Indica a qué es alérgico el menor, o desmarca la opción.',
+    path: ['mAllergyDetail']
+  })
+  .refine((d) => d.consent, {
+    message: 'Debes aceptar el consentimiento para poder continuar.',
+    path: ['consent']
+  })
 
 export default function RegistroPaciente() {
   const router = useRouter()
@@ -76,61 +175,42 @@ export default function RegistroPaciente() {
   const submit = async () => {
     setError('')
 
-    if (isMinor) {
-      if (!gCedula || !gFullName.trim() || !gPhone || !gRelationship) {
-        setError('Completa la cédula, nombre, WhatsApp y parentesco del representante.')
-        return
-      }
-      if (!authedPatient && (!gEmail.trim() || gPassword.length < 6)) {
-        setError('Completa el correo del representante y una contraseña de al menos 6 caracteres.')
-        return
-      }
-      if (!mFullName.trim() || !zona) {
-        setError('Completa el nombre del menor y la zona afectada.')
-        return
-      }
-      const ageNum = Number(mEdad)
-      if (!mEdad || Number.isNaN(ageNum) || ageNum < 0 || ageNum > 17) {
-        setError('La edad del menor debe estar entre 0 y 17 años.')
-        return
-      }
-      if (!descripcion.trim()) {
-        setError('Describe brevemente el motivo de la consulta del menor.')
-        return
-      }
-      if (mHasAllergy && !mAllergyDetail.trim()) {
-        setError('Indica a qué es alérgico el menor, o desmarca la opción.')
-        return
-      }
-    } else {
-      if (!cedula || !fullName.trim() || !phone || !zona) {
-        setError('Completa cédula, nombre completo, WhatsApp y zona afectada.')
-        return
-      }
-      if (!authedPatient && (!email.trim() || password.length < 6)) {
-        setError('Completa el correo y una contraseña de al menos 6 caracteres.')
-        return
-      }
-      const ageNum = Number(edad)
-      if (!edad || Number.isNaN(ageNum) || ageNum < 18 || ageNum > 120) {
-        setError('La edad debe estar entre 18 y 120 años.')
-        return
-      }
-      if (wantsSpecialty && !specialty) {
-        setError('Selecciona una especialidad o desmarca "Conozco la especialidad".')
-        return
-      }
-      if (!descripcion.trim()) {
-        setError('Describe brevemente el motivo de la consulta.')
-        return
-      }
-      if (hasAllergy && !allergyDetail.trim()) {
-        setError('Indica a qué eres alérgico, o desmarca la opción.')
-        return
-      }
-    }
-    if (!consent) {
-      setError('Debes aceptar el consentimiento para poder continuar.')
+    const result = isMinor
+      ? minorSchema.safeParse({
+          gCedula,
+          gFullName,
+          gPhone,
+          gRelationship,
+          authedPatient,
+          gEmail,
+          gPassword,
+          mCedula,
+          mFullName,
+          zona,
+          mEdad,
+          mHasAllergy,
+          mAllergyDetail,
+          descripcion,
+          consent
+        })
+      : adultSchema.safeParse({
+          cedula,
+          fullName,
+          phone,
+          zona,
+          edad,
+          authedPatient,
+          email,
+          password,
+          wantsSpecialty,
+          specialty,
+          hasAllergy,
+          allergyDetail,
+          descripcion,
+          consent
+        })
+    if (!result.success) {
+      setError(result.error.issues[0]?.message || 'Revisa los campos del formulario.')
       return
     }
 

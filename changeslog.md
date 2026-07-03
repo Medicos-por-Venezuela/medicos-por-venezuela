@@ -7,6 +7,20 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-03
 
+- **Registro de paciente: validación de formulario con zod** — mismo tratamiento que ya se aplicó
+  en `/registro-medico`: se instala `zod` (`^4.4.3`) y se reemplaza el bloque de `if`s manual en
+  `submit()` por dos schemas (`adultSchema`/`minorSchema`, uno por rama), cada uno con mensaje
+  específico por campo. Cédula/WhatsApp validan contra el formato exacto que ya emiten
+  `CedulaField`/`PhoneField` (`CEDULA_REGEX = /^[VE]-\d{6,9}$/`, `PHONE_REGEX = /^\d{8,15}$/`) como
+  segunda capa de defensa (los inputs ya filtran no-dígitos). Edad usa un `.refine()` con un
+  helper `edadEnRango(min, max)` en vez de `z.coerce.number()` — `Number('')` da `0` en JS, así que
+  coercionar directo dejaría pasar el campo vacío como "edad 0" en la rama menor (rango 0–17); el
+  refine exige explícitamente que el string no esté vacío. El resto de reglas condicionales
+  (correo/contraseña solo si `!authedPatient`, especialidad solo si `wantsSpecialty`, detalle de
+  alergia solo si `hasAllergy`/`mHasAllergy`, cédula del menor opcional pero validada si se llena)
+  quedan como `.refine()` encadenados. Probado en el navegador: ambas ramas completas llegan hasta
+  el error de consentimiento (última validación) sin falsos positivos. File:
+  `pages/registro-paciente.tsx`.
 - **Registro de paciente: paleta azul en vez de verde, para coincidir con el home** — el home
   (`pages/index.tsx`) ya usa azul (`#1a3a6b`) para la tarjeta "Soy paciente" (el médico pasó a
   amarillo/dorado ahí), así que `/registro-paciente` debía dejar de usar el verde genérico del
