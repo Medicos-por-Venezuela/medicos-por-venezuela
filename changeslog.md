@@ -5,6 +5,44 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-07-04
+
+- **Registro médico: submit real contra `POST /api/v1/doctors` + cuenta Supabase + especialidad real** —
+  se conecta el formulario al backend FastAPI real (`api-medicos-por-venezuela`), reemplazando el
+  submit mockeado. Nuevo `lib/apiClient.ts` (compartido con `lib/patients.ts`): `API_URL` (acepta
+  `NEXT_PUBLIC_API_URL` o `NEXT_PUBLIC_API_BASE_URL`, evitando el mismatch silencioso con
+  `lib/api.ts`), la clase `ApiError`, y los helpers `getJson`/`postJson` (única implementación de
+  fetch+parseo de error, en vez de duplicarla por archivo). Nuevo `lib/doctors.ts` con
+  `fetchProfessionalTypes`/`fetchSpecialties`/`createDoctor` sobre ese cliente.
+
+  - El `TIPOS_PROFESIONAL` hardcodeado se reemplaza por el catálogo real (`GET
+/api/v1/professional-types`, `status === 'active'`); la rama SACS/FPV sigue comparando contra el
+    `name` del tipo seleccionado, sin cambios en esa lógica. Honeypot (`website`, input real oculto,
+    no `type="hidden"`) agregado por el anti-bot del endpoint.
+  - **`specialty_id` ya no viaja `null`**: `fetchSpecialties()` (`GET /api/v1/specialties`, público)
+    reemplaza el `<select>` estático de `SPECIALTIES` (`lib/utils.ts`) por el catálogo real (filtrado
+    a `active`, sin "Psicología"); el `id` elegido se trackea en `especialidadId` (el `refine` de zod
+    se actualizó para ese campo). Para `tipoProfesional === 'Psicólogo'` se resuelve automático el
+    `id` cuyo `name === 'Psicología'`, sin UI, con fallback a `null` si no está en el catálogo.
+  - **Cuenta Supabase real**: la contraseña del formulario se recolectaba pero nunca se usaba — no
+    creaba cuenta, así que un médico "registrado" no podía entrar a `/login-medico`. Se agrega
+    `supabase.auth.signUp({ email, password, options: { data: { full_name, role: 'doctor' } } })`
+    antes de `createDoctor()`; sin `session` (confirmación pendiente) se informa y se corta sin
+    llamar al backend. Si `createDoctor()` falla **después** de que el signUp ya creó sesión, se hace
+    `supabase.auth.signOut()` y se avisa explícitamente que la cuenta quedó creada pero el registro
+    no — **mitigación parcial**, no revierte la cuenta/fila `profiles` (requeriría un endpoint admin
+    con service-role, fuera de alcance; sigue como follow-up).
+  - `CLAUDE.md`/`AGENTS.md` actualizados: ya no dicen "no separate backend server" ni que los médicos
+    pueden registrarse con Google (se sacó de esta pantalla) — reflejan el backend FastAPI nuevo.
+  - **Redirect al board tras el 201**: el diagrama de secuencia del ticket especifica que, tras el
+    registro exitoso, se redirige directo a la cola/board (no a un mensaje de "ya podés loguearte").
+    Se saca el estado `ok`/mensaje de éxito (ahora dead code) y se agrega
+    `router.push('/panel-medico')` justo después de `createDoctor()` — la sesión ya está activa desde
+    el `signUp()` previo, así que no hace falta un login manual aparte.
+
+  `pnpm exec tsc --noEmit` y `pnpm lint` limpios. Files: `lib/apiClient.ts`, `lib/doctors.ts`,
+  `lib/hooks.ts`, `pages/registro-medico.tsx`, `CLAUDE.md`, `AGENTS.md`.
+
 ## 2026-07-03
 
 - **Registro médico: se quita Google, se agrega zod y validaciones por campo** — se elimina el

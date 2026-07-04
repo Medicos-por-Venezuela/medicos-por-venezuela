@@ -1,25 +1,28 @@
 import Head from 'next/head'
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import { useState } from 'react'
 import { z } from 'zod'
-import { SPECIALTIES } from '../lib/utils'
+import { supabase } from '../lib/supabase'
 import { verificarSacs, verificarPsicologo } from '../lib/verificacion'
+import {
+  fetchProfessionalTypes,
+  fetchSpecialties,
+  createDoctor,
+  ApiError,
+  type ProfessionalTypeResponse,
+  type SpecialtyResponse
+} from '../lib/doctors'
+import { useMountEffect } from '../lib/hooks'
 
-// MAQUETA (submit sin endpoint todavía): consolida en un solo paso lo que hoy está
-// dividido entre este archivo (cuenta) y /elegir-rol (especialidad/país/whatsapp),
-// según el diagrama de secuencia + wireframe del ticket "refactor(registro-medicos)".
-// La verificación de cédula (SACS/FPV) ya pega contra el backend real — ver
-// lib/verificacion.ts. El submit del formulario sigue simulado:
-//   - GET /api/v1/professional-types                 (hoy es staff-only; para un
-//     selector público como este hace falta un catálogo público, como
-//     /specialties/catalog. Ver nota en TIPOS_PROFESIONAL abajo.)
+// Consolida en un solo paso lo que antes estaba dividido entre este archivo (cuenta) y
+// /elegir-rol (especialidad/país/whatsapp), según el diagrama de secuencia + wireframe
+// del ticket "refactor(registro-medicos)". La verificación de cédula (SACS/FPV) y el
+// alta del profesional pegan contra el backend real — ver lib/verificacion.ts y
+// lib/doctors.ts.
 //
 // El registro con Google se eliminó de esta pantalla: la cuenta se crea únicamente
 // con correo + contraseña.
-
-// TODO: reemplazar por fetch a GET /api/v1/professional-types (necesita catálogo
-// público equivalente a /specialties/catalog; hoy ese endpoint es staff-only).
-const TIPOS_PROFESIONAL = ['Médico', 'Psicólogo', 'Nutricionista', 'Otro']
 
 const PAISES = [
   { nombre: 'Venezuela', dial: '+58' },
@@ -61,15 +64,19 @@ const registroMedicoSchema = z
     correo: z.string().trim().min(1, 'Ingresa tu correo.').email('Ingresa un correo válido.'),
     paisReside: z.string().min(1, 'Selecciona el país donde resides.'),
     mostrarEspecialidad: z.boolean(),
-    especialidad: z.string(),
+    especialidadId: z.string(),
     contrasena: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres.')
   })
-  .refine((data) => !data.mostrarEspecialidad || data.especialidad.length > 0, {
+  .refine((data) => !data.mostrarEspecialidad || data.especialidadId.length > 0, {
     message: 'Selecciona una especialidad.',
-    path: ['especialidad']
+    path: ['especialidadId']
   })
 
 export default function RegistroMedico() {
+  const router = useRouter()
+  const [professionalTypes, setProfessionalTypes] = useState<ProfessionalTypeResponse[]>([])
+  const [specialties, setSpecialties] = useState<SpecialtyResponse[]>([])
+  const [tipoProfesionalId, setTipoProfesionalId] = useState('')
   const [tipoProfesional, setTipoProfesional] = useState('')
   const [cedulaPrefijo, setCedulaPrefijo] = useState<'V' | 'E'>('V')
   const [cedulaNumero, setCedulaNumero] = useState('')
@@ -79,8 +86,11 @@ export default function RegistroMedico() {
   const [whatsappNumero, setWhatsappNumero] = useState('')
   const [correo, setCorreo] = useState('')
   const [paisReside, setPaisReside] = useState('')
-  const [especialidad, setEspecialidad] = useState('')
+  const [especialidadId, setEspecialidadId] = useState('')
   const [contrasena, setContrasena] = useState('')
+  // Honeypot anti-bot: campo real (no type="hidden") que un humano nunca ve ni completa,
+  // pero que un bot que auto-rellena formularios sí suele tocar.
+  const [website, setWebsite] = useState('')
 
   // null = sin verificar todavía, true = encontrado (campos bloqueados),
   // false = no encontrado (campos liberados para carga manual).
@@ -88,15 +98,46 @@ export default function RegistroMedico() {
   const [verificando, setVerificando] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [ok, setOk] = useState(false)
+
+  useMountEffect(() => {
+    fetchProfessionalTypes()
+      .then(setProfessionalTypes)
+      .catch((e) => {
+        console.error('No se pudo cargar el catálogo de tipos de profesional:', e)
+        setError('No se pudo cargar el catálogo de tipos de profesional. Recarga la página.')
+      })
+  })
+
+  useMountEffect(() => {
+    fetchSpecialties()
+      .then(setSpecialties)
+      .catch((e) => {
+        console.error('No se pudo cargar el catálogo de especialidades:', e)
+        setError('No se pudo cargar el catálogo de especialidades. Recarga la página.')
+      })
+  })
 
   const requiereVerificacion = tipoProfesional === 'Médico' || tipoProfesional === 'Psicólogo'
   const mostrarEspecialidad = tipoProfesional === 'Médico'
-  // Si es psicólogo, la especialidad se fija sola y no se muestra el selector.
-  const especialidadFinal = tipoProfesional === 'Psicólogo' ? 'Psicología' : especialidad
+  const especialidadesActivas = specialties.filter(
+    (s) => s.status === 'active' && s.name !== 'Psicología'
+  )
 
-  function onChangeTipoProfesional(value: string) {
-    setTipoProfesional(value)
+  // Psicólogo no tiene selector propio: se asigna automáticamente la especialidad
+  // "Psicología" del catálogo (intención original antes de que existiera este catálogo
+  // con id real — ver git blame). Para cualquier otro tipo (Nutricionista, etc.) no aplica.
+  function resolverSpecialtyId(): string | null {
+    if (tipoProfesional === 'Médico') return especialidadId || null
+    if (tipoProfesional === 'Psicólogo') {
+      return specialties.find((s) => s.name === 'Psicología')?.id ?? null
+    }
+    return null
+  }
+
+  function onChangeTipoProfesional(id: string) {
+    const seleccionado = professionalTypes.find((t) => t.id === id)
+    setTipoProfesionalId(id)
+    setTipoProfesional(seleccionado?.name || '')
     setVerificado(null)
     setNombreCompleto('')
     setLicencia('')
@@ -153,7 +194,6 @@ export default function RegistroMedico() {
 
   const submit = async () => {
     setError('')
-    setOk(false)
 
     const result = registroMedicoSchema.safeParse({
       tipoProfesional,
@@ -163,30 +203,77 @@ export default function RegistroMedico() {
       correo,
       paisReside,
       mostrarEspecialidad,
-      especialidad,
+      especialidadId,
       contrasena
     })
     if (!result.success) {
       setError(result.error.issues[0]?.message || 'Revisa los campos del formulario.')
       return
     }
+    if (!tipoProfesionalId) {
+      setError('Selecciona el tipo de profesional.')
+      return
+    }
+
+    // Marca si signUp() ya dejó una cuenta+sesión activas antes de llamar a createDoctor(), para
+    // poder distinguir en el catch si hay que revertir la sesión (ver mitigación de cuentas
+    // huérfanas más abajo).
+    let cuentaCreada = false
 
     setLoading(true)
     try {
-      // MAQUETA: acá va el POST real al backend una vez esté disponible
-      // (ver notas al inicio del archivo). No se crea ninguna cuenta todavía.
-      await new Promise((r) => setTimeout(r, 500))
-      console.log('[maqueta] payload de registro', {
-        tipo_profesional: tipoProfesional,
-        cedula: `${cedulaPrefijo}-${cedulaNumero}`,
-        nombre_completo: nombreCompleto,
-        licencia,
-        whatsapp: `${whatsappPrefijo}${whatsappNumero}`,
-        correo,
-        pais_reside: paisReside,
-        especialidad: especialidadFinal || null
+      const accountEmail = correo.trim().toLowerCase()
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: accountEmail,
+        password: contrasena,
+        options: { data: { full_name: nombreCompleto.trim(), role: 'doctor' } }
       })
-      setOk(true)
+      if (signUpError) throw signUpError
+      if (!signUpData.session) {
+        setError(
+          'Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión en el panel médico.'
+        )
+        return
+      }
+      cuentaCreada = true
+
+      await createDoctor({
+        professional_type_id: tipoProfesionalId,
+        specialty_id: resolverSpecialtyId(),
+        cedula: `${cedulaPrefijo}-${cedulaNumero}`,
+        full_name: nombreCompleto,
+        license: licencia || null,
+        phone: `${whatsappPrefijo}${whatsappNumero}`,
+        email: accountEmail,
+        country_of_residence: paisReside || null,
+        website
+      })
+      // Diagrama de secuencia del ticket: tras el 201 se redirige directo al board (panel-medico),
+      // no se pide un login manual aparte — signUp() ya dejó una sesión activa.
+      await router.push('/panel-medico')
+    } catch (e) {
+      if (cuentaCreada) {
+        // El registro en el backend falló después de crear la cuenta de Supabase: cerramos la
+        // sesión para no dejar al usuario autenticado con un perfil a medio completar, y se lo
+        // decimos explícitamente. No revertimos la cuenta en sí (eso requeriría un endpoint
+        // admin con service-role, fuera del alcance de este fix — ver changeslog).
+        await supabase.auth.signOut()
+        console.error(e)
+        setError(
+          'Tu cuenta se creó, pero no pudimos guardar tus datos de registro. Contáctanos desde la sección "Contacto" de la página principal para completar tu registro manualmente, o inténtalo de nuevo más tarde con el mismo correo.'
+        )
+      } else if (e instanceof ApiError && e.status === 422) {
+        setError(e.message || 'Cédula o teléfono con formato inválido.')
+      } else if (e instanceof ApiError && e.status === 429) {
+        setError('Demasiados intentos. Intenta de nuevo más tarde.')
+      } else if (e instanceof ApiError) {
+        setError('No se pudo completar el registro. Intenta de nuevo.')
+      } else {
+        console.error(e)
+        setError(
+          'No se pudo crear la cuenta. Puede que el correo ya esté registrado, o haya un error de conexión.'
+        )
+      }
     } finally {
       setLoading(false)
     }
@@ -213,15 +300,17 @@ export default function RegistroMedico() {
               <div>
                 <label className="label">Tipo de profesional *</label>
                 <select
-                  value={tipoProfesional}
+                  value={tipoProfesionalId}
                   onChange={(e) => onChangeTipoProfesional(e.target.value)}
                 >
                   <option value="">Selecciona...</option>
-                  {TIPOS_PROFESIONAL.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
+                  {professionalTypes
+                    .filter((t) => t.status === 'active')
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
                 </select>
               </div>
 
@@ -322,11 +411,14 @@ export default function RegistroMedico() {
               {mostrarEspecialidad && (
                 <div>
                   <label className="label">Especialidad *</label>
-                  <select value={especialidad} onChange={(e) => setEspecialidad(e.target.value)}>
+                  <select
+                    value={especialidadId}
+                    onChange={(e) => setEspecialidadId(e.target.value)}
+                  >
                     <option value="">Selecciona...</option>
-                    {SPECIALTIES.filter((s) => s !== 'Psicología').map((s) => (
-                      <option key={s} value={s}>
-                        {s}
+                    {especialidadesActivas.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
                       </option>
                     ))}
                   </select>
@@ -343,12 +435,18 @@ export default function RegistroMedico() {
                 />
               </div>
 
+              <input
+                type="text"
+                name="website"
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }}
+              />
+
               {error && <div className="notice notice-danger">{error}</div>}
-              {ok && (
-                <div className="notice notice-success">
-                  Maqueta: formulario válido (sin backend conectado todavía).
-                </div>
-              )}
               <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>
                 {loading ? 'Registrando...' : 'Registrarse'}
               </button>
