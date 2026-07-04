@@ -1,10 +1,12 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { z } from 'zod'
 import { supabase } from '../lib/supabase'
 import { fetchAffectedZoneCatalog, fetchSpecialtyCatalog } from '../lib/api'
+import { createConsultation, createPatient, ApiError } from '../lib/patients'
+import { useMountEffect } from '../lib/hooks'
 import CedulaField from '../components/CedulaField'
 import PhoneField from '../components/PhoneField'
 
@@ -164,13 +166,13 @@ export default function RegistroPaciente() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
+  useMountEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) setAuthedPatient(true)
     })
     fetchSpecialtyCatalog().then(setSpecialties)
     fetchAffectedZoneCatalog().then(setZonas)
-  }, [])
+  })
 
   const submit = async () => {
     setError('')
@@ -214,6 +216,12 @@ export default function RegistroPaciente() {
       return
     }
 
+    // Marca si signUp() ya dejó una cuenta+sesión activas antes de llamar a
+    // createPatient()/createConsultation(), para poder distinguir en el catch si hay que revertir
+    // la sesión (ver mitigación de cuentas huérfanas más abajo). No aplica al flujo authedPatient:
+    // ahí la cuenta ya existía antes de este submit, no se crea nada nuevo.
+    let cuentaCreada = false
+
     setLoading(true)
     try {
       let userId: string | null = null
@@ -241,6 +249,7 @@ export default function RegistroPaciente() {
           return
         }
         userId = signUpData.user?.id ?? null
+        cuentaCreada = true
       }
 
       // Sin selector de "tipo de ayuda", los adultos caen en el bucket general (cubre
@@ -263,50 +272,36 @@ export default function RegistroPaciente() {
           }`
         : descripcionFinal || null
 
-      const { data: patient, error: patientError } = await supabase
-        .from('patients')
-        .insert({
-          user_id: userId,
-          full_name: isMinor ? mFullName.trim() : fullName.trim(),
-          cedula: isMinor ? mCedula || null : cedula,
-          // The guardian is who must be contacted and who owns the account.
-          phone_whatsapp: isMinor ? gPhone : phone,
-          email: contactEmail || null,
-          affected_zone: zona,
-          age_range: (isMinor ? mEdad : edad) || null,
-          needs_tags: needsTags,
-          description: patientDescription,
-          consent: true,
-          consent_at: new Date().toISOString()
-        })
-        .select('id, full_name')
-        .single()
-
-      if (patientError) throw patientError
+      const patient = await createPatient({
+        user_id: userId,
+        full_name: isMinor ? mFullName.trim() : fullName.trim(),
+        cedula: isMinor ? mCedula || null : cedula,
+        // The guardian is who must be contacted and who owns the account.
+        phone_whatsapp: isMinor ? gPhone : phone,
+        email: contactEmail || null,
+        affected_zone: zona,
+        age_range: (isMinor ? mEdad : edad) || null,
+        needs_tags: needsTags,
+        description: patientDescription,
+        consent: true
+      })
 
       const chiefComplaint =
         !isMinor && wantsSpecialty && specialty
           ? `Especialidad solicitada: ${specialty}. ${descripcionFinal}`
           : descripcionFinal
 
-      const { data: consultation, error: consultationError } = await supabase
-        .from('consultations')
-        .insert({
-          patient_id: patient.id,
-          status: 'waiting',
-          priority: needsTags.some((t) =>
-            ['Lesión física', 'Embarazo', 'Niño / pediatría'].includes(t)
-          )
-            ? 'review'
-            : 'normal',
-          category: needsTags[0],
-          chief_complaint: chiefComplaint,
-          code: `MPV-${Date.now()}`
-        })
-        .select('id, code')
-        .single()
-
-      if (consultationError) throw consultationError
+      const consultation = await createConsultation({
+        patient_id: patient.id,
+        status: 'waiting',
+        priority: needsTags.some((t) =>
+          ['Lesión física', 'Embarazo', 'Niño / pediatría'].includes(t)
+        )
+          ? 'review'
+          : 'normal',
+        category: needsTags[0],
+        chief_complaint: chiefComplaint
+      })
 
       // Create the Jitsi video room (server-side) and show it on the waiting page. If this fails,
       // we still continue — the case stays in the queue for a doctor to attend.
@@ -329,9 +324,22 @@ export default function RegistroPaciente() {
       router.push(`/sala-espera?${params.toString()}`)
     } catch (e) {
       console.error(e)
-      setError(
-        'No se pudo registrar la solicitud. Puede que el email ya esté registrado, o haya un error de conexión.'
-      )
+      if (cuentaCreada) {
+        // El registro en el backend falló después de crear la cuenta de Supabase: cerramos la
+        // sesión para no dejar al usuario autenticado con un perfil a medio completar, y se lo
+        // decimos explícitamente. No revertimos la cuenta en sí (eso requeriría un endpoint
+        // admin con service-role, fuera del alcance de este fix — ver changeslog).
+        await supabase.auth.signOut()
+        setError(
+          'Tu cuenta se creó, pero no pudimos guardar tu solicitud. Contáctanos desde la sección "Contacto" de la página principal para completarla manualmente, o inténtalo de nuevo más tarde con el mismo correo.'
+        )
+      } else if (e instanceof ApiError && e.status === 422) {
+        setError(e.message || 'Revisa los datos ingresados.')
+      } else {
+        setError(
+          'No se pudo registrar la solicitud. Puede que el email ya esté registrado, o haya un error de conexión.'
+        )
+      }
     } finally {
       setLoading(false)
     }
