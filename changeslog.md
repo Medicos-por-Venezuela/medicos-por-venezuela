@@ -43,6 +43,27 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   `pnpm exec tsc --noEmit` y `pnpm lint` limpios. Files: `lib/apiClient.ts`, `lib/doctors.ts`,
   `lib/hooks.ts`, `pages/registro-medico.tsx`, `CLAUDE.md`, `AGENTS.md`.
 
+- **Registro paciente: submit real contra `POST /api/v1/patients` y `POST /api/v1/consultations`** —
+  se conecta `/registro-paciente` (ramas adulto y menor/representante) al mismo backend FastAPI,
+  sobre el `lib/apiClient.ts` compartido, en vez de los
+  `supabase.from('patients'|'consultations').insert(...)` anteriores. Nuevo `lib/patients.ts` con
+  `createPatient`/`createConsultation` + tipos `PatientCreate`, `PatientResponse`,
+  `ConsultationCreate`, `ConsultationResponse`. Se deja de enviar `code` al crear la consulta (el
+  schema del backend lo rechaza como campo desconocido; el código ahora sale de
+  `ConsultationResponse.code` para el redirect a `/sala-espera`). `supabase.auth.signUp()`/
+  `getSession()` y la creación de la videoconsulta (`pages/api/videoconsulta.ts`) quedan intactos.
+  Mismo mitigación de cuenta huérfana que en médico (`signOut()` + aviso explícito si el backend
+  falla después del `signUp()`), y el único `useEffect(fn, [])` crudo del archivo se reemplazó por
+  `useMountEffect` para consistencia con `registro-medico.tsx`.
+
+  Fuera de alcance deliberado (documentado para el equipo, no tocado en ninguno de los dos flujos):
+  `needsTags` hardcodeado (rompe el ruteo de casos reservados/prioridad), los `refine` de cuenta
+  obligatoria en este archivo (contradice "registro anónimo" del auth model), `lib/api.ts`, y el
+  cuerpo de `verificarCedula()`/`lib/verificacion.ts`.
+
+  `pnpm exec tsc --noEmit` y `pnpm lint` limpios. Files: `lib/patients.ts`,
+  `pages/registro-paciente.tsx`.
+
 ## 2026-07-03
 
 - **Registro médico: se quita Google, se agrega zod y validaciones por campo** — se elimina el
