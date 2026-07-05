@@ -308,6 +308,26 @@ input[readonly] {
   font-size: 14px;
   margin-top: 6px;
 }
+/* Registro de paciente: reemplaza el acento verde por el mismo azul de la tarjeta
+   "Soy paciente" del home (pages/index.tsx: --blue: #1a3a6b, hcard-icon--blue: #e8effb),
+   ahora que el médico usa amarillo/dorado ahí. Shadowing de las custom properties que ya
+   consumen .btn-primary/.link-button/.badge-green/.tag.selected — sin tocar otras páginas. */
+.patient-theme {
+  --green: #1a3a6b;
+  --green-light: #e8effb;
+}
+
+.input-group {
+  display: flex;
+  gap: 8px;
+}
+.input-group select {
+  flex: 0 0 92px;
+}
+.input-group input {
+  flex: 1;
+  min-width: 0;
+}
 .tag-row {
   display: flex;
   flex-wrap: wrap;
