@@ -15,7 +15,8 @@ setup, and persistence conventions.
 Read [CLAUDE.md](CLAUDE.md) first. It documents:
 
 - Auth model (anonymous patients, instant-access doctors, admin revoke, Google OAuth role picker)
-- Architecture (Next.js frontend + Supabase BaaS, no separate backend server)
+- Architecture (Next.js frontend + Supabase BaaS for auth/queue/admin; doctor/patient/consultation
+  registration now calls a separate FastAPI backend — see CLAUDE.md's Architecture section)
 - Routes, database schema, RLS policies, RPCs
 - Security trade-offs and mitigations
 
@@ -27,7 +28,9 @@ doesn't cover.
 Verified directly against `package.json` and the repo tree (not assumed):
 
 - **Next.js 14.2** (Pages Router) + **React 18** + **TypeScript 5**
-- **Supabase** (`@supabase/supabase-js` v2) — Postgres, Auth, RLS; no separate backend server
+- **Supabase** (`@supabase/supabase-js` v2) — Postgres, Auth, RLS for everything except doctor/patient/
+  consultation registration, which now calls a separate FastAPI backend (`api-medicos-por-venezuela`,
+  `NEXT_PUBLIC_API_URL`) via `lib/doctors.ts`/`lib/patients.ts`
 - One Vercel serverless API route: `pages/api/videoconsulta.ts` (Twilio v6 + Supabase service-role,
   server-only)
 - No CSS framework — plain global CSS classes

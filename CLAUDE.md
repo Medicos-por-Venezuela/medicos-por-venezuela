@@ -66,9 +66,12 @@ Recover via `mem_search(query: "{topic_key}", project: "medicos-por-venezuela")`
 - **Patients:** can submit a request **anonymously** (default). An account is **optional** — only for
   patients who want to follow their case at `/mi-caso`. When created, the `patients` row links to the
   auth user via `user_id`.
-- **Doctors:** self-register (email+password or Google) with **instant access** (`verified` + `active`
-  set on signup). Admins can **revoke** a doctor anytime by setting `active = false` (instant cutoff
-  via `current_user_role()`).
+- **Doctors:** self-register (email+password only — Google sign-up was removed from `/registro-medico`)
+  with **instant access** (`verified` + `active` set on signup). Admins can **revoke** a doctor anytime
+  by setting `active = false` (instant cutoff via `current_user_role()`). Separately, the SACS/FPV
+  credential check now lives in the dedicated backend (see Architecture below) as a `doctors` row —
+  that row has no relationship to the `profiles`/auth account created here; they're linked only by
+  matching email.
 - **Admins:** promoted manually via SQL. Private login at `/admin` (not linked from the landing page);
   manage cases (reassign doctor, change status, edit note) from `/admin/dashboard`.
 - **Google sign-in:** OAuth can't carry a role, so a first-time Google user gets a placeholder profile
@@ -82,16 +85,25 @@ Recover via `mem_search(query: "{topic_key}", project: "medicos-por-venezuela")`
 
 ## Architecture (important)
 
-There is **no separate backend server**. This is a **Next.js frontend + Supabase BaaS**:
+This used to be a **Next.js frontend + Supabase BaaS only** app. That's now **partially true** —
+migration to a dedicated backend is in progress:
 
-- The Next.js app (at the repo root) runs entirely client-side against Supabase.
-- "The backend" = a **Supabase project** providing Postgres, Auth, and Row Level Security.
-- Most data access goes directly from the browser through the Supabase JS client using the
-  **anon key** + RLS; logic lives in RLS policies + Postgres functions/triggers in
-  [supabase_schema.sql](supabase_schema.sql).
-- One server-side **API route** exists: `pages/api/videoconsulta.ts` (Vercel serverless function).
-  It uses the Twilio + Supabase **service-role** secrets, which must stay server-only — see
-  [lib/supabaseAdmin.ts](lib/supabaseAdmin.ts) (imported only by API routes).
+- **Auth stays on Supabase**: `supabase.auth.signUp()`/`getSession()` run directly from the browser
+  against a Supabase project (anon key). Identity/session issuance has not moved.
+- **A separate FastAPI backend now exists** (`api-medicos-por-venezuela`, sibling repo) and owns
+  doctor registration, patient registration, and consultation creation: `pages/registro-medico.tsx`
+  and `pages/registro-paciente.tsx` call it directly via `lib/doctors.ts`/`lib/patients.ts`
+  (`POST /api/v1/doctors`, `POST /api/v1/patients`, `POST /api/v1/consultations`), base URL from
+  `NEXT_PUBLIC_API_URL` (see `.env.example`). That backend connects to its own Postgres as owner
+  (bypasses Supabase RLS) and does its own rate-limiting/anti-bot/RBAC — see its own CLAUDE.md.
+- **Everything else** (queue/panel-medico, admin dashboard, `/mi-caso`, specialty/zone catalog
+  fallbacks in `lib/api.ts`) still goes directly from the browser through the Supabase JS client
+  using the **anon key** + RLS; logic lives in RLS policies + Postgres functions/triggers in
+  [supabase_schema.sql](supabase_schema.sql). Auditing RLS policies alone no longer tells the full
+  story for doctor/patient/consultation writes — check the FastAPI repo's own security rules too.
+- One server-side **API route** exists in this repo: `pages/api/videoconsulta.ts` (Vercel serverless
+  function). It uses the Twilio + Supabase **service-role** secrets, which must stay server-only —
+  see [lib/supabaseAdmin.ts](lib/supabaseAdmin.ts) (imported only by API routes).
 
 ## Tech stack
 

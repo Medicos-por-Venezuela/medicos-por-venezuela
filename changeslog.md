@@ -5,8 +5,111 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-07-04
+
+- **Registro médico: submit real contra `POST /api/v1/doctors` + cuenta Supabase + especialidad real** —
+  se conecta el formulario al backend FastAPI real (`api-medicos-por-venezuela`), reemplazando el
+  submit mockeado. Nuevo `lib/apiClient.ts` (compartido con `lib/patients.ts`): `API_URL` (acepta
+  `NEXT_PUBLIC_API_URL` o `NEXT_PUBLIC_API_BASE_URL`, evitando el mismatch silencioso con
+  `lib/api.ts`), la clase `ApiError`, y los helpers `getJson`/`postJson` (única implementación de
+  fetch+parseo de error, en vez de duplicarla por archivo). Nuevo `lib/doctors.ts` con
+  `fetchProfessionalTypes`/`fetchSpecialties`/`createDoctor` sobre ese cliente.
+
+  - El `TIPOS_PROFESIONAL` hardcodeado se reemplaza por el catálogo real (`GET
+/api/v1/professional-types`, `status === 'active'`); la rama SACS/FPV sigue comparando contra el
+    `name` del tipo seleccionado, sin cambios en esa lógica. Honeypot (`website`, input real oculto,
+    no `type="hidden"`) agregado por el anti-bot del endpoint.
+  - **`specialty_id` ya no viaja `null`**: `fetchSpecialties()` (`GET /api/v1/specialties`, público)
+    reemplaza el `<select>` estático de `SPECIALTIES` (`lib/utils.ts`) por el catálogo real (filtrado
+    a `active`, sin "Psicología"); el `id` elegido se trackea en `especialidadId` (el `refine` de zod
+    se actualizó para ese campo). Para `tipoProfesional === 'Psicólogo'` se resuelve automático el
+    `id` cuyo `name === 'Psicología'`, sin UI, con fallback a `null` si no está en el catálogo.
+  - **Cuenta Supabase real**: la contraseña del formulario se recolectaba pero nunca se usaba — no
+    creaba cuenta, así que un médico "registrado" no podía entrar a `/login-medico`. Se agrega
+    `supabase.auth.signUp({ email, password, options: { data: { full_name, role: 'doctor' } } })`
+    antes de `createDoctor()`; sin `session` (confirmación pendiente) se informa y se corta sin
+    llamar al backend. Si `createDoctor()` falla **después** de que el signUp ya creó sesión, se hace
+    `supabase.auth.signOut()` y se avisa explícitamente que la cuenta quedó creada pero el registro
+    no — **mitigación parcial**, no revierte la cuenta/fila `profiles` (requeriría un endpoint admin
+    con service-role, fuera de alcance; sigue como follow-up).
+  - `CLAUDE.md`/`AGENTS.md` actualizados: ya no dicen "no separate backend server" ni que los médicos
+    pueden registrarse con Google (se sacó de esta pantalla) — reflejan el backend FastAPI nuevo.
+  - **Redirect al board tras el 201**: el diagrama de secuencia del ticket especifica que, tras el
+    registro exitoso, se redirige directo a la cola/board (no a un mensaje de "ya podés loguearte").
+    Se saca el estado `ok`/mensaje de éxito (ahora dead code) y se agrega
+    `router.push('/panel-medico')` justo después de `createDoctor()` — la sesión ya está activa desde
+    el `signUp()` previo, así que no hace falta un login manual aparte.
+
+  `pnpm exec tsc --noEmit` y `pnpm lint` limpios. Files: `lib/apiClient.ts`, `lib/doctors.ts`,
+  `lib/hooks.ts`, `pages/registro-medico.tsx`, `CLAUDE.md`, `AGENTS.md`.
+
+## 2026-07-03
+
+- **Registro médico: se quita Google, se agrega zod y validaciones por campo** — se elimina el
+  botón "Continuar con Google" y su wiring (`signInWithGoogle`/`localStorage`) de
+  `registro-medico.tsx` — la cuenta se crea solo con correo+contraseña. Se instala `zod`
+  (`^4.4.3`) y se reemplaza el bloque de validación manual (un único `if` con un mensaje genérico)
+  por un schema `registroMedicoSchema` con mensajes específicos por campo: cédula y WhatsApp
+  exigen solo dígitos y un rango de longitud (6–9 y 7–11 respectivamente — los inputs ya filtran
+  no-dígitos con `soloDigitos`, el schema es la segunda capa de defensa), correo con `.email()`, y
+  un `.refine()` que exige especialidad únicamente cuando el tipo de profesional es "Médico"
+  (`mostrarEspecialidad`). Probado en el navegador: cada regla dispara su mensaje en cascada (tipo
+  de profesional → cédula → WhatsApp → correo). File: `pages/registro-medico.tsx`.
+
+## 2026-07-02
+
+- **Registro médico: verificación de cédula conectada al backend real** — `verificarSacs` /
+  `verificarPsicologo` (nuevo `lib/verificacion.ts`) reemplazan los mocks de
+  `registro-medico.tsx`, pegando contra `GET /api/v1/verificacion-sacs/{cedula}` y
+  `GET /api/v1/verificacion-psicologo/{cedula}` de `api-medicos-por-venezuela` (ya mergeados a
+  `dev`, confirmados en Swagger). Base URL configurable vía `NEXT_PUBLIC_API_URL` (default
+  `http://localhost:8000`). Probado en vivo: cédula sin registro real muestra correctamente "No
+  encontramos esta cédula...". Files: `lib/verificacion.ts`, `pages/registro-medico.tsx`,
+  `.env.example`.
+- **Especialidad excluye "Psicología" cuando el tipo de profesional es Médico** — esa
+  especialidad queda reservada al flujo de `Psicólogo` (se asigna sola, sin selector). File:
+  `pages/registro-medico.tsx`.
+- **Botón y foco de `/registro-medico` alineados al dorado del home** — el botón "Registrarse"
+  (`.registro-medico-page .btn-primary`) pasa de fondo azul sólido a fondo blanco + borde dorado
+  de 2px (mismo criterio que `btn-gold-outline` del home para la tarjeta "Soy Médico"); el foco de
+  inputs/selects de esa pantalla también pasa de azul a dorado. Nueva variable `--home-gold`.
+  Files: `styles/globals.css`.
+
 ## 2026-07-01
 
+- **Home page: extendido "médico o psicólogo" → "profesional de la salud" en toda la página** —
+  ticket `refactor(Home-page)`, barrido completo de las 8 menciones restantes que solo nombraban
+  médico/psicólogo: los 3 steps de "¿Cómo funciona?", la meta description, el pill del hero, el H1
+  del hero, la trust card de confidencialidad y el footer. Título del H1 acordado con el usuario:
+  "¿Necesitas atención médica, psicológica o en otra área de la salud, gratuita?". Sigue pendiente
+  (no es código, requiere respuesta externa) preguntar a las Drs del grupo la lista exacta de
+  profesiones a enumerar en otras pantallas (ver ticket `refactor(registro-medicos)`). File:
+  `pages/index.tsx`.
+- **Home page: tarjeta de paciente inclusiva + paso redundante eliminado** — ticket
+  `refactor(Home-page)`, seguimiento del cambio anterior. La tarjeta "Soy Paciente" ahora dice
+  "Necesito hablar con un médico, psicólogo u otro profesional de la salud." (antes solo
+  mencionaba médico/psicólogo). Se eliminó el paso 1 de "¿Cómo funciona?" ("Entra a la
+  plataforma / Ingresa a www.medicosporvenezuela.org") por redundante — quien lee la página ya
+  está en el sitio; los pasos se renumeraron solos (ahora son 4). Se eliminó el ícono
+  `IconGlobe`, que quedó sin uso. File: `pages/index.tsx`.
+- **Home page: "Soy profesional de la salud" + sala de espera en el paso 4** — ticket
+  `refactor(Home-page)`, rama base `dev_aws`. Renombrado "Soy Médico" → "Soy profesional de la
+  salud" en el nav y en la hero card (más inclusivo, no solo médicos). El paso 4 de "¿Cómo
+  funciona?" ahora dice "Entra a la sala de espera" y explica que el paciente espera ahí hasta que
+  un médico o psicólogo lo atienda, antes de unirse a la teleconsulta. Pendiente (no implementado,
+  requiere info externa): expandir la lista de profesiones más allá de médico/psicólogo una vez
+  que las Drs del grupo confirmen cuáles agregar — dejado como TODO en el código (`STEPS` en
+  `pages/index.tsx`). File: `pages/index.tsx`.
+- **Registro médico: maqueta de formulario consolidado en un solo paso (sin endpoints)** — ticket
+  `refactor(registro-medicos)`, rama base `dev_aws`. `registro-medico.tsx` ahora junta en una sola
+  pantalla lo que hoy está dividido entre esa página (cuenta) y `/elegir-rol` (especialidad/país/
+  whatsapp): tipo de profesional, cédula con selector V/E y verificación en vivo (mock de
+  `verificacion-sacs`/`verificacion-psicologo`, que autocompleta y bloquea Nombre/Licencia),
+  WhatsApp con prefijo de país, y Especialidad oculta cuando no es médico. Colores/foco de esta
+  pantalla alineados al azul del home (`--home-blue`), scopeados vía `.registro-medico-page` para no
+  afectar el resto de la app (sigue en verde). Sin wiring real a la API todavía — pendiente de que
+  se mergeen los endpoints de backend y de un catálogo público de `professional-types`. No
+  mergeado a `dev_aws` todavía. Files: `pages/registro-medico.tsx`, `styles/globals.css`.
 - **Trazabilidad as compact rows** — the case-detail "Referencia y trazabilidad" event history now
   renders each event as a single divider-separated row (label — note · author, with the date on the
   right) instead of stacked cards, so the section is much shorter. File:
@@ -96,7 +199,7 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   called from `/sala-espera` on that click (fire-and-forget, sets the timestamp once via `coalesce`);
   the KPI query gates on `status='waiting' AND entered_call_at IS NOT NULL`. Renamed "Consultas
   abiertas" → **"Consultas en progreso"**, now counting `in_progress + referred_to_specialist +
-  urgent_in_person + patient_no_show + cancelled` (everything past the queue that isn't a formal
+urgent_in_person + patient_no_show + cancelled` (everything past the queue that isn't a formal
   close). Files: `supabase_schema.sql` (column + RPC), `pages/sala-espera.tsx`,
   `pages/admin/dashboard.tsx`. Needs one additive prod migration (the column + RPC).
 - **Resolved stray `git stash` conflicts** — `dashboard.tsx` and `changeslog.md` had unresolved

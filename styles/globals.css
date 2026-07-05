@@ -2,6 +2,11 @@
   --green: #0f6e56;
   --green-light: #e1f5ee;
   --green-soft: #f0faf6;
+  /* Azul del home (pages/index.tsx). Hoy solo se usa scopeado a
+     .registro-medico-page — ver esa regla más abajo. */
+  --home-blue: #1a3a6b;
+  --home-blue-deep: #122a4f;
+  --home-gold: #f5c400;
   --red: #b91c1c;
   --red-light: #fee2e2;
   --orange: #b45309;
@@ -238,6 +243,36 @@ select:focus {
   background: var(--blue-light);
   border-color: #93c5fd;
   color: #1e3a8a;
+}
+.notice-success {
+  background: var(--green-light);
+  border-color: var(--green);
+  color: var(--green);
+}
+input:disabled,
+input[readonly] {
+  background: var(--bg);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* Alineado al azul del home (pages/index.tsx) solo en esta pantalla — el
+   resto de la app sigue en --green hasta que se decida un rebrand completo. */
+.registro-medico-page .btn-primary {
+  background: #fff;
+  color: var(--home-blue);
+  border: 2px solid var(--home-gold);
+}
+.registro-medico-page .btn-primary:hover {
+  background: var(--home-gold);
+  color: var(--home-blue);
+}
+.registro-medico-page input:focus,
+.registro-medico-page select:focus {
+  border-color: var(--home-gold);
+}
+.registro-medico-page .link-button {
+  color: var(--home-blue);
 }
 .table {
   width: 100%;

@@ -22,23 +22,6 @@ function LogoIcon() {
   )
 }
 
-function IconGlobe() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="26"
-      height="26"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18" />
-    </svg>
-  )
-}
 function IconUser() {
   return (
     <svg
@@ -208,14 +191,9 @@ function useReveal<T extends HTMLElement>() {
 
 const STEPS = [
   {
-    icon: <IconGlobe />,
-    title: 'Entra a la plataforma',
-    text: 'Ingresa a www.medicosporvenezuela.org'
-  },
-  {
     icon: <IconUser />,
     title: 'Haz clic en “Soy paciente”',
-    text: 'Selecciona la opción para personas que necesitan hablar con un médico o psicólogo.'
+    text: 'Selecciona la opción para personas que necesitan hablar con un médico, psicólogo u otro profesional de la salud.'
   },
   {
     icon: <IconClipboard />,
@@ -224,13 +202,13 @@ const STEPS = [
   },
   {
     icon: <IconVideo />,
-    title: 'Únete a la teleconsulta',
-    text: 'Cuando aparezca la opción, haz clic en “Unirse a la teleconsulta”.'
+    title: 'Entra a la sala de espera',
+    text: 'Ingresarás a una sala de espera virtual; cuando un médico, psicólogo u otro profesional de la salud esté listo para atenderte, haz clic en “Unirse a la teleconsulta”.'
   },
   {
     icon: <IconDoctor />,
-    title: 'Recibe atención médica y psicológica',
-    text: 'Un médico o psicólogo te orientará de forma gratuita.'
+    title: 'Recibe atención de un profesional de la salud',
+    text: 'Un médico, psicólogo u otro profesional de la salud te orientará de forma gratuita.'
   }
 ]
 
@@ -262,7 +240,7 @@ export default function Home() {
         <title>Médicos por Venezuela — Teleconsultas gratuitas</title>
         <meta
           name="description"
-          content="Atención médica y psicológica gratuita por teleconsulta. Médicos por Venezuela conecta pacientes con médicos y psicólogos voluntarios."
+          content="Atención médica, psicológica y de otros profesionales de la salud, gratuita por teleconsulta. Médicos por Venezuela conecta pacientes con profesionales de la salud voluntarios."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
@@ -314,7 +292,7 @@ export default function Home() {
                   Soy Paciente
                 </button>
                 <button className="btn-pill btn-gold-outline" onClick={goMedico}>
-                  Soy Médico
+                  Soy profesional de la salud
                 </button>
               </div>
             </nav>
@@ -324,9 +302,10 @@ export default function Home() {
         {/* ---------- Hero ---------- */}
         <section id="inicio" className="hero">
           <div ref={heroReveal.ref} className={`hero-inner ${heroReveal.className}`}>
-            <span className="pill">Incluye atención médica y psicológica</span>
+            <span className="pill">Incluye atención médica, psicológica y más</span>
             <h1 className="hero-title">
-              ¿Necesitas atención médica o psicológica <span className="gold">gratuita</span>?
+              ¿Necesitas atención médica, psicológica o en otra área de la salud,{' '}
+              <span className="gold">gratuita</span>?
             </h1>
             <p className="hero-sub">
               Paso a paso para solicitar una teleconsulta en Médicos por Venezuela.
@@ -338,7 +317,7 @@ export default function Home() {
                   <IconUser />
                 </div>
                 <h2>Soy Paciente</h2>
-                <p>Necesito hablar con un médico o psicólogo.</p>
+                <p>Necesito hablar con un médico, psicólogo u otro profesional de la salud.</p>
                 <button className="btn-pill btn-blue btn-block" onClick={goPaciente}>
                   Solicitar consulta →
                 </button>
@@ -351,7 +330,7 @@ export default function Home() {
                 <div className="hcard-icon hcard-icon--gold">
                   <IconDoctor />
                 </div>
-                <h2>Soy Médico</h2>
+                <h2>Soy profesional de la salud</h2>
                 <p>Quiero ofrecer mi ayuda voluntaria.</p>
                 <button className="btn-pill btn-gold-outline btn-block" onClick={goMedico}>
                   Registrarme →
@@ -395,8 +374,8 @@ export default function Home() {
               <div className="trust-body">
                 <h3>100% Confidencial</h3>
                 <p>
-                  Tu información y tu consulta son privadas y seguras. Solo el médico o psicólogo
-                  que te atiende puede verlas.
+                  Tu información y tu consulta son privadas y seguras. Solo el profesional de la
+                  salud que te atiende puede verlas.
                 </p>
               </div>
             </div>
@@ -446,7 +425,8 @@ export default function Home() {
               <span>Médicos por Venezuela</span>
             </div>
             <p className="footer-text">
-              Servicio gratuito para personas que necesitan orientación médica y psicológica.
+              Servicio gratuito para personas que necesitan orientación médica, psicológica y de
+              otros profesionales de la salud.
             </p>
             <div className="footer-badges">
               <span className="fbadge">
