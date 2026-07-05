@@ -320,6 +320,7 @@ export default function RegistroMedico() {
                   <select
                     value={cedulaPrefijo}
                     onChange={(e) => onChangeCedulaPrefijo(e.target.value as 'V' | 'E')}
+                    disabled={!tipoProfesionalId}
                   >
                     <option value="V">V</option>
                     <option value="E">E</option>
@@ -328,10 +329,17 @@ export default function RegistroMedico() {
                     value={cedulaNumero}
                     onChange={(e) => onChangeCedulaNumero(e.target.value)}
                     onBlur={verificarCedula}
+                    disabled={!tipoProfesionalId}
                     inputMode="numeric"
                     placeholder="Solo números"
                   />
                 </div>
+                {/* La verificación (SACS/FPV) depende del tipo de profesional, así que el
+                    campo se bloquea hasta elegirlo — evita que el onBlur no dispare nada
+                    sin explicar por qué. */}
+                {!tipoProfesionalId && (
+                  <div className="hint">Selecciona primero el tipo de profesional.</div>
+                )}
                 {verificando && <div className="hint">Verificando cédula...</div>}
                 {verificado === true && (
                   <div className="notice notice-success" style={{ marginTop: 8 }}>

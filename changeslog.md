@@ -5,6 +5,18 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-07-05
+
+- **Registro médico: la cédula exige elegir el tipo de profesional primero** — la
+  verificación de cédula (`verificarCedula`, en el `onBlur`) ya ramificaba SACS/FPV
+  según `tipoProfesional`, pero el campo quedaba habilitado sin haberlo seleccionado:
+  el usuario podía escribir la cédula y, al perder el foco, no pasaba nada visible (el
+  guard existente cortaba en silencio), sin explicar por qué. Se deshabilita el campo
+  de cédula (prefijo V/E + número) hasta elegir el tipo de profesional, con un hint
+  ("Selecciona primero el tipo de profesional.") que lo explica. Verificado en
+  navegador: deshabilitado + hint antes de elegir tipo, habilitado y sin errores de
+  consola después. File: `pages/registro-medico.tsx`.
+
 ## 2026-07-04
 
 - **Registro médico: submit real contra `POST /api/v1/doctors` + cuenta Supabase + especialidad real** —
