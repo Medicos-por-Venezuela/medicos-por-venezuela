@@ -11,6 +11,9 @@ export interface PatientCreate {
   email?: string | null
   needs_tags?: string[]
   description?: string | null
+  allergies?: string | null
+  parent_id?: string | null
+  parentesco?: string | null
   user_id?: string | null
   consent: boolean
 }
@@ -18,6 +21,7 @@ export interface PatientCreate {
 export interface PatientResponse {
   id: string
   full_name: string
+  cedula?: string | null
 }
 
 export interface ConsultationCreate {
@@ -27,6 +31,7 @@ export interface ConsultationCreate {
   chief_complaint?: string | null
   referred_specialty?: string | null
   platform_used?: string | null
+  specialty_id?: string | null
   status?: string
 }
 
