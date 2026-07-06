@@ -4,7 +4,11 @@ import { useRouter } from 'next/router'
 import { useState } from 'react'
 import { z } from 'zod'
 import { supabase } from '../lib/supabase'
-import { fetchAffectedZoneCatalog, fetchSpecialtyCatalog } from '../lib/api'
+import { fetchAffectedZoneCatalog } from '../lib/api'
+// Reusa el catálogo de especialidades del registro de médico: trae {id, name},
+// necesitamos el id real para specialty_id (fetchSpecialtyCatalog de lib/api solo
+// devuelve nombres).
+import { fetchSpecialties, type SpecialtyResponse } from '../lib/doctors'
 import { createConsultation, createPatient, ApiError } from '../lib/patients'
 import { useMountEffect } from '../lib/hooks'
 import CedulaField from '../components/CedulaField'
@@ -125,7 +129,7 @@ export default function RegistroPaciente() {
   const [isMinor, setIsMinor] = useState(false)
 
   // Catalogs (backend-sourced when available; static fallback otherwise — see lib/api.ts).
-  const [specialties, setSpecialties] = useState<string[]>([])
+  const [specialties, setSpecialties] = useState<SpecialtyResponse[]>([])
   const [zonas, setZonas] = useState<string[]>([])
 
   // True when the patient (or the guardian, for a minor) is already logged in.
@@ -170,7 +174,7 @@ export default function RegistroPaciente() {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) setAuthedPatient(true)
     })
-    fetchSpecialtyCatalog().then(setSpecialties)
+    fetchSpecialties().then((list) => setSpecialties(list.filter((s) => s.status === 'active')))
     fetchAffectedZoneCatalog().then(setZonas)
   })
 
@@ -253,46 +257,62 @@ export default function RegistroPaciente() {
       }
 
       // Sin selector de "tipo de ayuda", los adultos caen en el bucket general (cubre
-      // cualquier especialidad vía SPECIALTY_NEEDS['Medicina general'] = ['*']); la
-      // especialidad indicada (si la conoce) queda como dato informativo en chief_complaint.
+      // cualquier especialidad vía SPECIALTY_NEEDS['Medicina general'] = ['*']). Esto alimenta
+      // SOLO category/priority de la consulta (matching del panel hoy) — no se toca ese filtro.
       const needsTags = isMinor ? ['Niño / pediatría'] : ['Medicina general']
 
-      // La alergia es un checkbox + input aparte (no un campo propio en `patients`), así que
-      // se antepone como nota estructurada a la descripción/motivo — mismo criterio "puente"
-      // que ya usamos para el representante y la especialidad solicitada.
-      const allergyNote =
-        (isMinor ? mHasAllergy : hasAllergy) && (isMinor ? mAllergyDetail : allergyDetail).trim()
-          ? `Alergias: ${(isMinor ? mAllergyDetail : allergyDetail).trim()}. `
-          : ''
-      const descripcionFinal = `${allergyNote}${descripcion.trim()}`.trim()
+      const specialtyId = isMinor
+        ? (specialties.find((s) => s.name === 'Pediatría')?.id ?? null)
+        : wantsSpecialty && specialty
+          ? specialty
+          : null
 
-      const patientDescription = isMinor
-        ? `Representante: ${gFullName.trim()}, CI ${gCedula}, Parentesco: ${gRelationship}${
-            descripcionFinal ? ` — ${descripcionFinal}` : ''
-          }`
-        : descripcionFinal || null
-
-      const patient = await createPatient({
-        user_id: userId,
-        full_name: isMinor ? mFullName.trim() : fullName.trim(),
-        cedula: isMinor ? mCedula || null : cedula,
-        // The guardian is who must be contacted and who owns the account.
-        phone_whatsapp: isMinor ? gPhone : phone,
-        email: contactEmail || null,
-        affected_zone: zona,
-        age_range: (isMinor ? mEdad : edad) || null,
-        needs_tags: needsTags,
-        description: patientDescription,
-        consent: true
-      })
-
-      const chiefComplaint =
-        !isMinor && wantsSpecialty && specialty
-          ? `Especialidad solicitada: ${specialty}. ${descripcionFinal}`
-          : descripcionFinal
+      let patientId: string
+      let patientName: string
+      if (isMinor) {
+        // El adulto responsable queda registrado como su propio paciente (dueño de la cuenta,
+        // si se creó una); el menor es un registro aparte enlazado por parent_id.
+        const guardian = await createPatient({
+          user_id: userId,
+          full_name: gFullName.trim(),
+          cedula: gCedula,
+          phone_whatsapp: gPhone,
+          email: contactEmail || null,
+          affected_zone: zona,
+          consent: true
+        })
+        const minor = await createPatient({
+          full_name: mFullName.trim(),
+          cedula: mCedula || null,
+          phone_whatsapp: gPhone,
+          email: contactEmail || null,
+          affected_zone: zona,
+          age_range: mEdad || null,
+          allergies: mHasAllergy && mAllergyDetail.trim() ? mAllergyDetail.trim() : null,
+          parent_id: guardian.id,
+          parentesco: gRelationship,
+          consent: true
+        })
+        patientId = minor.id
+        patientName = minor.full_name
+      } else {
+        const adult = await createPatient({
+          user_id: userId,
+          full_name: fullName.trim(),
+          cedula,
+          phone_whatsapp: phone,
+          email: contactEmail || null,
+          affected_zone: zona,
+          age_range: edad || null,
+          allergies: hasAllergy && allergyDetail.trim() ? allergyDetail.trim() : null,
+          consent: true
+        })
+        patientId = adult.id
+        patientName = adult.full_name
+      }
 
       const consultation = await createConsultation({
-        patient_id: patient.id,
+        patient_id: patientId,
         status: 'waiting',
         priority: needsTags.some((t) =>
           ['Lesión física', 'Embarazo', 'Niño / pediatría'].includes(t)
@@ -300,7 +320,8 @@ export default function RegistroPaciente() {
           ? 'review'
           : 'normal',
         category: needsTags[0],
-        chief_complaint: chiefComplaint
+        chief_complaint: descripcion.trim(),
+        specialty_id: specialtyId
       })
 
       // Create the Jitsi video room (server-side) and show it on the waiting page. If this fails,
@@ -317,7 +338,7 @@ export default function RegistroPaciente() {
         console.error('No se pudo iniciar la videoconsulta:', e)
       }
 
-      const params = new URLSearchParams({ nombre: patient.full_name })
+      const params = new URLSearchParams({ nombre: patientName })
       if (room) params.set('room', room)
       if (consultation.code) params.set('code', consultation.code)
       params.set('cid', consultation.id) // lets /sala-espera send the waiting-room heartbeat
@@ -598,8 +619,8 @@ export default function RegistroPaciente() {
                         <select value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
                           <option value="">Selecciona...</option>
                           {specialties.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
+                            <option key={s.id} value={s.id}>
+                              {s.name}
                             </option>
                           ))}
                         </select>
