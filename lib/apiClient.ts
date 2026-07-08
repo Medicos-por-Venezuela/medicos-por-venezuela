@@ -19,36 +19,74 @@ export class ApiError extends Error {
   }
 }
 
-export async function getJson<T>(path: string, errorMessage: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`)
+// `token` (Supabase access_token) is optional: public endpoints (doctor/patient registration)
+// don't need it, admin-only endpoints (catalogs.manage) do — the backend validates the same
+// Supabase JWT it accepts for auth, no separate credential.
+function authedFetch(path: string, init: RequestInit, token?: string): Promise<Response> {
+  const headers = new Headers(init.headers)
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  return fetch(`${API_URL}${path}`, { ...init, headers })
+}
+
+async function errorDetail(res: Response): Promise<unknown> {
+  try {
+    return (await res.json())?.detail
+  } catch {
+    return undefined // sin cuerpo JSON en la respuesta de error
+  }
+}
+
+export async function getJson<T>(path: string, errorMessage: string, token?: string): Promise<T> {
+  const res = await authedFetch(path, {}, token)
   if (!res.ok) {
     throw new Error(`${errorMessage} (${res.status})`)
   }
   return res.json()
 }
 
-export async function postJson<T>(
+async function sendJson<T>(
+  method: 'POST' | 'PATCH',
   path: string,
   payload: unknown,
-  defaultErrorMessage: string
+  defaultErrorMessage: string,
+  token?: string
 ): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  })
-
+  const res = await authedFetch(
+    path,
+    { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
+    token
+  )
   if (!res.ok) {
-    let detail: unknown
-    try {
-      const body = await res.json()
-      detail = body?.detail
-    } catch {
-      // sin cuerpo JSON en la respuesta de error
-    }
+    const detail = await errorDetail(res)
     const message = typeof detail === 'string' ? detail : `${defaultErrorMessage} (${res.status})`
     throw new ApiError(res.status, message, detail)
   }
-
   return res.json()
+}
+
+export const postJson = <T>(
+  path: string,
+  payload: unknown,
+  defaultErrorMessage: string,
+  token?: string
+): Promise<T> => sendJson<T>('POST', path, payload, defaultErrorMessage, token)
+
+export const patchJson = <T>(
+  path: string,
+  payload: unknown,
+  defaultErrorMessage: string,
+  token?: string
+): Promise<T> => sendJson<T>('PATCH', path, payload, defaultErrorMessage, token)
+
+export async function deleteJson(
+  path: string,
+  defaultErrorMessage: string,
+  token?: string
+): Promise<void> {
+  const res = await authedFetch(path, { method: 'DELETE' }, token)
+  if (!res.ok) {
+    const detail = await errorDetail(res)
+    const message = typeof detail === 'string' ? detail : `${defaultErrorMessage} (${res.status})`
+    throw new ApiError(res.status, message, detail)
+  }
 }

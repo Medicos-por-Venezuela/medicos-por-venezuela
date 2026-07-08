@@ -5,6 +5,54 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-07-08
+
+- **Catálogos admin: buscador + paginación** — las 3 páginas de catálogo (zonas afectadas,
+  especialidades, tipos de profesionales) heredan de `CatalogManager.tsx` un buscador (filtra en
+  cliente sobre todos los campos de texto, resetea a la página 1) y paginación de 10 por página.
+  Se hace en cliente sobre la lista ya cargada porque son catálogos chicos (≤ decenas de filas, el
+  endpoint trae hasta 100) — no amerita paginación server-side. La paginación solo aparece si hay
+  más de una página; con búsqueda sin resultados muestra "Ningún resultado coincide con «…»".
+  Verificado en navegador con Especialidades (19 filas): 10+9 en dos páginas con botones
+  Anterior/Siguiente deshabilitándose en los extremos, y "ped" → solo Pediatría. File:
+  `components/admin/CatalogManager.tsx`.
+
+- **Registro de paciente: zonas afectadas ahora vienen del backend real (bug encontrado)** —
+  `lib/api.ts::fetchAffectedZoneCatalog`/`fetchSpecialtyCatalog` chequeaban una variable de
+  entorno (`NEXT_PUBLIC_API_BASE_URL`) que nunca se seteó en `.env`, así que **nunca** llegaban
+  a llamar al backend: el select de zonas de `registro-paciente.tsx` mostraba siempre la lista
+  estática hardcodeada, en silencio. Ahora reusan `lib/apiClient.ts` (mismo `API_URL` que
+  `lib/doctors.ts`/`lib/patients.ts`, con fallback a `localhost:8000`), y de paso queda claro que
+  la "doble llamada a specialties" que se notaba no era un bug propio sino `reactStrictMode: true`
+  (`next.config.js`) invocando los efectos de montaje 2 veces en dev — ambos catálogos se duplican
+  igual ahora que zonas también pega red; en producción no ocurre. Se sembraron las 16 zonas reales
+  (La Guaira ×9, Caracas ×4, Miranda/Aragua/Carabobo) vía `POST /affected-zones` (BD local); los
+  3 estados sin desglose de sector se guardaron con `name === state` y el formateador ahora omite
+  el guión redundante ("Miranda", no "Miranda - Miranda"). Verificado en navegador: el select trae
+  las 16 zonas reales del backend con tildes correctas. Files: `lib/api.ts`.
+
+- **Dashboard admin: menú lateral + páginas separadas por sección** — el dashboard monolítico
+  (`pages/admin/dashboard.tsx`, 1645 líneas con tabs "Pacientes/Casos" y "Médicos y administradores")
+  se partió en 6 rutas bajo un layout compartido (`components/admin/AdminLayout.tsx`, sidebar +
+  topbar, off-canvas en mobile): `/admin/dashboard` (solo las 6 KPI + alerta de urgentes),
+  `/admin/pacientes` (gestión de casos), `/admin/doctores` (staff + revocar acceso), y 3 páginas
+  nuevas de catálogos — `/admin/zonas-afectadas`, `/admin/especialidades`,
+  `/admin/tipos-profesionales` — con CRUD completo (`components/admin/CatalogManager.tsx`, genérico
+  por schema de campos) contra `api-medicos-por-venezuela` (antes solo se leían, nunca se
+  gestionaban desde el frontend). Sesión/rol compartidos vía `lib/admin.ts::useAdminGuard()`.
+  `lib/apiClient.ts` gana soporte de `Authorization: Bearer` + `patchJson`/`deleteJson` para poder
+  llamar los endpoints `catalogs.manage` del backend con el JWT de Supabase del admin logueado.
+  Backend: se agregó `GET /specialties/admin` (api-medicos-por-venezuela) porque el listado público
+  fuerza `status=active` y el panel necesita ver también las inactivas — mismo patrón que
+  `affected-zones/admin`. Verificado en navegador (login real como `fioreamm@gmail.com`, ya
+  promovida a `super_admin`): las 6 páginas cargan con datos reales, CRUD de zonas afectadas
+  probado end-to-end (crear/editar/eliminar), y un bug real de layout mobile (`.admin-shell`
+  quedaba en `flex-direction: row` con el sidebar `position:fixed` fuera de flujo, apretando el
+  contenido a una franja de 20px) encontrado y corregido antes de cerrar. Files:
+  `components/admin/{AdminLayout,CatalogManager}.tsx`, `lib/{admin,apiClient}.ts`,
+  `pages/admin/{dashboard,pacientes,doctores,zonas-afectadas,especialidades,tipos-profesionales}.tsx`,
+  `styles/globals.css`.
+
 ## 2026-07-05
 
 - **Registro médico: la cédula exige elegir el tipo de profesional primero** — la

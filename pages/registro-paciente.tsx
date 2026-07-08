@@ -178,6 +178,30 @@ export default function RegistroPaciente() {
     fetchAffectedZoneCatalog().then(setZonas)
   })
 
+  // Un adulto con edad <18 es en realidad un menor mal registrado en la rama equivocada
+  // (la rama de menor asigna Pediatría automáticamente; la de adulto no). Se confirma con
+  // el usuario y, si dice que sí, se cambia de rama y se limpian los campos de adulto para
+  // que vuelva a completarlos como representante + menor.
+  const handleEdadBlur = () => {
+    const n = Number(edad)
+    if (edad.trim() === '' || Number.isNaN(n) || n >= 18) return
+    const esMenor = window.confirm(
+      '¿Estás intentando registrar a un menor de edad? Los menores deben registrarse junto a un adulto responsable, y el caso se asigna automáticamente a Pediatría.'
+    )
+    if (!esMenor) return
+    setIsMinor(true)
+    setCedula('')
+    setFullName('')
+    setPhone('')
+    setEmail('')
+    setPassword('')
+    setEdad('')
+    setWantsSpecialty(false)
+    setSpecialty('')
+    setHasAllergy(false)
+    setAllergyDetail('')
+  }
+
   const submit = async () => {
     setError('')
 
@@ -265,7 +289,7 @@ export default function RegistroPaciente() {
         ? (specialties.find((s) => s.name === 'Pediatría')?.id ?? null)
         : wantsSpecialty && specialty
           ? specialty
-          : null
+          : (specialties.find((s) => s.name === 'Medicina general')?.id ?? null)
 
       let patientId: string
       let patientName: string
@@ -596,6 +620,7 @@ export default function RegistroPaciente() {
                         max={120}
                         value={edad}
                         onChange={(e) => setEdad(e.target.value)}
+                        onBlur={handleEdadBlur}
                         placeholder="Ej. 34"
                       />
                     </div>
