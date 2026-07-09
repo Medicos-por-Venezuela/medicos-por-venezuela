@@ -75,16 +75,24 @@ Recover via `mem_search(query: "{topic_key}", project: "medicos-por-venezuela")`
 
 ## Architecture (important)
 
-There is **no separate backend server**. This is a **Next.js frontend + Supabase BaaS**:
+This is a **Next.js frontend + Supabase BaaS**, now **migrating some data access to a separate
+FastAPI backend**. Data reaches the app through three paths:
 
-- The Next.js app (at the repo root) runs entirely client-side against Supabase.
-- "The backend" = a **Supabase project** providing Postgres, Auth, and Row Level Security.
-- Most data access goes directly from the browser through the Supabase JS client using the
-  **anon key** + RLS; logic lives in RLS policies + Postgres functions/triggers in
-  [supabase_schema.sql](supabase_schema.sql).
-- One server-side **API route** exists: `pages/api/videoconsulta.ts` (Vercel serverless function).
-  It uses the Twilio + Supabase **service-role** secrets, which must stay server-only — see
-  [lib/supabaseAdmin.ts](lib/supabaseAdmin.ts) (imported only by API routes).
+- **Browser → Supabase (the majority).** The Next.js app (at the repo root) runs largely
+  client-side against Supabase using the **anon key** + RLS; logic lives in RLS policies + Postgres
+  functions/triggers in [supabase_schema.sql](supabase_schema.sql). "The Supabase backend" = a
+  **Supabase project** providing Postgres, Auth, and Row Level Security.
+- **Browser → FastAPI backend (the migration).** A **separate FastAPI service**
+  (`api-medicos-por-venezuela`, its own repo) exposes a REST API at `/api/v1/*` (Swagger at
+  `/docs`). The frontend calls it through [lib/apiClient.ts](lib/apiClient.ts) (base
+  `NEXT_PUBLIC_API_URL`, Supabase JWT sent as `Authorization: Bearer`). It validates the **same**
+  Supabase JWT the frontend already holds — no separate credential — and does server-side work the
+  browser can't, e.g. re-verifying doctors against **SACS/FPV**. **On this branch, only the doctor
+  self-service profile** (`/panel-medico/perfil`, via [lib/doctors.ts](lib/doctors.ts)) uses it;
+  everything else still goes browser → Supabase. (The broader migration lives on other branches.)
+- **Browser → Next.js API route.** One server-side route exists: `pages/api/videoconsulta.ts`
+  (Vercel serverless function). It uses the Twilio + Supabase **service-role** secrets, which must
+  stay server-only — see [lib/supabaseAdmin.ts](lib/supabaseAdmin.ts) (imported only by API routes).
 
 ## Tech stack
 
@@ -100,12 +108,13 @@ There is **no separate backend server**. This is a **Next.js frontend + Supabase
 
 ## Services used
 
-| Service    | Role                                                                  |
-| ---------- | --------------------------------------------------------------------- |
-| Supabase   | Database (Postgres), authentication, RLS authorization                |
-| Vercel     | Hosting, environment variables, serverless API routes                 |
-| Twilio     | (PARKED — compliance pending) would send video links via WhatsApp/SMS |
-| Jitsi Meet | Free in-browser video rooms (`meet.jit.si`, no server/keys)           |
+| Service     | Role                                                                                                           |
+| ----------- | -------------------------------------------------------------------------------------------------------------- |
+| Supabase    | Database (Postgres), authentication, RLS authorization                                                         |
+| FastAPI API | Separate backend (`api-medicos-por-venezuela`) — REST `/api/v1/*`; doctor self-profile + SACS/FPV verification |
+| Vercel      | Hosting, environment variables, serverless API routes                                                          |
+| Twilio      | (PARKED — compliance pending) would send video links via WhatsApp/SMS                                          |
+| Jitsi Meet  | Free in-browser video rooms (`meet.jit.si`, no server/keys)                                                    |
 
 ## Project layout
 
@@ -113,6 +122,8 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 
 - `pages/` — routes (see below)
 - `lib/supabase.ts` — Supabase client (reads `NEXT_PUBLIC_*` env vars)
+- `lib/apiClient.ts` — FastAPI REST client (`NEXT_PUBLIC_API_URL`, Supabase JWT as Bearer, `ApiError`)
+- `lib/doctors.ts` — doctor REST endpoints (`/doctors/me` self-profile, specialties catalog)
 - `lib/auth.ts` — `signInWithGoogle()` OAuth helper (redirects to `/auth/callback`)
 - `lib/utils.ts` — status labels, specialty list, specialty↔needs matching (`matchesSpecialty`, `canAttend`)
 - `components/` — shared UI (e.g. `GoogleButton.tsx`)
@@ -129,6 +140,7 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `/login-medico` — doctor login
 - `/panel-medico` — doctor/admin panel (queue, active system cases for admin, counters)
 - `/panel-medico/consulta/[id]` — case detail page (patient details, video, note, close/no-show)
+- `/panel-medico/perfil` — doctor self-service profile (view/edit; FastAPI `GET`/`PATCH /doctors/me`)
 - `/auth/callback` — OAuth redirect handler (routes by role / role_chosen)
 - `/admin` (+ `/admin/login` alias) — private admin login
 - `/admin/dashboard` — admin dashboard (metrics, doctor revoke, case oversight)
@@ -197,6 +209,8 @@ Browser-exposed (`NEXT_PUBLIC_*`, fine — RLS enforces access):
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_API_URL` — base URL of the FastAPI backend (`/api/v1/*`); defaults to
+  `http://localhost:8000` if unset
 
 Server-only (used by `pages/api/videoconsulta.ts`; **never** prefix with `NEXT_PUBLIC`):
 
