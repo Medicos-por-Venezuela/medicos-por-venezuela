@@ -74,6 +74,31 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   (`/panel-medico/perfil` vía FastAPI `/doctors/me`) se rebasaron de `dev` a `dev_aws`, resolviendo
   conflictos en `lib/apiClient.ts`, `lib/doctors.ts`, `CLAUDE.md`, `AGENTS.md` y
   `pages/panel-medico.tsx` conservando la superficie amplia de `dev_aws`. PR #42 → `dev_aws`.
+## 2026-07-09
+
+- **Fixes del code review (PRs #38/#39)** — hallazgos de la revisión multi-agente, todos aplicados:
+  - `waNumber` (DoctorPoolModal) normaliza formatos reales: `"+58 0414…"` ya no genera
+    `wa.me/58041…` (roto); quita `00` internacional y el `0` nacional pegado al 58.
+  - **"Paciente no estaba en la sala" ahora pide confirmación** (finalizaba el caso con un tap)
+    y ya **no persiste la nota sin guardar** del textarea al cerrar por ausencia.
+  - **Casos finalizados** (`closed`/`patient_no_show`/`closed_by_admin`/`cancelled`): se ocultan
+    el select de estado (que "mentía" mostrando Abierta) y los botones de cierre — solo queda la
+    nota editable, con un aviso. Evita re-cerrar pisando `closed_at`.
+  - **Modales accesibles**: Escape cierra (hook `useEscapeToClose` en `lib/hooks.ts`) y el foco
+    entra al modal al abrir (pool + confirmación de borrado en admin/pacientes).
+  - Plurales: "especialidades" y "zonas afectadas" (antes "especialidads"/"zona afectadas").
+  - `getJson` lanza `ApiError` (no `Error` plano) — los callers pueden distinguir 401/403 — y los
+    422 de Pydantic se muestran como "campo: mensaje" en vez del genérico.
+  - Tipos de Profesionales (admin) usa el nuevo `GET /professional-types/admin` del backend; el
+    público ahora solo trae activos → **desactivar un tipo por fin lo oculta del registro**.
+  - Menores: rama muerta `'closed'` en `updateStatus`, estados muertos en `pacientes.tsx`,
+    doble fetch del pool al cambiar tab, error visible si fallan los catálogos del pool,
+    paginación del CatalogManager navega desde `safePage`, botones deshabilitados durante
+    escrituras (consulta, CatalogManager, guardar caso), mensajes de éxito/error ya no conviven,
+    y sin flash de "No hay médicos" al abrir el pool.
+  - Files: `components/DoctorPoolModal.tsx`, `components/admin/CatalogManager.tsx`,
+    `lib/{apiClient,hooks}.ts`, `pages/panel-medico/consulta/[id].tsx`,
+    `pages/admin/{pacientes,especialidades,zonas-afectadas,tipos-profesionales}.tsx`.
 
 ## 2026-07-08
 

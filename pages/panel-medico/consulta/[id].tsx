@@ -69,6 +69,11 @@ const WHATSAPP_STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'urgent_in_person', label: 'Necesita ir a centro de atención' }
 ]
 
+// Estados que finalizan el caso: con uno de estos ya no se muestra el select de estado
+// ni los botones de cierre (evita re-cerrar pisando closed_at, y que el select de
+// WhatsApp "mienta" mostrando la primera opción cuando el estado real no está listado).
+const FINAL_STATUSES = ['closed', 'patient_no_show', 'closed_by_admin', 'cancelled']
+
 function isAdminRole(role?: string | null): boolean {
   return !!role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])
 }
@@ -117,6 +122,8 @@ export default function ConsultaDetalle() {
   const [savedNote, setSavedNote] = useState('')
   const [poolOpen, setPoolOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  // in-flight guard compartido por las acciones de escritura (evita dobles submits).
+  const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   // Error específico del cierre (se muestra en rojo debajo del botón "Cerrar consulta").
   const [closeError, setCloseError] = useState('')
@@ -305,12 +312,14 @@ export default function ConsultaDetalle() {
   }
 
   async function saveNote() {
-    if (!consultation) return
+    if (!consultation || busy) return
     setMessage('')
+    setBusy(true)
     const { error } = await supabase
       .from('consultations')
       .update({ internal_note: note })
       .eq('id', consultation.id)
+    setBusy(false)
     if (error) {
       setMessage('No se pudo guardar la nota.')
     } else {
@@ -320,18 +329,17 @@ export default function ConsultaDetalle() {
   }
 
   // Change the case status from the WhatsApp status dropdown (no video / close-button flow).
+  // 'closed' ya no está entre las opciones: cerrar es solo vía el botón (con sus guardas).
   async function updateStatus(newStatus: string) {
-    if (!consultation || !profile) return
+    if (!consultation || !profile || busy) return
     setMessage('')
-    const isClosed = newStatus === 'closed'
+    setBusy(true)
     const { error } = await supabase
       .from('consultations')
-      .update({
-        status: newStatus,
-        ...(isClosed ? { closed_at: new Date().toISOString() } : {})
-      })
+      .update({ status: newStatus })
       .eq('id', consultation.id)
     if (error) {
+      setBusy(false)
       setMessage('No se pudo actualizar el estado.')
       return
     }
@@ -341,15 +349,16 @@ export default function ConsultaDetalle() {
       'admin_update',
       `Estado: ${STATUS_LABELS[newStatus] || newStatus} (${profile.full_name})`
     )
+    setBusy(false)
     setMessage('Estado actualizado.')
   }
 
   async function closeConsultation(outcome: 'closed' | 'patient_no_show' = 'closed') {
-    if (!consultation || !profile) return
+    if (!consultation || !profile || busy) return
     setMessage('')
     setCloseError('')
     const noShow = outcome === 'patient_no_show'
-    // Cierre real (no ausencia): exige una nota NO vacía y YA guardada, y confirmación.
+    // Cierre real (no ausencia): exige una nota NO vacía y YA guardada.
     if (!noShow) {
       if (!note.trim()) {
         flagMissingNote('Agrega una nota antes de cerrar la consulta.')
@@ -359,16 +368,26 @@ export default function ConsultaDetalle() {
         flagMissingNote('Guarda la nota antes de cerrar la consulta.')
         return
       }
-      if (!window.confirm('¿Seguro que deseas cerrar la consulta? Esta acción la finaliza.')) {
-        return
-      }
     }
-    const { error } = await supabase
-      .from('consultations')
-      .update({ status: outcome, internal_note: note, closed_at: new Date().toISOString() })
-      .eq('id', consultation.id)
+    // Ambos caminos finalizan el caso: siempre se confirma (un tap accidental en
+    // "no estaba en la sala" cerraba el caso sin vuelta atrás).
+    const confirmMsg = noShow
+      ? '¿Confirmas que el paciente no estaba en la sala de espera? Esto finaliza el caso.'
+      : '¿Seguro que deseas cerrar la consulta? Esta acción la finaliza.'
+    if (!window.confirm(confirmMsg)) return
+
+    setBusy(true)
+    // En no-show NO se persiste la nota: puede haber texto a medio escribir en el
+    // textarea que el médico nunca guardó.
+    const update: Record<string, unknown> = {
+      status: outcome,
+      closed_at: new Date().toISOString(),
+      ...(noShow ? {} : { internal_note: note })
+    }
+    const { error } = await supabase.from('consultations').update(update).eq('id', consultation.id)
 
     if (error) {
+      setBusy(false)
       setCloseError(noShow ? 'No se pudo marcar como ausente.' : 'No se pudo cerrar la consulta.')
       return
     }
@@ -407,6 +426,8 @@ export default function ConsultaDetalle() {
       </main>
     )
   }
+
+  const isCaseClosed = FINAL_STATUSES.includes(consultation.status)
 
   return (
     <>
@@ -586,11 +607,19 @@ export default function ConsultaDetalle() {
             <section className="card detail-full-span">
               <h2 style={{ marginTop: 0 }}>Gestión de la consulta</h2>
               <div className="detail-actions">
-                {consultation.attended_via_whatsapp && (
+                {isCaseClosed && (
+                  <div className="notice">
+                    Este caso ya está finalizado (
+                    {STATUS_LABELS[consultation.status] || consultation.status}). Solo la nota sigue
+                    editable.
+                  </div>
+                )}
+                {consultation.attended_via_whatsapp && !isCaseClosed && (
                   <div>
                     <label className="label">Estado del caso</label>
                     <select
                       value={consultation.status}
+                      disabled={busy}
                       onChange={(e) => updateStatus(e.target.value)}
                     >
                       {WHATSAPP_STATUS_OPTIONS.map((o) => (
@@ -611,26 +640,30 @@ export default function ConsultaDetalle() {
                     placeholder="Evita escribir historia clínica completa. Solo información necesaria para coordinación."
                   />
                 </div>
-                <button className="btn btn-secondary" onClick={saveNote}>
+                <button className="btn btn-secondary" onClick={saveNote} disabled={busy}>
                   Guardar nota
                 </button>
 
-                {!consultation.attended_via_whatsapp && (
+                {!consultation.attended_via_whatsapp && !isCaseClosed && (
                   <button
                     className="btn btn-outline btn-full"
                     onClick={() => closeConsultation('patient_no_show')}
+                    disabled={busy}
                   >
                     Paciente no estaba en la sala de espera
                   </button>
                 )}
 
                 {/* Cerrar consulta: al final. Exige nota guardada + confirmación (ver closeConsultation). */}
-                <button
-                  className="btn btn-primary btn-full"
-                  onClick={() => closeConsultation('closed')}
-                >
-                  Cerrar consulta
-                </button>
+                {!isCaseClosed && (
+                  <button
+                    className="btn btn-primary btn-full"
+                    onClick={() => closeConsultation('closed')}
+                    disabled={busy}
+                  >
+                    Cerrar consulta
+                  </button>
+                )}
                 {/* Error del cierre: en rojo, JUSTO debajo del botón. */}
                 {closeError && (
                   <p style={{ color: '#dc2626', fontWeight: 500, fontSize: 14, margin: '4px 0 0' }}>

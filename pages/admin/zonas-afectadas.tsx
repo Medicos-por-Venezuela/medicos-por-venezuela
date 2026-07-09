@@ -17,6 +17,7 @@ export default function AdminZonasAfectadas() {
     <AdminLayout title="Zonas afectadas" profile={profile}>
       <CatalogManager
         resourceLabel="zona afectada"
+        pluralLabel="zonas afectadas"
         listPath="/api/v1/affected-zones/admin"
         basePath="/api/v1/affected-zones"
         fields={FIELDS}

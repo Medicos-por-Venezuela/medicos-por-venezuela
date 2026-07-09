@@ -116,8 +116,10 @@ export default function CatalogManager({
 
   async function submit(e: FormEvent) {
     e.preventDefault()
+    if (saving) return
     setSaving(true)
     setError('')
+    setMessage('') // que un éxito previo no conviva con un error nuevo
     try {
       const token = await getAccessToken()
       if (editingId) {
@@ -149,6 +151,7 @@ export default function CatalogManager({
     const item = deleteTarget
     setDeleting(true)
     setError('')
+    setMessage('')
     try {
       const token = await getAccessToken()
       await deleteJson(
@@ -288,6 +291,7 @@ export default function CatalogManager({
                           className="btn btn-muted"
                           style={{ padding: '5px 10px', fontSize: 13, marginRight: 6 }}
                           onClick={() => startEdit(item)}
+                          disabled={saving}
                         >
                           Editar
                         </button>
@@ -300,6 +304,7 @@ export default function CatalogManager({
                             color: '#fff'
                           }}
                           onClick={() => remove(item)}
+                          disabled={saving}
                         >
                           Eliminar
                         </button>
@@ -324,18 +329,20 @@ export default function CatalogManager({
                   Mostrando {safePage * PAGE_SIZE + 1}–
                   {Math.min((safePage + 1) * PAGE_SIZE, filtered.length)} de {filtered.length}
                 </span>
+                {/* Navegar desde safePage (no page): tras borrar ítems, page puede quedar
+                    más allá de la última página real y el botón parecería no hacer nada. */}
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     className="btn btn-muted"
                     disabled={safePage === 0}
-                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    onClick={() => setPage(Math.max(0, safePage - 1))}
                   >
                     Anterior
                   </button>
                   <button
                     className="btn btn-muted"
                     disabled={safePage >= pageCount - 1}
-                    onClick={() => setPage((p) => p + 1)}
+                    onClick={() => setPage(safePage + 1)}
                   >
                     Siguiente
                   </button>

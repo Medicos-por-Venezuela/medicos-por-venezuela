@@ -15,6 +15,7 @@ export default function AdminEspecialidades() {
     <AdminLayout title="Especialidades" profile={profile}>
       <CatalogManager
         resourceLabel="especialidad"
+        pluralLabel="especialidades"
         listPath="/api/v1/specialties/admin"
         basePath="/api/v1/specialties"
         fields={FIELDS}
