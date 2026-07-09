@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
+import DoctorPoolModal from '../../../components/DoctorPoolModal'
 import { supabase } from '../../../lib/supabase'
 import { STATUS_LABELS, minutesSince } from '../../../lib/utils'
 import { browserRoomUrl } from '../../../lib/jitsi'
@@ -60,12 +61,12 @@ const PANEL_ALLOWED_ROLES = ['doctor', 'specialist', ...ADMIN_ROLES] as const
 const PRESENCE_WINDOW_MS = 30 * 60 * 1000 // generous; see note in panel-medico.tsx
 
 // Status options shown for WhatsApp-attended cases (the doctor handles these outside video).
+// 'closed' y 'referred_to_specialist' se quitaron a propósito: cerrar es solo vía el botón
+// "Cerrar consulta" (con confirmación + nota guardada); referir será vía "Agendar con especialista".
 const WHATSAPP_STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'in_progress', label: 'Abierta' },
-  { value: 'referred_to_specialist', label: 'Referenciado a otro médico' },
   { value: 'contacted_whatsapp', label: 'Ya contactado vía WhatsApp' },
-  { value: 'urgent_in_person', label: 'Necesita ir a centro de atención' },
-  { value: 'closed', label: 'Cerrado' }
+  { value: 'urgent_in_person', label: 'Necesita ir a centro de atención' }
 ]
 
 function isAdminRole(role?: string | null): boolean {
@@ -112,6 +113,9 @@ export default function ConsultaDetalle() {
   const [eventAuthorsById, setEventAuthorsById] = useState<Record<string, EventAuthor>>({})
   const [assignedDoctor, setAssignedDoctor] = useState<EventAuthor | null>(null)
   const [note, setNote] = useState('')
+  // Última nota persistida (para exigir "nota guardada" antes de cerrar la consulta).
+  const [savedNote, setSavedNote] = useState('')
+  const [poolOpen, setPoolOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
 
@@ -174,6 +178,7 @@ export default function ConsultaDetalle() {
 
     setConsultation(row)
     setNote(row.internal_note || '')
+    setSavedNote(row.internal_note || '')
     await Promise.all([loadAssignedDoctor(row, currentProfile), loadEvents(id)])
   }
 
@@ -256,8 +261,12 @@ export default function ConsultaDetalle() {
       .from('consultations')
       .update({ internal_note: note })
       .eq('id', consultation.id)
-    if (error) setMessage('No se pudo guardar la nota.')
-    else setMessage('Nota guardada.')
+    if (error) {
+      setMessage('No se pudo guardar la nota.')
+    } else {
+      setSavedNote(note)
+      setMessage('Nota guardada.')
+    }
   }
 
   // Change the case status from the WhatsApp status dropdown (no video / close-button flow).
@@ -289,6 +298,20 @@ export default function ConsultaDetalle() {
     if (!consultation || !profile) return
     setMessage('')
     const noShow = outcome === 'patient_no_show'
+    // Cierre real (no ausencia): exige una nota NO vacía y YA guardada, y confirmación.
+    if (!noShow) {
+      if (!note.trim()) {
+        setMessage('Agrega una nota antes de cerrar la consulta.')
+        return
+      }
+      if (note !== savedNote) {
+        setMessage('Guarda la nota antes de cerrar la consulta.')
+        return
+      }
+      if (!window.confirm('¿Seguro que deseas cerrar la consulta? Esta acción la finaliza.')) {
+        return
+      }
+    }
     const { error } = await supabase
       .from('consultations')
       .update({ status: outcome, internal_note: note, closed_at: new Date().toISOString() })
@@ -354,6 +377,24 @@ export default function ConsultaDetalle() {
             <span className={`badge ${statusBadgeClass(consultation.status)}`}>
               {STATUS_LABELS[consultation.status] || consultation.status}
             </span>
+          </div>
+
+          {/* Acciones de referencia, en una fila debajo del encabezado. */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-outline"
+              style={{ flex: '1 1 200px' }}
+              onClick={() => setPoolOpen(true)}
+            >
+              Ver Pool de médicos
+            </button>
+            <button
+              className="btn btn-outline"
+              style={{ flex: '1 1 200px' }}
+              onClick={() => setMessage('Función de agendar con especialista: próximamente.')}
+            >
+              Agendar con Especialista
+            </button>
           </div>
 
           {message && (
@@ -517,25 +558,28 @@ export default function ConsultaDetalle() {
                 <button className="btn btn-secondary" onClick={saveNote}>
                   Guardar nota
                 </button>
+
                 {!consultation.attended_via_whatsapp && (
-                  <>
-                    <button
-                      className="btn btn-primary btn-full"
-                      onClick={() => closeConsultation('closed')}
-                    >
-                      Cerrar consulta
-                    </button>
-                    <button
-                      className="btn btn-outline btn-full"
-                      onClick={() => closeConsultation('patient_no_show')}
-                    >
-                      Paciente no estaba en la sala de espera
-                    </button>
-                  </>
+                  <button
+                    className="btn btn-outline btn-full"
+                    onClick={() => closeConsultation('patient_no_show')}
+                  >
+                    Paciente no estaba en la sala de espera
+                  </button>
                 )}
+
+                {/* Cerrar consulta: al final. Exige nota guardada + confirmación (ver closeConsultation). */}
+                <button
+                  className="btn btn-primary btn-full"
+                  onClick={() => closeConsultation('closed')}
+                >
+                  Cerrar consulta
+                </button>
               </div>
             </section>
           </div>
+
+          <DoctorPoolModal open={poolOpen} onClose={() => setPoolOpen(false)} />
         </div>
       </main>
 
