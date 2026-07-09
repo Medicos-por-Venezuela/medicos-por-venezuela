@@ -36,11 +36,35 @@ async function errorDetail(res: Response): Promise<unknown> {
   }
 }
 
+// Mensaje legible desde el `detail` del backend: string tal cual; lista de errores de
+// validación de Pydantic (422) -> "campo: mensaje"; otro caso -> fallback genérico.
+function detailMessage(detail: unknown, fallback: string): string {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail) && detail.length > 0) {
+    const parts = detail
+      .filter((d): d is { loc?: unknown[]; msg: string } => typeof d?.msg === 'string')
+      .map((d) => {
+        const field = Array.isArray(d.loc) ? d.loc[d.loc.length - 1] : null
+        return field ? `${field}: ${d.msg}` : d.msg
+      })
+    if (parts.length > 0) return parts.join(' · ')
+  }
+  return fallback
+}
+
+async function raiseApiError(res: Response, defaultErrorMessage: string): Promise<never> {
+  const detail = await errorDetail(res)
+  throw new ApiError(
+    res.status,
+    detailMessage(detail, `${defaultErrorMessage} (${res.status})`),
+    detail
+  )
+}
+
 export async function getJson<T>(path: string, errorMessage: string, token?: string): Promise<T> {
   const res = await authedFetch(path, {}, token)
-  if (!res.ok) {
-    throw new Error(`${errorMessage} (${res.status})`)
-  }
+  // ApiError (no Error plano) también en GET: los callers pueden distinguir 401/403/etc.
+  if (!res.ok) await raiseApiError(res, errorMessage)
   return res.json()
 }
 
@@ -56,11 +80,7 @@ async function sendJson<T>(
     { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
     token
   )
-  if (!res.ok) {
-    const detail = await errorDetail(res)
-    const message = typeof detail === 'string' ? detail : `${defaultErrorMessage} (${res.status})`
-    throw new ApiError(res.status, message, detail)
-  }
+  if (!res.ok) await raiseApiError(res, defaultErrorMessage)
   return res.json()
 }
 
@@ -84,9 +104,5 @@ export async function deleteJson(
   token?: string
 ): Promise<void> {
   const res = await authedFetch(path, { method: 'DELETE' }, token)
-  if (!res.ok) {
-    const detail = await errorDetail(res)
-    const message = typeof detail === 'string' ? detail : `${defaultErrorMessage} (${res.status})`
-    throw new ApiError(res.status, message, detail)
-  }
+  if (!res.ok) await raiseApiError(res, defaultErrorMessage)
 }

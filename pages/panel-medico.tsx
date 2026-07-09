@@ -380,9 +380,16 @@ export default function PanelMedico() {
               </p>
             </div>
             <div className="panel-actions">
-              {isCurrentUserAdmin && (
+              {isCurrentUserAdmin ? (
                 <button className="btn btn-outline" onClick={() => router.push('/admin/dashboard')}>
                   Panel admin
+                </button>
+              ) : (
+                <button
+                  className="btn btn-outline"
+                  onClick={() => router.push('/panel-medico/perfil')}
+                >
+                  Mi perfil
                 </button>
               )}
               <button className="btn btn-muted" onClick={logout}>
