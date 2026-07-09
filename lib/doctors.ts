@@ -68,3 +68,45 @@ export async function fetchSpecialties(): Promise<SpecialtyResponse[]> {
 export async function createDoctor(payload: DoctorCreate): Promise<DoctorResponse> {
   return postJson<DoctorResponse>('/api/v1/doctors', payload, 'No se pudo completar el registro')
 }
+
+// --- Pool de médicos (para referir/agendar desde la consulta) ---
+
+export interface DoctorPoolItem {
+  id: string
+  full_name: string
+  specialty_id: string | null
+  professional_type_id: string | null
+  phone: string | null
+  online: boolean
+}
+
+export interface DoctorPoolPage {
+  items: DoctorPoolItem[]
+  total: number
+}
+
+export interface DoctorPoolParams {
+  skip?: number
+  limit?: number
+  specialty_id?: string
+  professional_type_id?: string
+  online?: boolean // true=logeados · false=offline · undefined=todos
+}
+
+// GET /api/v1/doctors/pool — requiere Bearer (permiso doctors.read; el médico ya lo tiene).
+export async function fetchDoctorPool(
+  params: DoctorPoolParams,
+  token: string
+): Promise<DoctorPoolPage> {
+  const qs = new URLSearchParams()
+  if (params.skip != null) qs.set('skip', String(params.skip))
+  if (params.limit != null) qs.set('limit', String(params.limit))
+  if (params.specialty_id) qs.set('specialty_id', params.specialty_id)
+  if (params.professional_type_id) qs.set('professional_type_id', params.professional_type_id)
+  if (params.online != null) qs.set('online', String(params.online))
+  return getJson<DoctorPoolPage>(
+    `/api/v1/doctors/pool?${qs.toString()}`,
+    'No se pudo cargar el pool de médicos',
+    token
+  )
+}

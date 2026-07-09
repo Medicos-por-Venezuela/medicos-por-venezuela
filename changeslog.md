@@ -7,6 +7,28 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-08
 
+- **Consulta médico-paciente: 3 botones nuevos (pool de médicos, cerrar con guardas, agendar)** —
+  en `pages/panel-medico/consulta/[id].tsx`: (1) **Ver Pool de médicos** abre un modal
+  (`components/DoctorPoolModal.tsx`) con tabs Activos/Inactivos/Todos (online = logeado < 3 min),
+  filtros por especialidad y tipo de profesional, y paginación server-side (20/pág) sobre los
+  ~2879 médicos — datos de un endpoint backend nuevo `GET /doctors/pool` (`api-medicos-por-venezuela`)
+  que cruza `doctors`↔`users` para derivar el estado online (el frontend/Supabase solo no podía:
+  el tipo de profesional vive en `doctors`, el online en `users.last_seen_at`). (2) **Cerrar
+  consulta** se movió al final y ahora exige nota **no vacía y ya guardada** + `confirm()` antes de
+  cerrar; de paso se quitaron "Cerrado" y "Referenciado a otro médico" del dropdown "Estado del
+  caso" (cerrar es solo vía el botón). (3) **Agendar con Especialista** es placeholder
+  (`ponytail:`, lógica pendiente). Verificado en navegador: pool (tabs/filtros/paginación),
+  las 3 guardas de cierre, el placeholder y el dropdown ya sin las 2 opciones. Backend: endpoint
+  con permiso `doctors.read` (el médico ya lo tiene) + 5 tests nuevos (136 passed, 95% cobertura).
+  Files: `pages/panel-medico/consulta/[id].tsx`, `components/DoctorPoolModal.tsx`, `lib/doctors.ts`;
+  backend `src/{schemas,services,routers}/doctor*.py`, `tests/test_doctors.py`.
+  - **Ajustes:** los botones "Ver Pool" y "Agendar con Especialista" se movieron a una fila
+    debajo del encabezado (ya no en la sección de gestión). El pool ahora **excluye al propio
+    médico** que consulta (`exclude_user_id=principal.id` en el backend) y devuelve el **teléfono**
+    (`coalesce(doctors.phone, users.whatsapp_number)`): en las tabs Activos/Inactivos la 4ª columna
+    muestra el WhatsApp como enlace `https://wa.me/<número>` (sin el `+`, y anteponiendo 58 si no
+    trae prefijo); en "Todos" sigue mostrando el estado online. +2 tests backend (exclude-self, phone).
+
 - **Catálogos admin: buscador + paginación** — las 3 páginas de catálogo (zonas afectadas,
   especialidades, tipos de profesionales) heredan de `CatalogManager.tsx` un buscador (filtra en
   cliente sobre todos los campos de texto, resetea a la página 1) y paginación de 10 por página.
