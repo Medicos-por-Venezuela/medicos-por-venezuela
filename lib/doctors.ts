@@ -60,16 +60,26 @@ export interface DoctorMeResponse {
   license: string | null
   specialty_id: string | null
   specialty: string | null
+  // professional_type_* solo viene poblado para source:'doctor'; para source:'user' es null y el
+  // propio usuario debe elegir el tipo antes de completar su cédula (ver /panel-medico/perfil).
+  professional_type_id: string | null
+  professional_type: string | null
   verified: boolean
 }
 
 // PATCH /api/v1/doctors/me — edición parcial; todos los campos opcionales. status, verified,
 // email y phone NO son auto-editables (los rechaza el backend con 422).
+//
+// - source:'doctor' (ficha existente): full_name/license/specialty_id se editan directo; cambiar
+//   cedula re-verifica contra SACS/FPV; professional_type_id se ignora (el tipo no es auto-editable).
+// - source:'user' (completar registro): cedula + professional_type_id verifica y CREA la ficha, y
+//   la respuesta vuelve como source:'doctor'. Enviar cedula sin professional_type_id → 422.
 export interface DoctorSelfUpdate {
   full_name?: string
   license?: string | null
   specialty_id?: string
   cedula?: string
+  professional_type_id?: string
 }
 
 // GET /api/v1/professional-types — público, catálogo para el selector de registro.

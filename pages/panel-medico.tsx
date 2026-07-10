@@ -161,16 +161,30 @@ export default function PanelMedico() {
     }
 
     setProfile(p)
-    // For admins, probe /doctors/me: a 200 means they also have a doctor profile (show the
-    // "Mi perfil" button); a 404 means they don't (a pure admin — keep it hidden). Non-admins
-    // are doctors and always have one, so we skip the request for them.
     if (isAdminRole(p.role)) {
+      // For admins, probe /doctors/me: a 200 means they also have a doctor profile (show the
+      // "Mi perfil" button); a 404 means they don't (a pure admin — keep it hidden).
       try {
         await fetchMyDoctorProfile(sessionData.session.access_token)
         setHasDoctorProfile(true)
       } catch (e) {
         if (!(e instanceof ApiError && e.status === 404)) console.error(e)
         setHasDoctorProfile(false)
+      }
+    } else {
+      // Non-admins are doctors/specialists. A doctor with no cédula yet is a Google account that
+      // picked the doctor role but never completed SACS/FPV registration — send them straight to
+      // "Mi perfil" to finish it before they can use the panel.
+      try {
+        const me = await fetchMyDoctorProfile(sessionData.session.access_token)
+        if (!me.cedula) {
+          router.replace('/panel-medico/perfil')
+          return
+        }
+      } catch (e) {
+        // A 404 (no doctor record) shouldn't happen for an allowed non-admin role; ignore it and
+        // let them into the panel rather than blocking on a backend hiccup.
+        if (!(e instanceof ApiError && e.status === 404)) console.error(e)
       }
     }
     await loadConsultations(p)

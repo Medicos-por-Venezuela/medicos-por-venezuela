@@ -76,7 +76,11 @@ Recover via `mem_search(query: "{topic_key}", project: "medicos-por-venezuela")`
   manage cases (reassign doctor, change status, edit note) from `/admin/dashboard`.
 - **Google sign-in:** OAuth can't carry a role, so a first-time Google user gets a placeholder profile
   (`role_chosen = false`) and is routed to `/elegir-rol` to pick patient vs doctor. The choice is
-  finalized by the `set_my_role` RPC, which can never grant admin/specialist.
+  finalized by the `set_my_role` RPC, which can never grant admin/specialist. A Google user who picks
+  **doctor** still has no cédula/`doctors` row (a `source:"user"` profile from `/doctors/me`): on
+  entering `/panel-medico` they're **auto-redirected to `/panel-medico/perfil`** to complete it —
+  they pick their professional type, enter their cédula (verified live against SACS/FPV, then again
+  server-side on save via `PATCH /doctors/me`), and the backend creates their `doctors` row.
 - **`handle_new_auth_user()`** reads `role` (+ doctor fields) from signup metadata; email signups are
   finalized immediately, OAuth signups stay `role_chosen = false`.
 - **Prereq:** Supabase → Auth → Email "Confirm email" must be **OFF** (instant access + same-session
@@ -155,7 +159,8 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `/login-medico` — doctor login
 - `/panel-medico` — doctor/admin panel (queue, active system cases for admin, counters)
 - `/panel-medico/consulta/[id]` — case detail page (patient details, video, note, close/no-show)
-- `/panel-medico/perfil` — doctor self-service profile (view/edit; FastAPI `GET`/`PATCH /doctors/me`)
+- `/panel-medico/perfil` — doctor self-service profile (view/edit; FastAPI `GET`/`PATCH /doctors/me`);
+  also where a `source:"user"` (Google) doctor completes their cédula + professional type to be verified
 - `/auth/callback` — OAuth redirect handler (routes by role / role_chosen)
 - `/admin` (+ `/admin/login` alias) — private admin login
 - `/admin/dashboard` — admin dashboard (metrics, doctor revoke, case oversight)

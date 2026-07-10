@@ -7,6 +7,18 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-10
 
+- **Mi Perfil: médicos de Google completan su cédula + verificación en vivo SACS/FPV** — cierra
+  los comentarios #2 y #3 de la revisión, alineado al contrato nuevo del backend `/doctors/me`.
+  (1) `pages/panel-medico.tsx`: un médico (no-admin) sin cédula — cuenta de Google que eligió rol
+  médico, `source:"user"` — es **redirigido automáticamente a `/panel-medico/perfil`** al entrar al
+  panel, para completar su registro. (2) `pages/panel-medico/perfil.tsx`: se **desbloquea** la
+  cédula para `source:"user"`, se agrega un `select` **Tipo de profesional** (habilita la cédula y
+  decide SACS vs FPV) y **verificación en vivo** al teclear la cédula (autocompleta nombre/licencia,
+  como en el registro); el `PATCH` manda `professional_type_id` junto con la cédula para que el
+  backend cree la ficha. Maneja el caso de cédula no verificada (`verified:false`, no bloquea) y
+  el `422`/`409`. (3) `lib/doctors.ts`: `DoctorMeResponse` gana `professional_type_id`/
+  `professional_type`; `DoctorSelfUpdate` gana `professional_type_id`. Docs: `CLAUDE.md` (auth model
+  - ruta). Verificado con `tsc`, `lint` y `build`.
 - **Mi Perfil (médico): campo de cédula reordenado y con selector V/E** — en
   `pages/panel-medico/perfil.tsx` la **cédula pasa a ir primero** (antes del nombre completo) y el
   prefijo **V/E ahora es un `select` + input numérico**, replicando el patrón de

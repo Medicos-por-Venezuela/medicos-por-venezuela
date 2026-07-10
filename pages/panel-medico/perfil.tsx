@@ -7,11 +7,14 @@ import {
   ApiError,
   DoctorMeResponse,
   DoctorSelfUpdate,
+  ProfessionalTypeResponse,
   SpecialtyResponse,
   fetchMyDoctorProfile,
+  fetchProfessionalTypes,
   fetchSpecialties,
   updateMyDoctorProfile
 } from '../../lib/doctors'
+import { verificarSacs, verificarPsicologo } from '../../lib/verificacion'
 
 type Notice = { kind: 'info' | 'success' | 'danger'; text: string }
 
@@ -32,6 +35,7 @@ export default function PerfilMedico() {
   const [saving, setSaving] = useState(false)
   const [profile, setProfile] = useState<DoctorMeResponse | null>(null)
   const [specialties, setSpecialties] = useState<SpecialtyResponse[]>([])
+  const [professionalTypes, setProfessionalTypes] = useState<ProfessionalTypeResponse[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
 
   // Editable fields (baseline lives in `profile`, so the diff is computed on save).
@@ -43,6 +47,11 @@ export default function PerfilMedico() {
   const [cedulaNumero, setCedulaNumero] = useState('')
   const [license, setLicense] = useState('')
   const [specialtyId, setSpecialtyId] = useState('')
+  // Tipo de profesional: para source:'doctor' viene de la ficha (fijo); para source:'user' el
+  // usuario lo elige, y con él decidimos SACS (Médico) vs FPV (Psicólogo) y lo mandamos en el PATCH.
+  const [professionalTypeId, setProfessionalTypeId] = useState('')
+  // Estado de la verificación en vivo al teclear la cédula (autocompleta nombre/licencia).
+  const [verifState, setVerifState] = useState<'idle' | 'verifying' | 'found' | 'notfound'>('idle')
 
   useEffect(() => {
     init()
@@ -57,6 +66,8 @@ export default function PerfilMedico() {
     setCedulaNumero(numero)
     setLicense(p.license || '')
     setSpecialtyId(p.specialty_id || '')
+    setProfessionalTypeId(p.professional_type_id || '')
+    setVerifState('idle')
   }
 
   async function init() {
@@ -68,10 +79,15 @@ export default function PerfilMedico() {
     const accessToken = sessionData.session.access_token
 
     try {
-      // Specialties are public; the profile needs the Bearer token. Load both in parallel.
-      const [me, specs] = await Promise.all([fetchMyDoctorProfile(accessToken), fetchSpecialties()])
+      // Los catálogos son públicos; el perfil necesita el Bearer. Se cargan en paralelo.
+      const [me, specs, types] = await Promise.all([
+        fetchMyDoctorProfile(accessToken),
+        fetchSpecialties(),
+        fetchProfessionalTypes()
+      ])
       hydrateForm(me)
       setSpecialties(specs)
+      setProfessionalTypes(types)
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         await supabase.auth.signOut()
@@ -94,9 +110,42 @@ export default function PerfilMedico() {
     }
   }
 
-  // The 'user' source (Google / finalize-role, no doctors row) has no cédula and the backend
-  // rejects editing it (400), so we lock that field for those profiles.
-  const cedulaLocked = profile?.source === 'user'
+  // source:'user' (cuenta de Google que eligió rol médico) todavía no tiene ficha ni cédula: elige
+  // su tipo de profesional aquí y con eso completa el registro. source:'doctor' ya tiene el tipo
+  // fijo en la ficha (el backend ignora professional_type_id en el PATCH).
+  const isUserSource = profile?.source === 'user'
+  // Nombre del tipo elegido/actual — decide a qué registro pegar la verificación en vivo.
+  const tipoProfesionalNombre = isUserSource
+    ? professionalTypes.find((t) => t.id === professionalTypeId)?.name || ''
+    : profile?.professional_type || ''
+  const requiereVerificacion =
+    tipoProfesionalNombre === 'Médico' || tipoProfesionalNombre === 'Psicólogo'
+  // Para source:'user' la cédula se habilita recién cuando se elige el tipo (como en el registro).
+  const cedulaDisabled = isUserSource && !professionalTypeId
+
+  // Busca la cédula en SACS/FPV al salir del campo y autocompleta nombre/licencia, igual que el
+  // registro. Solo aplica a Médico (SACS) y Psicólogo (FPV); otros tipos no se verifican en línea.
+  async function verificarCedulaEnVivo() {
+    if (!requiereVerificacion || cedulaNumero.trim().length < 6) return
+    setVerifState('verifying')
+    try {
+      const resp =
+        tipoProfesionalNombre === 'Médico'
+          ? await verificarSacs(`${cedulaPrefijo}-${cedulaNumero.trim()}`)
+          : await verificarPsicologo(cedulaNumero.trim())
+      if (resp.encontrado) {
+        const nombre = [resp.nombre, resp.apellido].filter(Boolean).join(' ').trim()
+        if (nombre) setFullName(nombre)
+        if (resp.licencia) setLicense(resp.licencia)
+        setVerifState('found')
+      } else {
+        setVerifState('notfound')
+      }
+    } catch (e) {
+      console.error(e)
+      setVerifState('notfound')
+    }
+  }
 
   // Only send the fields that actually changed: partial PATCH, and — critically — this avoids a
   // needless SACS/FPV re-verification when the cédula wasn't touched.
@@ -108,8 +157,11 @@ export default function PerfilMedico() {
     if (specialtyId && specialtyId !== (profile.specialty_id || ''))
       payload.specialty_id = specialtyId
     const cedulaCompuesta = cedulaNumero.trim() ? `${cedulaPrefijo}-${cedulaNumero.trim()}` : ''
-    if (!cedulaLocked && cedulaCompuesta && cedulaCompuesta !== (profile.cedula || ''))
+    if (cedulaCompuesta && cedulaCompuesta !== (profile.cedula || '')) {
       payload.cedula = cedulaCompuesta
+      // El backend exige el tipo junto con la cédula para poder crear la ficha (source:'user').
+      if (isUserSource) payload.professional_type_id = professionalTypeId
+    }
     return payload
   }
 
@@ -128,6 +180,15 @@ export default function PerfilMedico() {
       return
     }
 
+    // Espejo del 422 del backend: source:'user' no puede mandar cédula sin el tipo de profesional.
+    if (payload.cedula && isUserSource && !professionalTypeId) {
+      setNotice({
+        kind: 'danger',
+        text: 'Indica el tipo de profesional para verificar tu cédula.'
+      })
+      return
+    }
+
     // Fetch a fresh token: on a long-open form the one from page load may have been rotated
     // by Supabase auto-refresh (or expired), which would 401 the PATCH for no real reason.
     const { data: sessionData } = await supabase.auth.getSession()
@@ -140,12 +201,21 @@ export default function PerfilMedico() {
     try {
       const updated = await updateMyDoctorProfile(payload, sessionData.session.access_token)
       hydrateForm(updated)
-      setNotice({
-        kind: 'success',
-        text: payload.cedula
-          ? 'Perfil actualizado. Tu cédula se re-verificó contra SACS/FPV.'
-          : 'Perfil actualizado.'
-      })
+      if (payload.cedula && updated.verified) {
+        setNotice({
+          kind: 'success',
+          text: 'Perfil actualizado. Tu cédula se verificó contra SACS/FPV.'
+        })
+      } else if (payload.cedula && !updated.verified) {
+        // El backend crea/actualiza la ficha aunque la cédula no aparezca en SACS/FPV, dejándola
+        // sin verificar para revisión de un administrador (no bloquea el guardado).
+        setNotice({
+          kind: 'info',
+          text: 'Guardamos tus datos, pero tu cédula no pudo verificarse automáticamente en SACS/FPV. Un administrador la revisará.'
+        })
+      } else {
+        setNotice({ kind: 'success', text: 'Perfil actualizado.' })
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setNotice({ kind: 'danger', text: 'Esa cédula ya pertenece a otro médico.' })
@@ -204,32 +274,89 @@ export default function PerfilMedico() {
 
             {profile && (
               <div className="grid">
+                {isUserSource && (
+                  <div className="notice notice-info">
+                    Completa tu registro profesional: elige tu tipo, ingresa tu cédula y la
+                    verificamos contra SACS/FPV.
+                  </div>
+                )}
+
+                {isUserSource && (
+                  <div>
+                    <label className="label">Tipo de profesional *</label>
+                    <select
+                      value={professionalTypeId}
+                      onChange={(e) => {
+                        setProfessionalTypeId(e.target.value)
+                        setVerifState('idle')
+                      }}
+                    >
+                      <option value="">Selecciona...</option>
+                      {professionalTypes
+                        .filter((t) => t.status === 'active')
+                        .map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+
                 <div>
-                  <label className="label">Cédula profesional</label>
+                  <label className="label">Cédula profesional {isUserSource ? '*' : ''}</label>
                   <div className="input-group">
                     <select
                       value={cedulaPrefijo}
-                      onChange={(e) => setCedulaPrefijo(e.target.value as 'V' | 'E')}
-                      disabled={cedulaLocked}
+                      onChange={(e) => {
+                        setCedulaPrefijo(e.target.value as 'V' | 'E')
+                        setVerifState('idle')
+                      }}
+                      disabled={cedulaDisabled}
                     >
                       <option value="V">V</option>
                       <option value="E">E</option>
                     </select>
                     <input
                       value={cedulaNumero}
-                      onChange={(e) => setCedulaNumero(soloDigitos(e.target.value))}
+                      onChange={(e) => {
+                        setCedulaNumero(soloDigitos(e.target.value))
+                        setVerifState('idle')
+                      }}
+                      onBlur={verificarCedulaEnVivo}
                       placeholder="Solo números"
                       inputMode="numeric"
                       maxLength={9}
-                      disabled={cedulaLocked}
+                      disabled={cedulaDisabled}
                     />
                   </div>
-                  {cedulaLocked ? (
+                  {isUserSource && !professionalTypeId && (
                     <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
-                      Tu cuenta se creó con Google/selección de rol, por lo que la cédula no se
-                      edita aquí.
+                      Elige primero el tipo de profesional.
                     </p>
-                  ) : (
+                  )}
+                  {!isUserSource && profile.professional_type && (
+                    <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
+                      Tipo de profesional: {profile.professional_type}
+                    </p>
+                  )}
+                  {verifState === 'verifying' && (
+                    <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
+                      Verificando cédula...
+                    </p>
+                  )}
+                  {verifState === 'found' && (
+                    <div className="notice notice-success" style={{ marginTop: 8 }}>
+                      Cédula verificada ✓ Datos cargados automáticamente.
+                    </div>
+                  )}
+                  {verifState === 'notfound' && (
+                    <div className="notice notice-warning" style={{ marginTop: 8 }}>
+                      No encontramos esta cédula en el registro. Puedes completar tus datos
+                      manualmente.
+                    </div>
+                  )}
+                  {!isUserSource && verifState === 'idle' && (
                     <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
                       Cambiarla re-verifica tu registro contra SACS/FPV.
                     </p>
