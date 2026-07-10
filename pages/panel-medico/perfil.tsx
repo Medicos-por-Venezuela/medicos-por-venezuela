@@ -15,6 +15,17 @@ import {
 
 type Notice = { kind: 'info' | 'success' | 'danger'; text: string }
 
+const soloDigitos = (value: string) => value.replace(/\D/g, '')
+
+// Descompone "V-12345678" en { prefijo: 'V', numero: '12345678' }. Tolera formatos sin guion o
+// con datos inesperados: en el peor caso, deja el prefijo en 'V' y conserva solo los dígitos.
+function parseCedula(raw: string | null | undefined): { prefijo: 'V' | 'E'; numero: string } {
+  if (!raw) return { prefijo: 'V', numero: '' }
+  const match = raw.trim().match(/^([VE])-?(\d+)$/i)
+  if (match) return { prefijo: match[1].toUpperCase() as 'V' | 'E', numero: match[2] }
+  return { prefijo: 'V', numero: soloDigitos(raw) }
+}
+
 export default function PerfilMedico() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -25,7 +36,11 @@ export default function PerfilMedico() {
 
   // Editable fields (baseline lives in `profile`, so the diff is computed on save).
   const [fullName, setFullName] = useState('')
-  const [cedula, setCedula] = useState('')
+  // La cédula se edita como prefijo (V/E) + número, igual que en el registro de médico. La
+  // baseline `profile.cedula` viene como "V-12345678"; se descompone al hidratar y se recompone
+  // al guardar.
+  const [cedulaPrefijo, setCedulaPrefijo] = useState<'V' | 'E'>('V')
+  const [cedulaNumero, setCedulaNumero] = useState('')
   const [license, setLicense] = useState('')
   const [specialtyId, setSpecialtyId] = useState('')
 
@@ -37,7 +52,9 @@ export default function PerfilMedico() {
   function hydrateForm(p: DoctorMeResponse) {
     setProfile(p)
     setFullName(p.full_name || '')
-    setCedula(p.cedula || '')
+    const { prefijo, numero } = parseCedula(p.cedula)
+    setCedulaPrefijo(prefijo)
+    setCedulaNumero(numero)
     setLicense(p.license || '')
     setSpecialtyId(p.specialty_id || '')
   }
@@ -90,8 +107,9 @@ export default function PerfilMedico() {
     if (license.trim() !== (profile.license || '')) payload.license = license.trim() || null
     if (specialtyId && specialtyId !== (profile.specialty_id || ''))
       payload.specialty_id = specialtyId
-    if (!cedulaLocked && cedula.trim() && cedula.trim() !== (profile.cedula || ''))
-      payload.cedula = cedula.trim()
+    const cedulaCompuesta = cedulaNumero.trim() ? `${cedulaPrefijo}-${cedulaNumero.trim()}` : ''
+    if (!cedulaLocked && cedulaCompuesta && cedulaCompuesta !== (profile.cedula || ''))
+      payload.cedula = cedulaCompuesta
     return payload
   }
 
@@ -187,23 +205,25 @@ export default function PerfilMedico() {
             {profile && (
               <div className="grid">
                 <div>
-                  <label className="label">Nombre completo *</label>
-                  <input
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    maxLength={200}
-                  />
-                </div>
-
-                <div>
                   <label className="label">Cédula profesional</label>
-                  <input
-                    value={cedula}
-                    onChange={(e) => setCedula(e.target.value)}
-                    placeholder="V-12345678 o E-12345678"
-                    maxLength={20}
-                    disabled={cedulaLocked}
-                  />
+                  <div className="input-group">
+                    <select
+                      value={cedulaPrefijo}
+                      onChange={(e) => setCedulaPrefijo(e.target.value as 'V' | 'E')}
+                      disabled={cedulaLocked}
+                    >
+                      <option value="V">V</option>
+                      <option value="E">E</option>
+                    </select>
+                    <input
+                      value={cedulaNumero}
+                      onChange={(e) => setCedulaNumero(soloDigitos(e.target.value))}
+                      placeholder="Solo números"
+                      inputMode="numeric"
+                      maxLength={9}
+                      disabled={cedulaLocked}
+                    />
+                  </div>
                   {cedulaLocked ? (
                     <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
                       Tu cuenta se creó con Google/selección de rol, por lo que la cédula no se
@@ -214,6 +234,15 @@ export default function PerfilMedico() {
                       Cambiarla re-verifica tu registro contra SACS/FPV.
                     </p>
                   )}
+                </div>
+
+                <div>
+                  <label className="label">Nombre completo *</label>
+                  <input
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    maxLength={200}
+                  />
                 </div>
 
                 <div>

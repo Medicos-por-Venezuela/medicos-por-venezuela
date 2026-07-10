@@ -5,6 +5,19 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-07-10
+
+- **Mi Perfil (médico): campo de cédula reordenado y con selector V/E** — en
+  `pages/panel-medico/perfil.tsx` la **cédula pasa a ir primero** (antes del nombre completo) y el
+  prefijo **V/E ahora es un `select` + input numérico**, replicando el patrón de
+  `registro-medico.tsx`. La baseline `profile.cedula` (`"V-12345678"`) se descompone al hidratar
+  (`parseCedula`) y se recompone al guardar. Verificado con `tsc --noEmit`. Files:
+  `pages/panel-medico/perfil.tsx`.
+- **Rebase de la rama sobre `dev_aws`** — los 2 commits del perfil self-service del médico
+  (`/panel-medico/perfil` vía FastAPI `/doctors/me`) se rebasaron de `dev` a `dev_aws`, resolviendo
+  conflictos en `lib/apiClient.ts`, `lib/doctors.ts`, `CLAUDE.md`, `AGENTS.md` y
+  `pages/panel-medico.tsx` conservando la superficie amplia de `dev_aws`. PR #42 → `dev_aws`.
+
 ## 2026-07-08
 
 - **Consulta médico-paciente: 3 botones nuevos (pool de médicos, cerrar con guardas, agendar)** —
