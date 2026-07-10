@@ -36,10 +36,46 @@ async function errorDetail(res: Response): Promise<unknown> {
   }
 }
 
+// FastAPI's `detail` comes in two shapes: a plain string for domain/business errors (403, 404,
+// 409, 502, some 422s), or an array of pydantic validation issues (`{type, loc, msg, input}`) for
+// payload-validation 422s. Building the display message here — instead of duplicating the
+// `typeof detail === 'string'` check per caller — makes sure the array case renders its per-field
+// `msg`s instead of falling back to a useless `${defaultErrorMessage} (${status})`.
+function detailMessage(detail: unknown, fallback: string): string {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const joined = detail
+      .map((d) =>
+        d && typeof d === 'object' && 'msg' in d ? String((d as { msg?: unknown }).msg) : ''
+      )
+      .filter(Boolean)
+      .join('; ')
+    if (joined) return joined
+  }
+  return fallback
+}
+
+// Pydantic's 422 validation array echoes the submitted value back in each issue's `input` — for a
+// password field that means the plaintext password would otherwise ride along on `ApiError.detail`
+// past this point (logging, error reporting, etc). Redact it in place before it goes any further.
+function redactSensitiveInput(detail: unknown): unknown {
+  if (!Array.isArray(detail)) return detail
+  return detail.map((d) => {
+    if (!d || typeof d !== 'object' || !('loc' in d)) return d
+    const loc = (d as { loc?: unknown }).loc
+    if (Array.isArray(loc) && loc.some((part) => String(part).toLowerCase().includes('password'))) {
+      return { ...d, input: '[redacted]' }
+    }
+    return d
+  })
+}
+
 export async function getJson<T>(path: string, errorMessage: string, token?: string): Promise<T> {
   const res = await authedFetch(path, {}, token)
   if (!res.ok) {
-    throw new Error(`${errorMessage} (${res.status})`)
+    const detail = redactSensitiveInput(await errorDetail(res))
+    const message = detailMessage(detail, `${errorMessage} (${res.status})`)
+    throw new ApiError(res.status, message, detail)
   }
   return res.json()
 }
@@ -57,8 +93,8 @@ async function sendJson<T>(
     token
   )
   if (!res.ok) {
-    const detail = await errorDetail(res)
-    const message = typeof detail === 'string' ? detail : `${defaultErrorMessage} (${res.status})`
+    const detail = redactSensitiveInput(await errorDetail(res))
+    const message = detailMessage(detail, `${defaultErrorMessage} (${res.status})`)
     throw new ApiError(res.status, message, detail)
   }
   return res.json()
@@ -85,8 +121,8 @@ export async function deleteJson(
 ): Promise<void> {
   const res = await authedFetch(path, { method: 'DELETE' }, token)
   if (!res.ok) {
-    const detail = await errorDetail(res)
-    const message = typeof detail === 'string' ? detail : `${defaultErrorMessage} (${res.status})`
+    const detail = redactSensitiveInput(await errorDetail(res))
+    const message = detailMessage(detail, `${defaultErrorMessage} (${res.status})`)
     throw new ApiError(res.status, message, detail)
   }
 }

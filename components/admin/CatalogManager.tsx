@@ -6,6 +6,7 @@ import { FormEvent, useMemo, useState } from 'react'
 import { deleteJson, getJson, patchJson, postJson } from '../../lib/apiClient'
 import { getAccessToken } from '../../lib/admin'
 import { useMountEffect } from '../../lib/hooks'
+import ConfirmDialog from './ConfirmDialog'
 
 const PAGE_SIZE = 10
 
@@ -54,6 +55,8 @@ export default function CatalogManager({
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
+  const [deleteTarget, setDeleteTarget] = useState<CatalogItem | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useMountEffect(() => {
     load()
@@ -137,9 +140,14 @@ export default function CatalogManager({
     setSaving(false)
   }
 
-  async function remove(item: CatalogItem) {
-    const name = String(item.name ?? '')
-    if (!window.confirm(`¿Eliminar "${name}"? Esta acción no se puede deshacer.`)) return
+  function remove(item: CatalogItem) {
+    setDeleteTarget(item)
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    const item = deleteTarget
+    setDeleting(true)
     setError('')
     try {
       const token = await getAccessToken()
@@ -150,10 +158,12 @@ export default function CatalogManager({
       )
       setMessage(`${resourceLabel} eliminad${o}.`)
       if (editingId === item.id) cancelEdit()
+      setDeleteTarget(null)
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al eliminar.')
     }
+    setDeleting(false)
   }
 
   const nameMissing = !form.name?.trim()
@@ -335,6 +345,17 @@ export default function CatalogManager({
           </>
         )}
       </section>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title={`Eliminar ${resourceLabel}`}
+        message={`¿Eliminar "${String(deleteTarget?.name ?? '')}"? Esta acción no se puede deshacer.`}
+        confirmLabel={deleting ? 'Eliminando...' : 'Eliminar definitivamente'}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+        busy={deleting}
+        danger
+      />
     </>
   )
 }
