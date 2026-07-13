@@ -76,7 +76,11 @@ Recover via `mem_search(query: "{topic_key}", project: "medicos-por-venezuela")`
   manage cases (reassign doctor, change status, edit note) from `/admin/dashboard`.
 - **Google sign-in:** OAuth can't carry a role, so a first-time Google user gets a placeholder profile
   (`role_chosen = false`) and is routed to `/elegir-rol` to pick patient vs doctor. The choice is
-  finalized by the `set_my_role` RPC, which can never grant admin/specialist.
+  finalized by the `set_my_role` RPC, which can never grant admin/specialist. A Google user who picks
+  **doctor** still has no cédula/`doctors` row (a `source:"user"` profile from `/doctors/me`): on
+  entering `/panel-medico` they're **auto-redirected to `/panel-medico/perfil`** to complete it —
+  they pick their professional type, enter their cédula (verified live against SACS/FPV, then again
+  server-side on save via `PATCH /doctors/me`), and the backend creates their `doctors` row.
 - **`handle_new_auth_user()`** reads `role` (+ doctor fields) from signup metadata; email signups are
   finalized immediately, OAuth signups stay `role_chosen = false`.
 - **Prereq:** Supabase → Auth → Email "Confirm email" must be **OFF** (instant access + same-session
@@ -94,8 +98,12 @@ migration to a dedicated backend is in progress:
   doctor registration, patient registration, and consultation creation: `pages/registro-medico.tsx`
   and `pages/registro-paciente.tsx` call it directly via `lib/doctors.ts`/`lib/patients.ts`
   (`POST /api/v1/doctors`, `POST /api/v1/patients`, `POST /api/v1/consultations`), base URL from
-  `NEXT_PUBLIC_API_URL` (see `.env.example`). That backend connects to its own Postgres as owner
-  (bypasses Supabase RLS) and does its own rate-limiting/anti-bot/RBAC — see its own CLAUDE.md.
+  `NEXT_PUBLIC_API_URL` (see `.env.example`). It also serves the **doctor self-service profile**
+  (`/panel-medico/perfil` via `GET`/`PATCH /api/v1/doctors/me`, resolved from the Supabase JWT —
+  no id sent, IDOR-safe) and the médico pool (`GET /api/v1/doctors/pool`). That backend connects to
+  its own Postgres as owner (bypasses Supabase RLS) and does its own rate-limiting/anti-bot/RBAC —
+  see its own CLAUDE.md. The shared REST client is [lib/apiClient.ts](lib/apiClient.ts) (Supabase
+  JWT as `Authorization: Bearer`, `ApiError` carrying `.status`, Pydantic-`422` message flattening).
 - **Everything else** (queue/panel-medico, admin dashboard, `/mi-caso`, specialty/zone catalog
   fallbacks in `lib/api.ts`) still goes directly from the browser through the Supabase JS client
   using the **anon key** + RLS; logic lives in RLS policies + Postgres functions/triggers in
@@ -119,12 +127,13 @@ migration to a dedicated backend is in progress:
 
 ## Services used
 
-| Service    | Role                                                                  |
-| ---------- | --------------------------------------------------------------------- |
-| Supabase   | Database (Postgres), authentication, RLS authorization                |
-| Vercel     | Hosting, environment variables, serverless API routes                 |
-| Twilio     | (PARKED — compliance pending) would send video links via WhatsApp/SMS |
-| Jitsi Meet | Free in-browser video rooms (`meet.jit.si`, no server/keys)           |
+| Service     | Role                                                                                                           |
+| ----------- | -------------------------------------------------------------------------------------------------------------- |
+| Supabase    | Database (Postgres), authentication, RLS authorization                                                         |
+| FastAPI API | Separate backend (`api-medicos-por-venezuela`) — REST `/api/v1/*`; doctor self-profile + SACS/FPV verification |
+| Vercel      | Hosting, environment variables, serverless API routes                                                          |
+| Twilio      | (PARKED — compliance pending) would send video links via WhatsApp/SMS                                          |
+| Jitsi Meet  | Free in-browser video rooms (`meet.jit.si`, no server/keys)                                                    |
 
 ## Project layout
 
@@ -132,6 +141,8 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 
 - `pages/` — routes (see below)
 - `lib/supabase.ts` — Supabase client (reads `NEXT_PUBLIC_*` env vars)
+- `lib/apiClient.ts` — FastAPI REST client (`NEXT_PUBLIC_API_URL`, Supabase JWT as Bearer, `ApiError`)
+- `lib/doctors.ts` — doctor REST endpoints (`/doctors/me` self-profile, specialties catalog)
 - `lib/auth.ts` — `signInWithGoogle()` OAuth helper (redirects to `/auth/callback`)
 - `lib/utils.ts` — status labels, specialty list, specialty↔needs matching (`matchesSpecialty`, `canAttend`)
 - `components/` — shared UI (e.g. `GoogleButton.tsx`)
@@ -148,6 +159,8 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `/login-medico` — doctor login
 - `/panel-medico` — doctor/admin panel (queue, active system cases for admin, counters)
 - `/panel-medico/consulta/[id]` — case detail page (patient details, video, note, close/no-show)
+- `/panel-medico/perfil` — doctor self-service profile (view/edit; FastAPI `GET`/`PATCH /doctors/me`);
+  also where a `source:"user"` (Google) doctor completes their cédula + professional type to be verified
 - `/auth/callback` — OAuth redirect handler (routes by role / role_chosen)
 - `/admin` (+ `/admin/login` alias) — private admin login
 - `/admin/dashboard` — admin dashboard (metrics, doctor revoke, case oversight)
@@ -216,6 +229,8 @@ Browser-exposed (`NEXT_PUBLIC_*`, fine — RLS enforces access):
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_API_URL` — base URL of the FastAPI backend (`/api/v1/*`); defaults to
+  `http://localhost:8000` if unset
 
 Server-only (used by `pages/api/videoconsulta.ts`; **never** prefix with `NEXT_PUBLIC`):
 

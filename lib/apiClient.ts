@@ -36,21 +36,18 @@ async function errorDetail(res: Response): Promise<unknown> {
   }
 }
 
-// FastAPI's `detail` comes in two shapes: a plain string for domain/business errors (403, 404,
-// 409, 502, some 422s), or an array of pydantic validation issues (`{type, loc, msg, input}`) for
-// payload-validation 422s. Building the display message here — instead of duplicating the
-// `typeof detail === 'string'` check per caller — makes sure the array case renders its per-field
-// `msg`s instead of falling back to a useless `${defaultErrorMessage} (${status})`.
+// Mensaje legible desde el `detail` del backend: string tal cual; lista de errores de
+// validación de Pydantic (422) -> "campo: mensaje"; otro caso -> fallback genérico.
 function detailMessage(detail: unknown, fallback: string): string {
   if (typeof detail === 'string') return detail
-  if (Array.isArray(detail)) {
-    const joined = detail
-      .map((d) =>
-        d && typeof d === 'object' && 'msg' in d ? String((d as { msg?: unknown }).msg) : ''
-      )
-      .filter(Boolean)
-      .join('; ')
-    if (joined) return joined
+  if (Array.isArray(detail) && detail.length > 0) {
+    const parts = detail
+      .filter((d): d is { loc?: unknown[]; msg: string } => typeof d?.msg === 'string')
+      .map((d) => {
+        const field = Array.isArray(d.loc) ? d.loc[d.loc.length - 1] : null
+        return field ? `${field}: ${d.msg}` : d.msg
+      })
+    if (parts.length > 0) return parts.join(' · ')
   }
   return fallback
 }
@@ -70,13 +67,21 @@ function redactSensitiveInput(detail: unknown): unknown {
   })
 }
 
+// Centraliza el throw de ApiError para todos los callers. El `detail` pasa por
+// redactSensitiveInput para que un password en texto plano nunca sobreviva en ApiError.detail.
+async function raiseApiError(res: Response, defaultErrorMessage: string): Promise<never> {
+  const detail = redactSensitiveInput(await errorDetail(res))
+  throw new ApiError(
+    res.status,
+    detailMessage(detail, `${defaultErrorMessage} (${res.status})`),
+    detail
+  )
+}
+
 export async function getJson<T>(path: string, errorMessage: string, token?: string): Promise<T> {
   const res = await authedFetch(path, {}, token)
-  if (!res.ok) {
-    const detail = redactSensitiveInput(await errorDetail(res))
-    const message = detailMessage(detail, `${errorMessage} (${res.status})`)
-    throw new ApiError(res.status, message, detail)
-  }
+  // ApiError (no Error plano) también en GET: los callers pueden distinguir 401/403/etc.
+  if (!res.ok) await raiseApiError(res, errorMessage)
   return res.json()
 }
 
@@ -92,11 +97,7 @@ async function sendJson<T>(
     { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
     token
   )
-  if (!res.ok) {
-    const detail = redactSensitiveInput(await errorDetail(res))
-    const message = detailMessage(detail, `${defaultErrorMessage} (${res.status})`)
-    throw new ApiError(res.status, message, detail)
-  }
+  if (!res.ok) await raiseApiError(res, defaultErrorMessage)
   return res.json()
 }
 
@@ -120,9 +121,5 @@ export async function deleteJson(
   token?: string
 ): Promise<void> {
   const res = await authedFetch(path, { method: 'DELETE' }, token)
-  if (!res.ok) {
-    const detail = redactSensitiveInput(await errorDetail(res))
-    const message = detailMessage(detail, `${defaultErrorMessage} (${res.status})`)
-    throw new ApiError(res.status, message, detail)
-  }
+  if (!res.ok) await raiseApiError(res, defaultErrorMessage)
 }

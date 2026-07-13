@@ -40,7 +40,28 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   ella, en viewports chicos las columnas se apretaban en vez de habilitar scroll horizontal. Files:
   `components/admin/ConfirmDialog.tsx` (nuevo), `components/admin/CatalogManager.tsx`,
   `components/admin/UsersManager.tsx`.
-  `ApiError`, porque pydantic devuelve el valor enviado (incluida la contraseña) en `input`.
+- **Mi Perfil: médicos de Google completan su cédula + verificación en vivo SACS/FPV** — cierra
+  los comentarios #2 y #3 de la revisión, alineado al contrato nuevo del backend `/doctors/me`.
+  (1) `pages/panel-medico.tsx`: un médico (no-admin) sin cédula — cuenta de Google que eligió rol
+  médico, `source:"user"` — es **redirigido automáticamente a `/panel-medico/perfil`** al entrar al
+  panel, para completar su registro. (2) `pages/panel-medico/perfil.tsx`: se **desbloquea** la
+  cédula para `source:"user"`, se agrega un `select` **Tipo de profesional** (habilita la cédula y
+  decide SACS vs FPV) y **verificación en vivo** al teclear la cédula (autocompleta nombre/licencia,
+  como en el registro); el `PATCH` manda `professional_type_id` junto con la cédula para que el
+  backend cree la ficha. Maneja el caso de cédula no verificada (`verified:false`, no bloquea) y
+  el `422`/`409`. (3) `lib/doctors.ts`: `DoctorMeResponse` gana `professional_type_id`/
+  `professional_type`; `DoctorSelfUpdate` gana `professional_type_id`. Docs: `CLAUDE.md` (auth model
+  - ruta). Verificado con `tsc`, `lint` y `build`.
+- **Mi Perfil (médico): campo de cédula reordenado y con selector V/E** — en
+  `pages/panel-medico/perfil.tsx` la **cédula pasa a ir primero** (antes del nombre completo) y el
+  prefijo **V/E ahora es un `select` + input numérico**, replicando el patrón de
+  `registro-medico.tsx`. La baseline `profile.cedula` (`"V-12345678"`) se descompone al hidratar
+  (`parseCedula`) y se recompone al guardar. Verificado con `tsc --noEmit`. Files:
+  `pages/panel-medico/perfil.tsx`.
+- **Rebase de la rama sobre `dev_aws`** — los 2 commits del perfil self-service del médico
+  (`/panel-medico/perfil` vía FastAPI `/doctors/me`) se rebasaron de `dev` a `dev_aws`, resolviendo
+  conflictos en `lib/apiClient.ts`, `lib/doctors.ts`, `CLAUDE.md`, `AGENTS.md` y
+  `pages/panel-medico.tsx` conservando la superficie amplia de `dev_aws`. PR #42 → `dev_aws`.
 
 ## 2026-07-08
 
