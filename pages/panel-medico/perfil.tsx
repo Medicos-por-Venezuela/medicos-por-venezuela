@@ -114,6 +114,10 @@ export default function PerfilMedico() {
   // su tipo de profesional aquí y con eso completa el registro. source:'doctor' ya tiene el tipo
   // fijo en la ficha (el backend ignora professional_type_id en el PATCH).
   const isUserSource = profile?.source === 'user'
+  // Perfil incompleto = todavía sin cédula. Aplica a TODOS los médicos, no solo a los de Google
+  // (source:'user'): también una ficha (source:'doctor') puede tener la cédula vacía. Es la misma
+  // condición por la que el guard de /panel-medico redirige acá.
+  const perfilIncompleto = !profile?.cedula?.trim()
   // Nombre del tipo elegido/actual — decide a qué registro pegar la verificación en vivo.
   const tipoProfesionalNombre = isUserSource
     ? professionalTypes.find((t) => t.id === professionalTypeId)?.name || ''
@@ -278,10 +282,11 @@ export default function PerfilMedico() {
 
             {profile && (
               <div className="grid">
-                {isUserSource && (
+                {perfilIncompleto && (
                   <div className="notice notice-info">
-                    Completa tu registro profesional: elige tu tipo, ingresa tu cédula y la
-                    verificamos contra SACS/FPV.
+                    Debes completar tu perfil profesional para usar el panel:
+                    {isUserSource ? ' elige tu tipo,' : ''} ingresa tu cédula y la verificamos
+                    contra SACS/FPV.
                   </div>
                 )}
 
