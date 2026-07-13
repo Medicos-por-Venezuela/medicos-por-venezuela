@@ -52,8 +52,25 @@ function detailMessage(detail: unknown, fallback: string): string {
   return fallback
 }
 
+// Pydantic's 422 validation array echoes the submitted value back in each issue's `input` — for a
+// password field that means the plaintext password would otherwise ride along on `ApiError.detail`
+// past this point (logging, error reporting, etc). Redact it in place before it goes any further.
+function redactSensitiveInput(detail: unknown): unknown {
+  if (!Array.isArray(detail)) return detail
+  return detail.map((d) => {
+    if (!d || typeof d !== 'object' || !('loc' in d)) return d
+    const loc = (d as { loc?: unknown }).loc
+    if (Array.isArray(loc) && loc.some((part) => String(part).toLowerCase().includes('password'))) {
+      return { ...d, input: '[redacted]' }
+    }
+    return d
+  })
+}
+
+// Centraliza el throw de ApiError para todos los callers. El `detail` pasa por
+// redactSensitiveInput para que un password en texto plano nunca sobreviva en ApiError.detail.
 async function raiseApiError(res: Response, defaultErrorMessage: string): Promise<never> {
-  const detail = await errorDetail(res)
+  const detail = redactSensitiveInput(await errorDetail(res))
   throw new ApiError(
     res.status,
     detailMessage(detail, `${defaultErrorMessage} (${res.status})`),

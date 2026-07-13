@@ -7,6 +7,39 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-10
 
+- **Admin: pantalla Usuarios (multi-rol RBAC)** — nueva página `/admin/usuarios` para el nuevo
+  sistema RBAC de `api-medicos-por-venezuela` (crear usuarios y otorgar/revocar roles),
+  independiente del mecanismo Supabase de un solo rol (`profiles.role`) que sigue usando
+  `doctores.tsx` ("Revocar acceso") — no se tocó ese archivo. La UI se gatea por
+  `GET /auth/me/permissions` (crear usuario solo si `users.create`, gestión de roles solo si
+  `roles.assign`; `super_admin` solo aparece asignable/revocable si el propio usuario ya lo tiene);
+  `initial_role` en el formulario de creación siempre excluye `super_admin` (el backend lo rechaza
+  siempre). El listado de `/profiles` no trae total, así que la paginación es anterior/siguiente
+  por `skip`/`limit`. De paso se corrigió un bug en `lib/apiClient.ts`: los errores 422 de pydantic
+  (`detail` como arreglo de `{msg}`) se renderizaban como `(422)` genérico en vez del mensaje real
+  por campo — ahora un helper `detailMessage` compartido por `getJson`/`sendJson`/`deleteJson` los
+  une en un string legible. Files: `lib/apiClient.ts`, `lib/users.ts` (nuevo),
+  `components/admin/UsersManager.tsx` (nuevo), `pages/admin/usuarios.tsx` (nuevo),
+  `components/admin/AdminLayout.tsx` (nav). Verificado con `tsc --noEmit`, `pnpm lint` y
+  `pnpm build` (sin errores/warnings nuevos).
+- **Fixes post-review (mismo cambio)** — `review-risk` detectó que "Revocar" no gateaba
+  `super_admin` igual que el select de asignar (ahora exige `canGrantSuperAdmin` en ambos lados);
+  `review-readability` detectó un cast inseguro que dejaba que `initial_role` mostrara roles fuera
+  de `patient|doctor|admin` si el catálogo del backend cambiaba (ahora se intersecta siempre contra
+  la unión fija), un `useEffect` inicial que duplicaba el fetch de `loadUsersPage`, y magic numbers
+  de validación sin nombre. También se sanitiza el `detail` de un 422 antes de adjuntarlo al
+  `ApiError` (pydantic devuelve el valor enviado, incluida la contraseña, en `input`).
+- **Fixes de QA manual (mismo cambio)** — probado en vivo contra el stack local de
+  `api-medicos-por-venezuela`: se extrajo `components/admin/ConfirmDialog.tsx` (modal centrado,
+  mismo estilo que el diálogo de borrado ya existente en `pages/admin/pacientes.tsx`) y se usa en
+  vez del `window.confirm()` nativo tanto en `CatalogManager.tsx` (eliminar catálogo) como en
+  `UsersManager.tsx` (revocar rol); se aflojó el spacing del panel "Gestionar roles" (cramped por
+  padding/gaps chicos) usando badges para los roles asignados. Verificado visualmente con
+  Playwright contra el stack local. También se agregó la clase `users-table` (ya usada en
+  `doctores.tsx`, da `min-width: 720px` en `globals.css`) a la tabla de `UsersManager.tsx` — sin
+  ella, en viewports chicos las columnas se apretaban en vez de habilitar scroll horizontal. Files:
+  `components/admin/ConfirmDialog.tsx` (nuevo), `components/admin/CatalogManager.tsx`,
+  `components/admin/UsersManager.tsx`.
 - **Mi Perfil: médicos de Google completan su cédula + verificación en vivo SACS/FPV** — cierra
   los comentarios #2 y #3 de la revisión, alineado al contrato nuevo del backend `/doctors/me`.
   (1) `pages/panel-medico.tsx`: un médico (no-admin) sin cédula — cuenta de Google que eligió rol
