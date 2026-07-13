@@ -122,6 +122,10 @@ export default function PerfilMedico() {
     tipoProfesionalNombre === 'Médico' || tipoProfesionalNombre === 'Psicólogo'
   // Para source:'user' la cédula se habilita recién cuando se elige el tipo (como en el registro).
   const cedulaDisabled = isUserSource && !professionalTypeId
+  // Cuando la verificación en vivo encontró la cédula, el nombre y la matrícula vienen del
+  // registro oficial (SACS/FPV) y no se editan a mano; cambiar la cédula (setVerifState('idle'))
+  // los libera de nuevo. Si no se encontró, quedan editables para carga manual.
+  const datosBloqueados = verifState === 'found'
 
   // Busca la cédula en SACS/FPV al salir del campo y autocompleta nombre/licencia, igual que el
   // registro. Solo aplica a Médico (SACS) y Psicólogo (FPV); otros tipos no se verifican en línea.
@@ -365,11 +369,19 @@ export default function PerfilMedico() {
 
                 <div>
                   <label className="label">Nombre completo *</label>
+                  {/* Al verificar la cédula con éxito, el nombre viene de SACS/FPV y no se
+                      edita a mano; si no se encontró (notfound/idle), queda editable. */}
                   <input
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     maxLength={200}
+                    readOnly={datosBloqueados}
                   />
+                  {datosBloqueados && (
+                    <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
+                      Cargado desde SACS/FPV — no editable.
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -378,6 +390,7 @@ export default function PerfilMedico() {
                     value={license}
                     onChange={(e) => setLicense(e.target.value)}
                     maxLength={100}
+                    readOnly={datosBloqueados}
                   />
                 </div>
 
