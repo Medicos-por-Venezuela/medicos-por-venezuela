@@ -2,6 +2,7 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { ApiError, fetchMyDoctorProfile } from '../lib/doctors'
 import { STATUS_LABELS, canAttend, matchesSpecialty, minutesSince } from '../lib/utils'
 import { browserRoomUrl } from '../lib/jitsi'
 
@@ -87,7 +88,13 @@ export default function PanelMedico() {
   const [myClosed, setMyClosed] = useState(0)
   // Waiting case the doctor wants to attend via WhatsApp — set while the commitment modal is open.
   const [whatsappTarget, setWhatsappTarget] = useState<Consultation | null>(null)
+  // Admins have no doctor profile by default. But an admin who is ALSO a doctor (has a `doctors`
+  // row) does — this tracks whether /doctors/me resolved for them, so we only show "Mi perfil"
+  // when there's actually a profile to open (a pure admin would just hit a 404 there).
+  const [hasDoctorProfile, setHasDoctorProfile] = useState(false)
   const isCurrentUserAdmin = isAdminRole(profile?.role)
+  // Non-admins are doctors → always have a profile. Admins only if the probe below found one.
+  const showProfileButton = !isCurrentUserAdmin || hasDoctorProfile
 
   useEffect(() => {
     init()
@@ -154,6 +161,21 @@ export default function PanelMedico() {
     }
 
     setProfile(p)
+    // Cualquiera con ficha de médico (admin o no) y sin cédula debe completar su perfil antes de
+    // usar el panel: una cédula vacía es un registro a medias (cuenta de Google que eligió el rol
+    // pero nunca verificó SACS/FPV, o una ficha creada sin cédula). Un 404 = cuenta sin ficha
+    // (admin puro): no se redirige, se le deja entrar y solo se oculta el botón "Mi perfil".
+    try {
+      const me = await fetchMyDoctorProfile(sessionData.session.access_token)
+      setHasDoctorProfile(true)
+      if (!me.cedula?.trim()) {
+        router.replace('/panel-medico/perfil')
+        return
+      }
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 404)) console.error(e)
+      setHasDoctorProfile(false)
+    }
     await loadConsultations(p)
     setLoading(false)
   }
@@ -383,6 +405,14 @@ export default function PanelMedico() {
               {isCurrentUserAdmin && (
                 <button className="btn btn-outline" onClick={() => router.push('/admin/dashboard')}>
                   Panel admin
+                </button>
+              )}
+              {showProfileButton && (
+                <button
+                  className="btn btn-outline"
+                  onClick={() => router.push('/panel-medico/perfil')}
+                >
+                  Mi perfil
                 </button>
               )}
               <button className="btn btn-muted" onClick={logout}>
