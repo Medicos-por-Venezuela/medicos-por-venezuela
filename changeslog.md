@@ -7,6 +7,34 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-14
 
+- **Fixes del segundo code review (PR #40, tras rebase sobre dev_aws)** — hallazgos de la
+  re-revisión multi-agente sobre la rama rebasada, todos aplicados:
+  - `updateStatus` usa functional update (`setConsultation(prev => …)`): antes pisaba con el
+    objeto capturado los campos que Realtime aplicó durante el `await` (p.ej. un cierre de admin).
+  - `closeConsultation` hace **escritura condicional** (`.not('status','in',FINAL_STATUSES)` +
+    `.select()`): si otra persona finalizó el caso mientras `window.confirm` bloqueaba, afecta 0
+    filas, avisa y no pisa `closed_at` ni registra evento.
+  - El botón "Unirse a videoconsulta" de arriba se oculta en casos finalizados (`!isCaseClosed`).
+  - `ConfirmDialog` compartido (catálogos/usuarios) ahora cierra con Escape y enfoca "Cancelar"
+    al abrir — paridad con el `window.confirm` al que reemplazó y con el resto de modales.
+  - El aviso de catálogos del pool vive en su propio estado (`catalogError`): el `setError('')`
+    de cada recarga de la lista ya no lo borra.
+  - `useEscapeToClose` ignora Escape dentro de un `input type="search"` con texto (la acción
+    nativa de Chrome/Edge es limpiar el campo; limpiar no debe cerrar el modal).
+  - E2E nuevo `e2e/consulta-cerrada.spec.ts`: caso finalizado muestra el aviso y oculta cierre y
+    video; la confirmación de no-show existe. Files: `pages/panel-medico/consulta/[id].tsx`,
+    `components/DoctorPoolModal.tsx`, `components/admin/ConfirmDialog.tsx`, `lib/hooks.ts`.
+  - (En el backend, mismo review: anti-IDOR también en `POST /consultations/{id}/events`, PATCH
+    ya no asigna consultas para no-admins — tomar es solo vía claim atómico —, `doctor_id`
+    server-only, trigger `BEFORE TRUNCATE` en `audit_log`, test de paginación determinista y
+    `dev.ps1` resuelve el contenedor por nombre exacto.)
+- **Docs sincronizadas con la realidad** — la presencia del médico es Realtime Presence (no
+  heartbeat/`mark_myself_online`), la cola del panel es Realtime (no polling), y el video corre en
+  el Jitsi self-hosted `meet.medicosporvenezuela.org` (el público `meet.jit.si` exige moderador;
+  ya no es fallback). Se corrigieron `CLAUDE.md` (RPCs, servicios, security notes, lecciones de
+  review), `README.md` (RPCs, stopgap de Jitsi, panel, env), `.env.example`, y en el backend
+  `.knowledge/business-logic.md` (§1 cola realtime + claim, §4 presencia dual, §7 Jitsi, estado
+  de portado) y `.claude/rules/{security,fastapi_skills}.md`.
 - **Videoconsulta: fix "no moderators have yet arrived"** — las salas se generaban en el público
   `meet.jit.si`, que hoy obliga al primero en entrar a loguearse como moderador (de ahí el error
   para paciente y médico). El default de dominio ahora apunta a nuestra instancia self-hosted
@@ -74,6 +102,7 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   (`/panel-medico/perfil` vía FastAPI `/doctors/me`) se rebasaron de `dev` a `dev_aws`, resolviendo
   conflictos en `lib/apiClient.ts`, `lib/doctors.ts`, `CLAUDE.md`, `AGENTS.md` y
   `pages/panel-medico.tsx` conservando la superficie amplia de `dev_aws`. PR #42 → `dev_aws`.
+
 ## 2026-07-09
 
 - **Fixes del code review (PRs #38/#39)** — hallazgos de la revisión multi-agente, todos aplicados:
@@ -87,18 +116,21 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   - **Modales accesibles**: Escape cierra (hook `useEscapeToClose` en `lib/hooks.ts`) y el foco
     entra al modal al abrir (pool + confirmación de borrado en admin/pacientes).
   - Plurales: "especialidades" y "zonas afectadas" (antes "especialidads"/"zona afectadas").
-  - `getJson` lanza `ApiError` (no `Error` plano) — los callers pueden distinguir 401/403 — y los
-    422 de Pydantic se muestran como "campo: mensaje" en vez del genérico.
   - Tipos de Profesionales (admin) usa el nuevo `GET /professional-types/admin` del backend; el
     público ahora solo trae activos → **desactivar un tipo por fin lo oculta del registro**.
   - Menores: rama muerta `'closed'` en `updateStatus`, estados muertos en `pacientes.tsx`,
     doble fetch del pool al cambiar tab, error visible si fallan los catálogos del pool,
-    paginación del CatalogManager navega desde `safePage`, botones deshabilitados durante
-    escrituras (consulta, CatalogManager, guardar caso), mensajes de éxito/error ya no conviven,
-    y sin flash de "No hay médicos" al abrir el pool.
+    botones deshabilitados durante escrituras (consulta), y sin flash de "No hay médicos" al
+    abrir el pool.
   - Files: `components/DoctorPoolModal.tsx`, `components/admin/CatalogManager.tsx`,
-    `lib/{apiClient,hooks}.ts`, `pages/panel-medico/consulta/[id].tsx`,
+    `lib/hooks.ts`, `pages/panel-medico/consulta/[id].tsx`,
     `pages/admin/{pacientes,especialidades,zonas-afectadas,tipos-profesionales}.tsx`.
+  - _Nota del rebase (2026-07-14)_: los fixes de `lib/apiClient.ts` (ApiError en GET + 422
+    legibles + redacción de passwords) ya habían llegado a `dev_aws` por la rama de
+    admin/usuarios, así que este PR ya no toca ese archivo. En `CatalogManager.tsx` dev_aws ya
+    traía el modal de borrado (`ConfirmDialog`), que se conservó; este PR aún aporta ahí los
+    fixes complementarios: guard de reentrada en `submit`, éxito/error que no conviven,
+    botones de fila `disabled` durante escrituras y paginación navegando desde `safePage`.
 
 ## 2026-07-08
 

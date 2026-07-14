@@ -2,7 +2,10 @@
 // to be copy-pasted (pages/admin/pacientes.tsx's delete-confirmation dialog, then again verbatim in
 // components/DoctorPoolModal.tsx's own comment about it). Same backdrop/card/button markup and
 // styles as that original, just parameterized so a third copy-paste isn't needed.
-import { ReactNode, useId } from 'react'
+// Accesibilidad: Escape cancela (salvo busy) y el foco entra a "Cancelar" al abrir — el
+// window.confirm nativo al que reemplaza hacía ambas cosas; sin esto quedaba por debajo.
+import { ReactNode, useCallback, useId } from 'react'
+import { useEscapeToClose } from '../../lib/hooks'
 
 export default function ConfirmDialog({
   open,
@@ -26,6 +29,10 @@ export default function ConfirmDialog({
   danger?: boolean
 }) {
   const titleId = useId()
+  const cancelUnlessBusy = useCallback(() => {
+    if (!busy) onCancel()
+  }, [busy, onCancel])
+  useEscapeToClose(open, cancelUnlessBusy)
 
   if (!open) return null
 
@@ -64,7 +71,8 @@ export default function ConfirmDialog({
           >
             {confirmLabel}
           </button>
-          <button className="btn btn-muted" onClick={onCancel} disabled={busy}>
+          {/* autoFocus en Cancelar: el foco entra al modal y la acción por defecto es la segura. */}
+          <button className="btn btn-muted" onClick={onCancel} disabled={busy} autoFocus>
             {cancelLabel}
           </button>
         </div>

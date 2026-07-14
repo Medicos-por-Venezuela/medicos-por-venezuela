@@ -57,6 +57,9 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
   // true inicial: evita el flash de "No hay médicos..." antes del primer fetch.
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Aparte del error del fetch de la lista: aquel hace setError('') en cada recarga
+  // (tab/filtro/página) y borraría este aviso aunque los dropdowns sigan vacíos.
+  const [catalogError, setCatalogError] = useState('')
   const [specialties, setSpecialties] = useState<Catalog[]>([])
   const [types, setTypes] = useState<Catalog[]>([])
   // Teléfonos revelados (bajo auditoría) por doctor id; `undefined` = aún oculto.
@@ -83,9 +86,12 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
         const [s, t] = await Promise.all([fetchSpecialties(), fetchProfessionalTypes()])
         setSpecialties(s.map((x) => ({ id: x.id, name: x.name })))
         setTypes(t.map((x) => ({ id: x.id, name: x.name })))
+        setCatalogError('') // el reintento (cerrar/reabrir) funcionó: quitar el aviso pegajoso
       } catch {
         // La lista sigue funcionando sin catálogos, pero avisamos que los filtros no cargaron.
-        setError('No se pudieron cargar los catálogos de filtros. Cierra y reabre para reintentar.')
+        setCatalogError(
+          'No se pudieron cargar los catálogos de filtros. Cierra y reabre para reintentar.'
+        )
       }
     })()
   }, [open, specialties.length, types.length])
@@ -265,9 +271,9 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
           </select>
         </div>
 
-        {error && (
+        {(catalogError || error) && (
           <div className="notice notice-danger" style={{ marginBottom: 12 }}>
-            {error}
+            {[catalogError, error].filter(Boolean).join(' ')}
           </div>
         )}
 

@@ -343,7 +343,10 @@ export default function ConsultaDetalle() {
       setMessage('No se pudo actualizar el estado.')
       return
     }
-    setConsultation({ ...consultation, status: newStatus })
+    // Functional update: durante el await, Realtime pudo aplicar otros campos
+    // (patient_last_seen_at, o un cierre hecho por un admin) — no pisarlos con
+    // el objeto capturado al entrar a la función.
+    setConsultation((prev) => (prev ? { ...prev, status: newStatus } : prev))
     await addEvent(
       consultation.id,
       'admin_update',
@@ -384,11 +387,26 @@ export default function ConsultaDetalle() {
       closed_at: new Date().toISOString(),
       ...(noShow ? {} : { internal_note: note })
     }
-    const { error } = await supabase.from('consultations').update(update).eq('id', consultation.id)
+    // Escritura CONDICIONAL: mientras window.confirm bloqueaba, un admin pudo cerrar el
+    // caso por otro lado (y los mensajes Realtime quedaron encolados). El filtro por
+    // estados finales hace que ese cierre tardío afecte 0 filas en vez de pisar closed_at.
+    const { data: updated, error } = await supabase
+      .from('consultations')
+      .update(update)
+      .eq('id', consultation.id)
+      .not('status', 'in', `(${FINAL_STATUSES.join(',')})`)
+      .select('id')
 
     if (error) {
       setBusy(false)
       setCloseError(noShow ? 'No se pudo marcar como ausente.' : 'No se pudo cerrar la consulta.')
+      return
+    }
+    if (!updated || updated.length === 0) {
+      // Ya estaba finalizada (otro médico/admin ganó): no registrar evento ni navegar;
+      // el estado real llega por Realtime y la UI pasa sola al modo "caso finalizado".
+      setBusy(false)
+      setCloseError('La consulta ya fue finalizada por otra persona.')
       return
     }
 
@@ -452,8 +470,9 @@ export default function ConsultaDetalle() {
           </div>
 
           {/* Unirse a la videoconsulta: acción principal, arriba de todo (antes del paciente).
-              Aparece siempre que exista la sala, aunque el caso se haya tomado por WhatsApp. */}
-          {consultation.video_room_url && (
+              Aparece siempre que exista la sala, aunque el caso se haya tomado por WhatsApp —
+              pero no en casos finalizados (la sala ya no existe operativamente). */}
+          {consultation.video_room_url && !isCaseClosed && (
             <a
               className="btn btn-primary btn-full"
               href={browserRoomUrl(consultation.video_room_url)}

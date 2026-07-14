@@ -14,7 +14,12 @@ export function useEscapeToClose(open: boolean, onClose: () => void) {
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape') return
+      // En un input type="search" con texto, Escape es "limpiar el campo" (acción nativa
+      // de Chrome/Edge): limpiar no debe cerrar el modal de paso.
+      const t = e.target
+      if (t instanceof HTMLInputElement && t.type === 'search' && t.value) return
+      onClose()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
