@@ -7,6 +7,41 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-14
 
+- **E2E del registro completo de paciente** — `e2e/registro-paciente.spec.ts`: formulario adulto
+  por la UI (zod, cédula/teléfono con prefijos, catálogo de zonas, signup de Supabase) →
+  `/sala-espera` con el botón de videoconsulta y el aviso de WhatsApp. Es la capa que estuvo
+  rota en producción sin detección; con este spec la cadena entera queda con red automática.
+- **"Atender por videoconsulta" crea la sala si falta** — un caso sin `video_room_url` (tomado
+  por WhatsApp y liberado, sembrado por API, o creado en prod mientras el hosting rompía la
+  creación) dejaba al médico sin link y sin el botón "Unirse" en el detalle. Ahora
+  `openConsultation` llama a `ensureVideoRoom` (backend, idempotente) ANTES del claim (el
+  backend solo crea la sala mientras el caso está en espera) — sana también las consultas de
+  prod que quedaron sin sala. E2E nuevo `e2e/panel-atender-video.spec.ts` (caso sin sala →
+  popup con la sala Jitsi + "Unirse a videoconsulta" visible en el detalle). Files:
+  `pages/panel-medico.tsx`.
+- **Fix multi-rol en el acceso admin + videoconsulta del paciente vía backend** — dos regresiones
+  de producción:
+  - **Multi-rol RBAC**: el guard de `/admin/*`, el login `/admin` y el callback de Google solo
+    miraban `profiles.role` (UN rol legacy) — un usuario "doctor primero + super_admin después"
+    (RBAC en `user_roles`) rebotaba al login. Nuevo `effectiveAdminRole()` en `lib/admin.ts`: si
+    el legacy no alcanza, consulta `GET /auth/me/permissions` y usa el rol RBAC más alto; el
+    perfil del guard expone ese rol efectivo (así `isSuperAdmin` y toda la UI admin funcionan
+    para duales). Un dual que entra por Google aterriza en el dashboard, como un admin puro.
+  - **Videoconsulta del paciente**: `/api/videoconsulta` (API route de Next) moría con 500 en
+    Amplify (falta del service_role en el hosting) → el catch lo tragaba → sala-espera sin sala →
+    el paciente caía SIEMPRE al fallback de WhatsApp y la consulta quedaba sin `video_room_url`
+    (por eso "desapareció" el botón Unirse a videoconsulta del detalle). Ahora la sala la crea el
+    BACKEND: `ensureVideoRoom()` en `lib/patients.ts` → `POST /consultations/{id}/video-room`
+    (público e idempotente, ya existía) — se elimina la dependencia del service_role en el
+    frontend. La ruta de Next queda muerta (conserva el Twilio parked para el futuro).
+  - **Sala de espera**: aviso nuevo bajo el botón de video — también pueden contactarlo por
+    WhatsApp al número registrado.
+  - E2E nuevos: `admin-multirol.spec.ts` (usuario dual sembrado en global-setup: legacy doctor +
+    super_admin en user_roles → dashboard y usuarios cargan sin rebotar) y `sala-espera.spec.ts`
+    (el backend genera la sala por el mismo endpoint del registro; botón de video + aviso de
+    WhatsApp visibles). Files: `lib/{admin,patients}.ts`, `pages/admin/index.tsx`,
+    `pages/auth/callback.tsx`, `pages/registro-paciente.tsx`, `pages/sala-espera.tsx`,
+    `e2e/{global-setup,admin-multirol.spec,sala-espera.spec}.ts`.
 - **Buscador en `/admin/usuarios`** — con ~3000 usuarios, paginar sin buscar era inservible:
   input de búsqueda por **nombre o email** (server-side, `GET /profiles?search=` con ILIKE que el
   backend ya soportaba) con debounce de 300ms y reset a la primera página; el término se conserva
