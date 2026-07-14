@@ -2,6 +2,7 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import DoctorPoolModal from '../../../components/DoctorPoolModal'
+import { fetchMyProfile } from '../../../lib/consultations'
 import { supabase } from '../../../lib/supabase'
 import { STATUS_LABELS, minutesSince } from '../../../lib/utils'
 import { browserRoomUrl } from '../../../lib/jitsi'
@@ -188,13 +189,27 @@ export default function ConsultaDetalle() {
       return
     }
 
-    const { data: p, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, full_name, role, specialty, verified, active')
-      .eq('id', sessionData.session.user.id)
-      .single()
+    // Perfil por el backend (/auth/me), como el panel: `role` viene resuelto por el multi-rol
+    // RBAC (un dual doctor+super_admin llega como super_admin y puede ver consultas ajenas) —
+    // la vista `profiles` de Supabase solo trae el rol legado y rebotaba a los duales.
+    let p: Profile
+    try {
+      const me = await fetchMyProfile(sessionData.session.access_token)
+      p = {
+        id: me.id,
+        full_name: me.full_name,
+        role: me.role,
+        specialty: me.specialty,
+        verified: me.verified,
+        active: me.active
+      }
+    } catch {
+      await supabase.auth.signOut()
+      router.push('/login-medico')
+      return
+    }
 
-    if (profileError || !p || !p.active || !p.verified) {
+    if (!p.active || !p.verified) {
       await supabase.auth.signOut()
       router.push('/login-medico')
       return

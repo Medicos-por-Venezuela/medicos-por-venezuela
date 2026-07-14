@@ -12,7 +12,10 @@ export { ApiError } from './apiClient'
 export interface MyProfile {
   id: string
   full_name: string
+  // Rol EFECTIVO del multi-rol RBAC (user_roles): un dual doctor+super_admin llega como
+  // super_admin. `roles` trae la lista completa (backend >= fix/auth-me-rol-efectivo).
   role: string
+  roles?: string[]
   specialty: string | null
   verified: boolean
   active: boolean

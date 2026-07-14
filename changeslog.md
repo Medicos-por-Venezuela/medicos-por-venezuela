@@ -7,6 +7,14 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-14
 
+- **El detalle de consulta usa el rol efectivo de `/auth/me`** — la página leía el rol de la
+  vista `profiles` (legado, un solo valor): un dual doctor+super_admin que abría una consulta
+  AJENA era rebotado al panel (`canView` fallaba) aunque fuera super_admin real. Ahora carga el
+  perfil por el backend (`fetchMyProfile`), que con el multi-rol RBAC devuelve el rol efectivo —
+  y se elimina otro acceso directo a Supabase. `MyProfile` gana `roles?: string[]` (campo nuevo
+  del backend). **Requiere el backend con `fix/auth-me-rol-efectivo` (api PR #30).** E2E nuevo en
+  `admin-multirol.spec.ts`: el dual abre una consulta tomada por otro médico y el detalle carga.
+  Files: `pages/panel-medico/consulta/[id].tsx`, `lib/consultations.ts`.
 - **E2E del registro completo de paciente** — `e2e/registro-paciente.spec.ts`: formulario adulto
   por la UI (zod, cédula/teléfono con prefijos, catálogo de zonas, signup de Supabase) →
   `/sala-espera` con el botón de videoconsulta y el aviso de WhatsApp. Es la capa que estuvo
