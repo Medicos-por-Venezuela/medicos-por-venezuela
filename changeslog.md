@@ -7,6 +7,14 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-14
 
+- **"Atender por videoconsulta" crea la sala si falta** — un caso sin `video_room_url` (tomado
+  por WhatsApp y liberado, sembrado por API, o creado en prod mientras el hosting rompía la
+  creación) dejaba al médico sin link y sin el botón "Unirse" en el detalle. Ahora
+  `openConsultation` llama a `ensureVideoRoom` (backend, idempotente) ANTES del claim (el
+  backend solo crea la sala mientras el caso está en espera) — sana también las consultas de
+  prod que quedaron sin sala. E2E nuevo `e2e/panel-atender-video.spec.ts` (caso sin sala →
+  popup con la sala Jitsi + "Unirse a videoconsulta" visible en el detalle). Files:
+  `pages/panel-medico.tsx`.
 - **Fix multi-rol en el acceso admin + videoconsulta del paciente vía backend** — dos regresiones
   de producción:
   - **Multi-rol RBAC**: el guard de `/admin/*`, el login `/admin` y el callback de Google solo
