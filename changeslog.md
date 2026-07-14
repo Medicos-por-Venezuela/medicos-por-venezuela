@@ -7,6 +7,12 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-14
 
+- **Buscador en `/admin/usuarios`** — con ~3000 usuarios, paginar sin buscar era inservible:
+  input de búsqueda por **nombre o email** (server-side, `GET /profiles?search=` con ILIKE que el
+  backend ya soportaba) con debounce de 300ms y reset a la primera página; el término se conserva
+  al cambiar el filtro de rol y al paginar. E2E nuevo `e2e/admin-usuarios-buscador.spec.ts`
+  (filtra por email, por nombre, y limpiar restaura el listado). Files: `lib/users.ts`,
+  `components/admin/UsersManager.tsx`.
 - **Port selectivo de main (PRs #27/#29) + Páginas aliadas** — main y dev_aws habían divergido;
   decisión: dev_aws manda, y de main se trae solo lo que faltaba:
   - KPIs del panel médico partidos (PR #27) recreados con la presencia real: "En videollamada

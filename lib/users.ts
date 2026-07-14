@@ -56,12 +56,15 @@ export async function fetchMyPermissions(token: string): Promise<PermissionsResp
 // por eso la paginación es "cargar más"/siguiente por offset, no por total de páginas.
 export async function fetchProfiles(
   token: string,
-  params: { skip?: number; limit?: number; role?: string }
+  params: { skip?: number; limit?: number; role?: string; search?: string }
 ): Promise<ApiUser[]> {
   const qs = new URLSearchParams()
   if (params.skip != null) qs.set('skip', String(params.skip))
   if (params.limit != null) qs.set('limit', String(params.limit))
   if (params.role) qs.set('role', params.role)
+  // Búsqueda server-side por nombre o email (ILIKE en el backend): con ~3000 usuarios,
+  // paginar sin buscar es inservible.
+  if (params.search?.trim()) qs.set('search', params.search.trim())
   return getJson<ApiUser[]>(
     `/api/v1/profiles?${qs.toString()}`,
     'No se pudieron cargar los usuarios',
