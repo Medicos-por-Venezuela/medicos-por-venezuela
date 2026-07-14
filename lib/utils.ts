@@ -108,3 +108,47 @@ export function canAttend(
   }
   return true
 }
+
+// The specialties a case is routed to: those whose scope fits it (matchesSpecialty) AND that are
+// allowed to attend it (canAttend, which enforces the psychology reservation). Used by the admin
+// panel to show, per case, which specialties can pick it up.
+export function eligibleSpecialties(category: string | null, needsTags: string[] | null): string[] {
+  return SPECIALTIES.filter(
+    (s) => matchesSpecialty(s, category, needsTags) && canAttend(s, category, needsTags)
+  )
+}
+
+// El registro del paciente ahora pide la especialidad y la guarda en consultations.specialty_id:
+// esa columna ES el matching (el backend expone el nombre resuelto en el panel). category/needs
+// quedan como fallback para consultas viejas sin especialidad. Espejo exacto de
+// src/services/specialties.py (matches_consultation / can_attend_consultation) del backend.
+const PSYCH_SPECIALTIES = ['Psicología', 'Psiquiatría']
+
+// Match de preferencia: igualdad exacta con la especialidad solicitada por el paciente;
+// fallback al matching legacy (category/needs) solo para consultas sin specialty_id.
+export function matchesConsultation(
+  specialty: string | null | undefined,
+  consultationSpecialty: string | null,
+  category: string | null,
+  needsTags: string[] | null
+): boolean {
+  if (consultationSpecialty) return specialty === consultationSpecialty
+  return matchesSpecialty(specialty, category, needsTags)
+}
+
+// Elegibilidad dura con la especialidad explícita. La reserva de psicología se mantiene:
+// un caso de salud mental solo va a Psicología/Psiquiatría, y Psicología solo atiende salud
+// mental. Un caso físico explícito lo puede tomar cualquier no-psicólogo (que la especialidad
+// coincida es la PREFERENCIA de attend-next, no un bloqueo — nadie se queda sin atender).
+export function canAttendConsultation(
+  specialty: string | null | undefined,
+  consultationSpecialty: string | null,
+  category: string | null,
+  needsTags: string[] | null
+): boolean {
+  if (consultationSpecialty && PSYCH_SPECIALTIES.includes(consultationSpecialty)) {
+    return !!specialty && PSYCH_SPECIALTIES.includes(specialty)
+  }
+  if (consultationSpecialty) return specialty !== 'Psicología'
+  return canAttend(specialty, category, needsTags)
+}

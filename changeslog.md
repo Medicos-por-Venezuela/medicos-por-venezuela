@@ -7,6 +7,39 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-14
 
+- **Port selectivo de main (PRs #27/#29) + Páginas aliadas** — main y dev_aws habían divergido;
+  decisión: dev_aws manda, y de main se trae solo lo que faltaba:
+  - KPIs del panel médico partidos (PR #27) recreados con la presencia real: "En videollamada
+    ahora" (heartbeat vivo, misma ventana que el badge "● En sala") y "Sin atender (+20 min)".
+  - `eligibleSpecialties()` en `lib/utils.ts` (matchesSpecialty ∩ canAttend, respeta la reserva
+    de psicología) + línea "La pueden atender" por caso en la tabla admin de pacientes.
+  - **El admin re-rutea un caso editando su Especialidad** (`consultations.specialty_id`, la
+    columna con la que la consulta matchea con el médico — el registro del paciente ya la setea;
+    sin el override `required_specialties` de main, que se descartó): select con el catálogo real
+    del backend en Gestionar caso, y el cambio queda en el evento `admin_update`. La línea "La
+    pueden atender" de la tabla muestra la especialidad asignada, con fallback a las derivadas
+    del tipo/necesidades (`eligibleSpecialties`) para casos viejos sin `specialty_id`.
+  - **El matching médico↔consulta ahora es por `specialty_id`** (regla exacta, en ambos repos):
+    el backend resuelve el nombre (join a `specialties`) y lo expone en `GET /consultations/panel`
+    (`specialty`); `attend-next` (backend) y el KPI "Esperando para tu especialidad" +
+    "Atender al siguiente" (frontend, `matchesConsultation`/`canAttendConsultation` en
+    `lib/utils.ts`, espejo de `src/services/specialties.py`) prefieren la igualdad exacta de
+    especialidad. La reserva de psicología se mantiene (un caso Psicología/Psiquiatría solo va a
+    esas dos; Psicología solo salud mental); un caso físico explícito lo puede tomar cualquier
+    no-psicólogo (la coincidencia es preferencia, no bloqueo). `category`/needs quedan de
+    **fallback** para consultas viejas sin especialidad. Tests backend nuevos
+    (`test_attend_next_prefiere_specialty_id_sobre_fifo`,
+    `test_attend_next_reserva_psicologia_por_specialty_id`, panel con `specialty` resuelta).
+  - **Sección "Páginas aliadas"** en la landing (nav + `#aliadas` + estilos), portada del MVP:
+    8 grupos de organizaciones externas (donaciones, niños, salud, comida, veterinaria, registro,
+    ingenieros, desaparecidos).
+  - Lo demás de main quedó descartado a propósito: cierre por dropdown (dev_aws usa botón con
+    guardas), gate/split por `entered_call_at` (dev_aws es realtime + presencia) y el flujo
+    `contact_preference` (PR #30, requerimiento cambiado).
+  - E2E nuevo `e2e/admin-especialidad.spec.ts` (select con catálogo + persistencia + fila);
+    `panel-race` ahora scopea los botones a la card de su paciente (blindado contra otros casos
+    en espera). Files: `lib/{utils,admin}.ts`, `pages/panel-medico.tsx`,
+    `pages/admin/pacientes.tsx`, `pages/index.tsx`, `e2e/{admin-especialidad,panel-race}.spec.ts`.
 - **Fixes del segundo code review (PR #40, tras rebase sobre dev_aws)** — hallazgos de la
   re-revisión multi-agente sobre la rama rebasada, todos aplicados:
   - `updateStatus` usa functional update (`setConsultation(prev => …)`): antes pisaba con el

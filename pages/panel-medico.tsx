@@ -11,7 +11,12 @@ import {
   type MyProfile,
   type PanelConsultation
 } from '../lib/consultations'
-import { STATUS_LABELS, canAttend, matchesSpecialty, minutesSince } from '../lib/utils'
+import {
+  STATUS_LABELS,
+  canAttendConsultation,
+  matchesConsultation,
+  minutesSince
+} from '../lib/utils'
 import { browserRoomUrl } from '../lib/jitsi'
 
 type Patient = {
@@ -31,6 +36,7 @@ type Consultation = {
   status: string
   priority: string
   category: string | null
+  specialty: string | null
   chief_complaint: string | null
   created_at: string
   entered_call_at: string | null
@@ -69,6 +75,7 @@ function toConsultationRow(c: PanelConsultation): Consultation {
     status: c.status,
     priority: c.priority,
     category: c.category,
+    specialty: c.specialty,
     chief_complaint: c.chief_complaint,
     created_at: c.created_at,
     entered_call_at: null,
@@ -236,20 +243,38 @@ export default function PanelMedico() {
     [consultations, profile?.id]
   )
   // Waiting patients that align with this doctor's specialty (and that they're allowed to take).
+  // El match es por la especialidad solicitada (consultations.specialty_id, resuelta a nombre
+  // por el backend); category/needs quedan de fallback para consultas viejas sin especialidad.
   const mySpecialtyWaiting = useMemo(
     () =>
       waiting.filter(
         (c) =>
           isCurrentUserAdmin ||
-          (canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null) &&
-            matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null))
+          (canAttendConsultation(
+            profile?.specialty,
+            c.specialty,
+            c.category,
+            c.patients?.needs_tags || null
+          ) &&
+            matchesConsultation(
+              profile?.specialty,
+              c.specialty,
+              c.category,
+              c.patients?.needs_tags || null
+            ))
       ),
     [waiting, profile?.specialty, isCurrentUserAdmin]
   )
   // Everyone — including admins/super_admins — sees /panel-medico as a doctor: the waiting queue and
   // their own open cases, no admin-only "system cases" section.
+  // "Pacientes esperando" partido en dos (PR #27 de main, recreado con la presencia real): en la
+  // sala AHORA (heartbeat vivo, misma ventana que el badge "● En sala") vs. +20 min sin atender.
   const kpis = [
-    { value: waiting.length, label: 'Pacientes esperando' },
+    { value: waiting.filter(isPatientPresent).length, label: 'En videollamada ahora' },
+    {
+      value: waiting.filter((c) => minutesSince(c.created_at) > 20).length,
+      label: 'Sin atender (+20 min)'
+    },
     { value: mySpecialtyWaiting.length, label: 'Esperando para tu especialidad' },
     { value: myClosed, label: 'Consultas cerradas por mí' }
   ]
@@ -303,7 +328,12 @@ export default function PanelMedico() {
     const eligible = waiting.filter(
       (c) =>
         isCurrentUserAdmin ||
-        canAttend(profile?.specialty, c.category, c.patients?.needs_tags || null)
+        canAttendConsultation(
+          profile?.specialty,
+          c.specialty,
+          c.category,
+          c.patients?.needs_tags || null
+        )
     )
 
     if (eligible.length === 0) {
@@ -318,7 +348,12 @@ export default function PanelMedico() {
     const next = isCurrentUserAdmin
       ? pool[0]
       : pool.find((c) =>
-          matchesSpecialty(profile?.specialty, c.category, c.patients?.needs_tags || null)
+          matchesConsultation(
+            profile?.specialty,
+            c.specialty,
+            c.category,
+            c.patients?.needs_tags || null
+          )
         ) || pool[0]
 
     await openConsultation(next)
