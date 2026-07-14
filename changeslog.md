@@ -7,6 +7,10 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-14
 
+- **E2E del registro completo de paciente** — `e2e/registro-paciente.spec.ts`: formulario adulto
+  por la UI (zod, cédula/teléfono con prefijos, catálogo de zonas, signup de Supabase) →
+  `/sala-espera` con el botón de videoconsulta y el aviso de WhatsApp. Es la capa que estuvo
+  rota en producción sin detección; con este spec la cadena entera queda con red automática.
 - **"Atender por videoconsulta" crea la sala si falta** — un caso sin `video_room_url` (tomado
   por WhatsApp y liberado, sembrado por API, o creado en prod mientras el hosting rompía la
   creación) dejaba al médico sin link y sin el botón "Unirse" en el detalle. Ahora
