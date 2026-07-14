@@ -9,6 +9,7 @@ import {
   STATUS_OPTIONS,
   useAdminGuard
 } from '../../lib/admin'
+import { useEscapeToClose } from '../../lib/hooks'
 import { supabase } from '../../lib/supabase'
 import { SPECIALTIES, STATUS_LABELS } from '../../lib/utils'
 
@@ -35,10 +36,7 @@ export default function AdminPacientes() {
   const [caseStatus, setCaseStatus] = useState('')
   const [caseDoctor, setCaseDoctor] = useState('')
   const [caseNote, setCaseNote] = useState('')
-  // admin_seguimiento / nota_admin: tracked per-row via notaAdminDrafts below, not re-read here —
-  // selectCase() still primes them so "Gestionar caso" starts from the current DB values.
-  const [, setCaseSeguimiento] = useState('')
-  const [, setCaseNotaAdmin] = useState('')
+  const [savingCase, setSavingCase] = useState(false)
   // Searchable "Médico asignado" combobox (queries the DB so it reaches all doctors, not the 1000 cap).
   const [caseDoctorName, setCaseDoctorName] = useState('')
   const [doctorQuery, setDoctorQuery] = useState('')
@@ -50,6 +48,9 @@ export default function AdminPacientes() {
   // set from the manage panel or from a row's trash button, so it's its own piece of state.
   const [deleteTarget, setDeleteTarget] = useState<Consultation | null>(null)
   const [deleting, setDeleting] = useState(false)
+  useEscapeToClose(!!deleteTarget, () => {
+    if (!deleting) setDeleteTarget(null)
+  })
   // Per-row inline edits of the notes in the cases table (keyed by consultation id).
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
   const [notaAdminDrafts, setNotaAdminDrafts] = useState<Record<string, string>>({})
@@ -249,8 +250,6 @@ export default function AdminPacientes() {
     setCaseStatus(c.status)
     setCaseDoctor(c.assigned_doctor_id || '')
     setCaseNote(c.internal_note || '')
-    setCaseSeguimiento(c.admin_seguimiento || '')
-    setCaseNotaAdmin(c.nota_admin || '')
     setCaseDoctorName(c.assigned_doctor_id ? doctorName(c.assigned_doctor_id) : '')
     setDoctorQuery('')
     setDoctorMenuOpen(false)
@@ -258,7 +257,7 @@ export default function AdminPacientes() {
   }
 
   async function saveCase() {
-    if (!selected) return
+    if (!selected || savingCase) return
     const update: Record<string, unknown> = {
       status: caseStatus,
       assigned_doctor_id: caseDoctor || null,
@@ -271,9 +270,11 @@ export default function AdminPacientes() {
       return
     }
 
+    setSavingCase(true)
     const { error } = await supabase.from('consultations').update(update).eq('id', selected.id)
     if (error) {
       console.error(error)
+      setSavingCase(false)
       setMessage('No se pudo actualizar el caso.')
       return
     }
@@ -282,6 +283,7 @@ export default function AdminPacientes() {
       event_type: 'admin_update',
       note: `Estado: ${STATUS_LABELS[caseStatus] || caseStatus}; médico: ${doctorName(caseDoctor || null)}`
     })
+    setSavingCase(false)
     setMessage('Caso actualizado.')
     setSelected(null)
     await loadAll()
@@ -568,8 +570,8 @@ export default function AdminPacientes() {
                 <textarea rows={4} value={caseNote} onChange={(e) => setCaseNote(e.target.value)} />
               </div>
               <div className="grid grid-2">
-                <button className="btn btn-primary" onClick={saveCase}>
-                  Guardar cambios
+                <button className="btn btn-primary" onClick={saveCase} disabled={savingCase}>
+                  {savingCase ? 'Guardando...' : 'Guardar cambios'}
                 </button>
                 <button className="btn btn-muted" onClick={() => setSelected(null)}>
                   Cancelar
@@ -1065,10 +1067,12 @@ export default function AdminPacientes() {
               >
                 {deleting ? 'Eliminando...' : 'Eliminar definitivamente'}
               </button>
+              {/* autoFocus: mueve el foco al modal al abrir (en la opción segura). */}
               <button
                 className="btn btn-muted"
                 onClick={() => setDeleteTarget(null)}
                 disabled={deleting}
+                autoFocus
               >
                 Cancelar
               </button>

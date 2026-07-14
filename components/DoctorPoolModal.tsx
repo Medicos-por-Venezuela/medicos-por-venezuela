@@ -13,6 +13,7 @@ import {
   fetchSpecialties,
   revealDoctorContact
 } from '../lib/doctors'
+import { useEscapeToClose } from '../lib/hooks'
 import { useOnlineDoctorIds } from '../lib/presence'
 
 const PAGE_SIZE = 20
@@ -25,16 +26,21 @@ const TAB_LABEL: Record<Tab, string> = {
   todos: 'Todos'
 }
 
-// Número para el enlace de WhatsApp (https://wa.me/<número>): sin el "+" de adelante y,
-// si no trae prefijo internacional, se le antepone 58 (Venezuela). Ej: "+584145200715" o
-// "04145200715" -> "584145200715".
+// Número para el enlace de WhatsApp (https://wa.me/<número>): solo dígitos, sin "+" ni "00"
+// de adelante, y con 58 (Venezuela) si no trae prefijo internacional. Además quita el 0
+// nacional pegado al 58 ("+58 0414..." es un formato común y wa.me lo rechaza con ese 0).
+// Ej: "+584145200715", "04145200715", "+58 04145200715" y "00584145200715" -> "584145200715".
 function waNumber(phone: string): string {
   const raw = phone.trim()
-  let d = raw.replace(/[^\d]/g, '') // solo dígitos (quita "+", espacios, guiones)
-  if (raw.startsWith('+')) return d // ya tiene prefijo internacional; el "+" ya se quitó
-  if (d.startsWith('0')) d = d.slice(1) // 04145... -> 4145...
-  if (!d.startsWith('58')) d = '58' + d // sin prefijo -> anteponer Venezuela
-  return d
+  let d = raw.replace(/\D/g, '') // solo dígitos (quita "+", espacios, guiones)
+  if (d.startsWith('00')) d = d.slice(2) // prefijo internacional "00" -> ya trae país
+  if (d.startsWith('58')) {
+    if (d[2] === '0') d = '58' + d.slice(3) // 58 + 0 nacional -> quitar el 0
+    return d
+  }
+  if (raw.startsWith('+') || raw.startsWith('00')) return d // extranjero con su prefijo
+  if (d.startsWith('0')) d = d.replace(/^0+/, '') // 0414... nacional -> 414...
+  return '58' + d
 }
 
 export default function DoctorPoolModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -48,19 +54,29 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
   const [page, setPage] = useState(0)
   const [items, setItems] = useState<DoctorPoolItem[]>([])
   const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(false)
+  // true inicial: evita el flash de "No hay médicos..." antes del primer fetch.
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Aparte del error del fetch de la lista: aquel hace setError('') en cada recarga
+  // (tab/filtro/página) y borraría este aviso aunque los dropdowns sigan vacíos.
+  const [catalogError, setCatalogError] = useState('')
   const [specialties, setSpecialties] = useState<Catalog[]>([])
   const [types, setTypes] = useState<Catalog[]>([])
   // Teléfonos revelados (bajo auditoría) por doctor id; `undefined` = aún oculto.
   const [revealed, setRevealed] = useState<Record<string, string | null>>({})
   const [revealing, setRevealing] = useState<string | null>(null)
 
-  // Debounce del buscador (no dispara una query por tecla).
+  // Debounce del buscador (no dispara una query por tecla). El reset a página 1 va aquí,
+  // junto al set del término: React los batchea y el fetch corre una sola vez.
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    const t = setTimeout(() => {
+      setDebouncedSearch(search.trim())
+      setPage(0)
+    }, 300)
     return () => clearTimeout(t)
   }, [search])
+
+  useEscapeToClose(open, onClose)
 
   // Catálogos para los dropdowns y para mapear id→nombre en la tabla. Se cargan una vez.
   useEffect(() => {
@@ -70,16 +86,19 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
         const [s, t] = await Promise.all([fetchSpecialties(), fetchProfessionalTypes()])
         setSpecialties(s.map((x) => ({ id: x.id, name: x.name })))
         setTypes(t.map((x) => ({ id: x.id, name: x.name })))
+        setCatalogError('') // el reintento (cerrar/reabrir) funcionó: quitar el aviso pegajoso
       } catch {
-        // Sin catálogos los dropdowns quedan vacíos, pero la lista sigue funcionando.
+        // La lista sigue funcionando sin catálogos, pero avisamos que los filtros no cargaron.
+        setCatalogError(
+          'No se pudieron cargar los catálogos de filtros. Cierra y reabre para reintentar.'
+        )
       }
     })()
   }, [open, specialties.length, types.length])
 
-  // Cualquier cambio de tab/filtro/búsqueda vuelve a la primera página.
-  useEffect(() => {
-    setPage(0)
-  }, [tab, specialtyId, typeId, debouncedSearch])
+  // El reset a página 1 va en los handlers de tab/filtro (no en un efecto): un efecto
+  // dispararía un fetch extra con la página vieja antes de resetear. Para la búsqueda,
+  // el reset vive en el efecto del debounce de arriba.
 
   // Para los tabs En línea/Desconectados, el cliente le pasa al backend los user_ids que Presence
   // sabe online (así el filtro respeta la paginación). Clave estable para las deps del fetch: en
@@ -186,19 +205,23 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
             className="btn btn-muted"
             onClick={onClose}
             aria-label="Cerrar"
+            autoFocus
             style={{ padding: '4px 12px' }}
           >
             ✕
           </button>
         </div>
 
-        {/* Tabs En línea / Desconectados / Todos */}
+        {/* Tabs En línea / Desconectados / Todos (cambiar de tab resetea a la página 1) */}
         <div style={{ display: 'flex', gap: 8, margin: '14px 0', flexWrap: 'wrap' }}>
           {(Object.keys(TAB_LABEL) as Tab[]).map((t) => (
             <button
               key={t}
               className={`btn ${tab === t ? 'btn-primary' : 'btn-outline'}`}
-              onClick={() => setTab(t)}
+              onClick={() => {
+                setTab(t)
+                setPage(0)
+              }}
             >
               {TAB_LABEL[t]}
             </button>
@@ -214,12 +237,15 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
           style={{ width: '100%', marginBottom: 10 }}
         />
 
-        {/* Filtros */}
+        {/* Filtros (cambiar un filtro resetea a la página 1) */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
           <select
             style={{ flex: '1 1 200px' }}
             value={specialtyId}
-            onChange={(e) => setSpecialtyId(e.target.value)}
+            onChange={(e) => {
+              setSpecialtyId(e.target.value)
+              setPage(0)
+            }}
           >
             <option value="">Todas las especialidades</option>
             {specialties.map((s) => (
@@ -231,7 +257,10 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
           <select
             style={{ flex: '1 1 200px' }}
             value={typeId}
-            onChange={(e) => setTypeId(e.target.value)}
+            onChange={(e) => {
+              setTypeId(e.target.value)
+              setPage(0)
+            }}
           >
             <option value="">Todos los tipos de profesional</option>
             {types.map((t) => (
@@ -242,9 +271,9 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
           </select>
         </div>
 
-        {error && (
+        {(catalogError || error) && (
           <div className="notice notice-danger" style={{ marginBottom: 12 }}>
-            {error}
+            {[catalogError, error].filter(Boolean).join(' ')}
           </div>
         )}
 

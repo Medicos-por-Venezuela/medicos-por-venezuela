@@ -47,6 +47,33 @@ the final step. Add a short entry at the top (newest first) — one or two lines
 why, plus the key files/areas touched — grouping same-day work under a single `## YYYY-MM-DD`
 heading. This is the running history of the project; keep entries concise and factual.
 
+**Tras un rebase, re-audita la entrada del changelog de esa rama**: si un fix del PR quedó
+supersedido por la base (la base ya lo traía, o lo reemplazó por algo mejor), la entrada ya no
+debe atribuírselo — deja una "nota del rebase" con qué se descartó y por qué. Un changelog que
+promete cambios que el diff ya no contiene es un bug de documentación (lección del review
+2026-07-14).
+
+### Lecciones de code review (reglas de diseño, cumplimiento estricto)
+
+- **Realtime + `setState`: SIEMPRE functional updates** (`setX(prev => …)`) en páginas con
+  suscripción Realtime. Un `setX({ ...objetoCapturado, campo })` después de un `await` pisa lo
+  que Realtime aplicó durante la espera (p.ej. un cierre hecho por un admin en paralelo).
+- **Finalizar/tomar estados contra Supabase = escritura condicional.** Ocultar el botón
+  (`isCaseClosed`) es solo render: la escritura debe filtrar por el estado esperado
+  (`.not('status', 'in', '(…estados finales…)')` + `.select()`, tratando 0 filas como "otro
+  ganó"). Ojo: `window.confirm` bloquea el event loop y ENCOLA los mensajes Realtime — al
+  aceptar, tu estado local puede estar viejo aunque "acabes de mirarlo".
+- **Modales: usa el `ConfirmDialog` compartido** (`components/admin/ConfirmDialog.tsx`), que ya
+  trae Escape + foco inicial. No introduzcas `window.confirm` nuevos ni diálogos inline
+  copiados; si reemplazas un `window.confirm`, el reemplazo debe conservar su accesibilidad
+  nativa (Escape, foco), no perderla.
+- **Un estado de error por fuente.** Si dos fetches comparten un `error` state, el
+  `setError('')` de uno borra el aviso del otro. Cada fallo con recuperación distinta (lista vs
+  catálogos del pool, p.ej.) lleva su propio estado.
+- **Todo gating de UI nuevo (p.ej. "caso finalizado") nace con su spec E2E** en `e2e/`. Los
+  specs existentes cubren flujos felices; un gating sin spec se rompe en silencio en el
+  siguiente refactor.
+
 ## SDD (Spec-Driven Development) setup
 
 This project is initialized for SDD-based work via the `sdd-init` skill:
@@ -127,13 +154,13 @@ migration to a dedicated backend is in progress:
 
 ## Services used
 
-| Service     | Role                                                                                                           |
-| ----------- | -------------------------------------------------------------------------------------------------------------- |
-| Supabase    | Database (Postgres), authentication, RLS authorization                                                         |
-| FastAPI API | Separate backend (`api-medicos-por-venezuela`) — REST `/api/v1/*`; doctor self-profile + SACS/FPV verification |
-| Vercel      | Hosting, environment variables, serverless API routes                                                          |
-| Twilio      | (PARKED — compliance pending) would send video links via WhatsApp/SMS                                          |
-| Jitsi Meet  | Free in-browser video rooms (`meet.jit.si`, no server/keys)                                                    |
+| Service     | Role                                                                                                                                                          |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Supabase    | Database (Postgres), authentication, RLS authorization                                                                                                        |
+| FastAPI API | Separate backend (`api-medicos-por-venezuela`) — REST `/api/v1/*`; doctor self-profile + SACS/FPV verification                                                |
+| Vercel      | Hosting, environment variables, serverless API routes                                                                                                         |
+| Twilio      | (PARKED — compliance pending) would send video links via WhatsApp/SMS                                                                                         |
+| Jitsi Meet  | In-browser video rooms on our **self-hosted** instance `meet.medicosporvenezuela.org` (open rooms, no moderator login; public `meet.jit.si` now requires one) |
 
 ## Project layout
 
@@ -180,8 +207,11 @@ Postgres functions / RPCs:
 - `handle_new_auth_user()` — trigger; creates a `profiles` row from signup metadata (role-aware)
 - `set_my_role(...)` — RPC; lets a user finalize their own profile once (patient/doctor only)
 - `current_user_role()`, `is_admin()`, `is_staff()` — RLS helpers
-- `mark_myself_online()` — RPC doctors call to update `last_seen_at` (granted to `authenticated`)
+- `mark_myself_online()` — **legacy/vestigial**: doctor online status now uses Supabase Realtime
+  **Presence** (`lib/presence.tsx`, channel `online-doctors`), no DB writes. Nobody calls this RPC
+  anymore (cleanup pending); do not base new logic on `profiles.last_seen_at`.
 - `mark_patient_waiting(uuid)` — RPC called by `/sala-espera` to update `patient_last_seen_at`
+  (patient presence is still a DB heartbeat — only the doctor side moved to Presence)
 
 RLS is enabled on all tables. Anon can INSERT patients/consultations; account-holding patients read
 their own rows; staff read all; admins manage.
@@ -257,7 +287,8 @@ Admins/super_admins can also use `/panel-medico`: they keep a link back to `/adm
 counters plus an admin-only **Casos activos del sistema** section for `in_progress`, `urgent_in_person`, and
 `referred_to_specialist` cases (patient, status, motive, presence, assignment), and open those cases in the
 same `/panel-medico/consulta/[id]` detail page. Closing/no-show actions return to
-`/panel-medico?actualizado=1`; the panel refreshes counters on that flag, focus, and polling.
+`/panel-medico?actualizado=1`; the panel refreshes counters on that flag and focus, and the queue
+itself updates via Supabase Realtime (`postgres_changes` on `consultations`) — no polling.
 
 ### Revoking a doctor (operational)
 
@@ -274,7 +305,8 @@ the same button.
 - No service-role key is used client-side. Role escalation is prevented: profile updates are
   admin-only via RLS, and `set_my_role` only finalizes the caller's own profile once (patient/doctor,
   never admin/specialist).
-- Doctors update only `last_seen_at` via the `mark_myself_online()` RPC.
+- Doctor online status is Supabase Realtime **Presence** (app-level, no DB writes): only active
+  doctors `track` themselves, and only staff subscribe to the channel (see `lib/presence.tsx`).
 - Avoid storing full consultation conversations — only minimal operational data is kept.
 - `/admin` is unlinked from the public UI and marked `noindex`; it is not a real access control —
   RLS + the admin-role check on the page are.

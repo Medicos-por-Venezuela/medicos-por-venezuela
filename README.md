@@ -151,7 +151,8 @@ Functions / RPCs:
 - `handle_new_auth_user()` — trigger; creates a `profiles` row from signup metadata (role-aware).
 - `set_my_role(...)` — RPC; lets a user finalize their own profile once (patient/doctor only).
 - `current_user_role()`, `is_admin()`, `is_staff()` — RLS helpers.
-- `mark_myself_online()` — RPC doctors call to update `last_seen_at`.
+- `mark_myself_online()` — **legacy/vestigial**: doctor online status now uses Supabase Realtime
+  **Presence** (`lib/presence.tsx`); nobody calls this RPC anymore (cleanup pending).
 - `mark_patient_waiting(uuid)` — RPC called by `/sala-espera` to update `patient_last_seen_at`.
 
 RLS is enabled on every table: anon can INSERT patients/consultations; account-holding patients read their
@@ -260,12 +261,12 @@ Set in `.env` for local dev and in Vercel for production. See [.env.example](.en
 
 **Browser-exposed (`NEXT_PUBLIC_*`) — safe; RLS enforces access:**
 
-| Var                             | Purpose                                        |
-| ------------------------------- | ---------------------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase project URL                           |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key                              |
-| `NEXT_PUBLIC_JITSI_DOMAIN`      | Self-hosted Jitsi host (empty = `meet.jit.si`) |
-| `NEXT_PUBLIC_SUPPORT_WHATSAPP`  | Optional WhatsApp number shown on `/mi-caso`   |
+| Var                             | Purpose                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------ |
+| `NEXT_PUBLIC_SUPABASE_URL`      | Supabase project URL                                                     |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key                                                        |
+| `NEXT_PUBLIC_JITSI_DOMAIN`      | Jitsi host override (empty = self-hosted `meet.medicosporvenezuela.org`) |
+| `NEXT_PUBLIC_SUPPORT_WHATSAPP`  | Optional WhatsApp number shown on `/mi-caso`                             |
 
 **Server-only — NEVER prefix with `NEXT_PUBLIC`** (used by `/api/videoconsulta`):
 
@@ -299,7 +300,8 @@ Set in `.env` for local dev and in Vercel for production. See [.env.example](.en
   case opens `/panel-medico/consulta/[id]`.
 - **Panel counters:** doctors see personal/specialty counters; admins see waiting/present/active-system
   counters. Returning from close/no-show actions refreshes the panel via `/panel-medico?actualizado=1`, and
-  the panel also refreshes on focus and polling.
+  the panel also refreshes on focus; the queue itself updates via Supabase Realtime
+  (`postgres_changes` on `consultations`) — no polling.
 
 ### Jitsi troubleshooting — "calls don't connect with 2+ people"
 
@@ -349,10 +351,11 @@ ExecStartPre=/bin/sleep 15
 
 After `sudo systemctl daemon-reload`, this survives `sudo reboot` (the bridge re-registers automatically).
 
-**Emergency stopgap:** set `NEXT_PUBLIC_JITSI_DOMAIN` empty in Vercel and redeploy to fall back to public
-`meet.jit.si` — but only **new** patient requests get a jit.si room (existing cases keep their stored
-self-hosted URL, since `/api/videoconsulta` is idempotent). jit.si is a third-party public server, so it's a
-temporary measure only, not a home for patient PII.
+**Emergency stopgap (NO longer viable):** public `meet.jit.si` now forces the first participant to log
+in as moderator ("no moderators have yet arrived"), so falling back to it leaves patients stuck in the
+lobby. The app defaults to the self-hosted host and `browserRoomUrl` (lib/jitsi.ts) rewrites any legacy
+`meet.jit.si` room stored in the DB to the self-hosted instance when opening it. If the droplet is down,
+fix the droplet — there is no public fallback anymore.
 
 ---
 
@@ -364,7 +367,8 @@ temporary measure only, not a home for patient PII.
   on it.
 - No service-role key is used client-side. Role escalation is prevented: profile updates are admin-only via
   RLS, and `set_my_role` only finalizes the caller's own profile once (patient/doctor, never admin).
-- Doctors update only `last_seen_at` via `mark_myself_online()`.
+- Doctor online status is Supabase Realtime **Presence** (app-level, no DB writes): only active
+  doctors `track` themselves and only staff subscribe (`lib/presence.tsx`).
 - Avoid storing full consultation conversations — keep only minimal operational data.
 - `/admin` is unlinked from the public UI and `noindex` — that is **not** access control; RLS + the
   admin-role check on the page are.

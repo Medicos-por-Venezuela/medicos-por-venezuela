@@ -17,7 +17,7 @@ export default function AdminTiposProfesionales() {
         resourceLabel="tipo de profesional"
         pluralLabel="tipos de profesional"
         gender="m"
-        listPath="/api/v1/professional-types"
+        listPath="/api/v1/professional-types/admin"
         basePath="/api/v1/professional-types"
         fields={FIELDS}
       />
