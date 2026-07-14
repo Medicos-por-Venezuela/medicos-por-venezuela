@@ -411,6 +411,115 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-01
 
+- **Case detail: clearer patient header** — Zona, Edad (años) and Cédula now render as three clearly
+  labeled columns side by side, and the case **Categoría** (e.g. "Crisis de ansiedad") shows as a badge
+  next to the patient's name. File: `pages/panel-medico/consulta/[id].tsx`.
+
+- **Admin: inline-edit a patient's phone** — the cases table phone now has a pencil that opens an input
+  with a green check (Enter) to save / red ✕ (Esc) to cancel; verified with `.select()` and updates
+  every case of that patient locally. File: `pages/admin/dashboard.tsx`.
+
+- **Trazabilidad: log patient entry / WhatsApp choice** — the anon RPCs now record one-time timeline
+  events: `patient_entered_call` ("Paciente ingresó a la videollamada") on first video entry and
+  `patient_wants_whatsapp` ("Paciente prefirió ser contactado por WhatsApp") when they choose WhatsApp.
+  Files: `supabase_schema.sql` (**needs prod migration**), `eventLabel` in `pages/admin/dashboard.tsx`
+  and `pages/panel-medico/consulta/[id].tsx`.
+
+- **Patient chooses video vs. WhatsApp on /sala-espera** — after registering, the patient now picks
+  between "Ingresar a videollamada para ayuda inmediata" (existing Jitsi flow) and "Prefiero ser
+  contactado/a por WhatsApp". The WhatsApp choice flags the case (`consultations.contact_preference`)
+  via a new anon RPC `mark_patient_wants_whatsapp()` and it enters the doctors' contact pool
+  **immediately** (no 20-min wait); the panel's "no atendidos" queue condition is now
+  `contact_preference = 'whatsapp' OR waited ≥20 min`. Files: `supabase_schema.sql` (new column + RPC,
+  **needs prod migration**), `pages/sala-espera.tsx`, `pages/panel-medico.tsx`.
+
+- **Admin: reliable "Guardar cambios" in "Gestionar caso"** — the save now verifies both writes
+  (consultation + patient `needs_tags`) with `.select()` so a silent 0-row update (RLS/no match, which
+  returns no error) is caught and surfaced with the real DB message instead of appearing to succeed.
+  This fixes tipo de ayuda / especialidades edits that occasionally didn't stick. On success the panel
+  still closes (`setSelected(null)`); on a real failure it stays open with the error. File:
+  `pages/admin/dashboard.tsx`.
+
+- **Case detail: WhatsApp guidance reworded as bullets** — the red contact note in
+  `/panel-medico/consulta/[id]` is now a 3-item list (contact via WhatsApp to schedule a call; wait up
+  to 24h; log missing/wrong contact in the notes). File: `pages/panel-medico/consulta/[id].tsx`.
+
+- **Patient phone: forced +58 prefix, digits-only input** — the registration phone field
+  (`/registro-paciente`) now shows a fixed `+58` prefix and accepts only numbers (strips non-digits
+  and a leading 0); saved as `+58` + the local number. File: `pages/registro-paciente.tsx`.
+
+- **Case detail: patient phone is a big WhatsApp link** — in `/panel-medico/consulta/[id]` the patient
+  number is now a larger, tappable `wa.me` link so doctors can open WhatsApp directly from their phones.
+  File: `pages/panel-medico/consulta/[id].tsx`.
+
+- **Case detail: "Tengo un problema" button + modal** — replaced the always-on red top-right notice
+  with a "Tengo un problema" button that opens a popup showing the team WhatsApp contact
+  (+4915203003171). File: `pages/panel-medico/consulta/[id].tsx`.
+
+- **QR image hosted for social media** — added `public/qr-medicosporvenezuela.jpg`, served inline at
+  `/qr-medicosporvenezuela.jpg` so the link can be shared on social media.
+
+- **Instruction image URL forces download** — opening `/instruccion-jitsi.png` directly now downloads
+  the file (as `instruccion-videollamada.png`) via a `Content-Disposition: attachment` header, while
+  still rendering normally in the `<img>` on `/sala-espera`. File: `next.config.js` (`headers()`).
+
+- **Admin: "Referencia y trazabilidad" in "Gestionar caso"** — selecting a case now loads its
+  `consultation_events` audit trail and shows the history (event label, note, author + role, and the
+  timestamp in Venezuela time) at the bottom of the manage panel, so admins can see what has happened.
+  Refreshes after an inline status change on the selected case. File: `pages/admin/dashboard.tsx`.
+
+- **Case detail: WhatsApp contact guidance next to patient phone** — added a red note under the
+  patient's phone in `/panel-medico/consulta/[id]` explaining to prefer WhatsApp chat (better
+  connectivity), to agree a call time there, to wait up to 24h for a reply, and to log missing/wrong
+  contacts in the medical notes. File: `pages/panel-medico/consulta/[id].tsx`.
+
+- **Admin: editable "Especialidades que pueden ver este caso" (override)** — "Gestionar caso" now has
+  an editable specialties selector: editing the Tipo de ayuda re-derives it, but the admin can also
+  toggle specialties directly to override the routing. Saved as `consultations.required_specialties`
+  (null when it matches the derived set, so it keeps deriving). The doctor panel honors it
+  (`specialtyCanSee`), and the cases table "Especialidades" line shows the effective set
+  (`effectiveSpecialties`). New helpers in `lib/utils.ts`; needs one additive prod migration
+  (`required_specialties text[]`). Files: `supabase_schema.sql`, `lib/utils.ts`,
+  `pages/panel-medico.tsx`, `pages/admin/dashboard.tsx`.
+- **Case detail: reworked "Gestión de la consulta"** — removed the "Unirse a videoconsulta" / "Cerrar
+  consulta" / "Paciente no estaba en la sala de espera" buttons (and the now-unused `closeConsultation`
+  / `browserRoomUrl`); added an **Estado** dropdown for **all** cases (Abierta / Ya contactado vía
+  WhatsApp / Referenciado / Necesita ir a centro / Paciente no se presentó / Cerrado — sets `closed_at`
+  on terminal statuses) plus "Guardar nota". Added a **red** top-right notice ("Si tienes problemas
+  con este caso, contáctanos vía +4915203003171 en WhatsApp") and moved "Referencia y trazabilidad"
+  to the bottom of the page. File: `pages/panel-medico/consulta/[id].tsx`.
+- **Admin: "Doctor contactará vía WhatsApp" indicator** — in the cases table, under Estado and below
+  Especialidades, a green "Doctor contactará vía WhatsApp" line now shows when a case was claimed via
+  the WhatsApp button (`attended_via_whatsapp`), so admins can tell it apart from a video-attended
+  "Abierta" case. File: `pages/admin/dashboard.tsx`.
+- **Admin: removed "Derivaciones por especialidad" section** — dropped the referrals-by-specialty
+  card (and its dead `bySpecialty`/`referred` helpers); "Gestionar caso" is now full-width. File:
+  `pages/admin/dashboard.tsx`.
+- **Admin: clicking a case scrolls to "Gestionar caso"** — selecting a case from the cases table now
+  smooth-scrolls up to the manage panel (via a ref + `scrollIntoView`), so the admin doesn't have to
+  scroll manually. File: `pages/admin/dashboard.tsx`.
+- **Panel queues respect the doctor's specialty** — the `/panel-medico` "Pacientes que no han podido
+  ser atendidos" and live video queues now only show cases the logged-in user's specialty can attend
+  (`canAttend`), applied to admins by their specialty too (removed the `isCurrentUserAdmin` bypass on
+  the panel). So a Medicina general account no longer sees reserved psychology cases. File:
+  `pages/panel-medico.tsx`.
+- **Admin: edit a case's "tipo de ayuda" to re-route it** — the "Gestionar caso" panel now has an
+  editable Tipo de ayuda (categorías/necesidades) selector with a live preview of the specialties
+  that will be able to attend it; saving updates `patients.needs_tags` + `consultations.category` so
+  the routing re-derives (fixes a patient's wrong selection). Centralized the needs list as
+  `NEEDS` in `lib/utils.ts` (shared with the registration form). Files: `lib/utils.ts`,
+  `pages/admin/dashboard.tsx`, `pages/registro-paciente.tsx`.
+- **Admin cases: show eligible specialties (replaces "Prioridad")** — under the Estado column, the
+  cases table now lists which specialties can pick up each case (`eligibleSpecialties` = specialties
+  whose scope fits the case AND are allowed by the psychology reservation), replacing the "Prioridad"
+  line. Files: `lib/utils.ts` (helper), `pages/admin/dashboard.tsx`.
+- **Split live video queue vs. unattended queue** — "Atender al siguiente paciente" now only counts
+  and attends patients **actively waiting in the video call** (entered the call within the last
+  `LIVE_CALL_WINDOW_MIN` = 60 min, unassigned), and the button is disabled unless one exists. The
+  "Pacientes que no han podido ser atendidos hasta ahora" section keeps its own rule (unassigned,
+  registered > 20 min). Added a third DB query for the live queue and merged the sources deduped by
+  id; KPIs are now "En videollamada ahora" / "Sin atender (+20 min)" / "Consultas cerradas por mí".
+  File: `pages/panel-medico.tsx`.
 - **Home page: extendido "médico o psicólogo" → "profesional de la salud" en toda la página** —
   ticket `refactor(Home-page)`, barrido completo de las 8 menciones restantes que solo nombraban
   médico/psicólogo: los 3 steps de "¿Cómo funciona?", la meta description, el pill del hero, el H1
