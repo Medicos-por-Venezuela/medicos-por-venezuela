@@ -5,6 +5,18 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-07-14
+
+- **Videoconsulta: fix "no moderators have yet arrived"** — las salas se generaban en el público
+  `meet.jit.si`, que hoy obliga al primero en entrar a loguearse como moderador (de ahí el error
+  para paciente y médico). El default de dominio ahora apunta a nuestra instancia self-hosted
+  **abierta** `meet.medicosporvenezuela.org` (override con `NEXT_PUBLIC_JITSI_DOMAIN` /
+  `JITSI_DOMAIN`). Además `browserRoomUrl` **sana** salas legacy ya guardadas en `meet.jit.si` al
+  abrirlas — es el único punto por donde paciente (`sala-espera`) y médico (`consulta/[id]`) abren
+  la sala, así que no hace falta migrar datos. Archivos: `lib/jitsi.ts`; backend
+  `src/core/config.py`. Nota: la videollamada real requiere HTTPS + cámara/mic, no corre en
+  `http://localhost`.
+
 ## 2026-07-10
 
 - **Admin: pantalla Usuarios (multi-rol RBAC)** — nueva página `/admin/usuarios` para el nuevo
