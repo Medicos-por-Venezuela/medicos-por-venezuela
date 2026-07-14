@@ -221,6 +221,132 @@ const REASONS = [
 
 /* ---------- Page ---------- */
 
+// Páginas aliadas: organizaciones externas que apoyan a Venezuela (mismo dato del MVP).
+const ALLIES: { title: string; links: { name: string; display: string; url: string }[] }[] = [
+  {
+    title: 'Donaciones',
+    links: [
+      {
+        name: 'We Love Foundation',
+        display: 'welove.foundation',
+        url: 'https://www.welove.foundation'
+      },
+      {
+        name: 'Sun Risas',
+        display: 'fundraise.sunrisas.org',
+        url: 'https://fundraise.sunrisas.org/campaign/815513/donate'
+      },
+      {
+        name: 'The House Project',
+        display: 'thehouse-project.org',
+        url: 'https://www.thehouse-project.org'
+      },
+      {
+        name: 'GoFundMe · Venezuela Earthquake Relief',
+        display: 'gofundme.com',
+        url: 'https://www.gofundme.com/c/act/venezuela-earthquake-relief'
+      }
+    ]
+  },
+  {
+    title: 'Ayuda a niños',
+    links: [
+      {
+        name: 'Venezuela Ayuda',
+        display: 'terremoto.hazlohoy.org',
+        url: 'https://www.terremoto.hazlohoy.org'
+      },
+      {
+        name: 'Ayuda Niños',
+        display: 'asonacop.com/directorio',
+        url: 'https://www.asonacop.com/directorio'
+      },
+      {
+        name: 'Plan International',
+        display: 'plan-international.org',
+        url: 'https://www.plan-international.org/get-involved/venezuela-earthquake-appeal/'
+      },
+      {
+        name: 'Fundación Red de Casas Don Bosco',
+        display: 'misionessalesianas.org',
+        url: 'https://www.misionessalesianas.org/emergencia-terremotos-en-venezuela'
+      }
+    ]
+  },
+  {
+    title: 'Salud y medicina',
+    links: [
+      {
+        name: 'International Medical Corps',
+        display: 'internationalmedicalcorps.org',
+        url: 'https://www.internationalmedicalcorps.org'
+      },
+      {
+        name: 'Escucha Activa · Consultas psicológicas',
+        display: 'escuchactiva.com',
+        url: 'https://escuchactiva.com'
+      },
+      { name: 'Direct Relief', display: 'directrelief.org', url: 'https://www.directrelief.org' },
+      { name: 'Project HOPE', display: 'projecthope.org', url: 'https://www.projecthope.org' }
+    ]
+  },
+  {
+    title: 'Donación de comida',
+    links: [
+      {
+        name: 'Alimenta la Solidaridad',
+        display: 'alimentasolidaridad.org',
+        url: 'https://www.alimentasolidaridad.org'
+      },
+      {
+        name: 'Programa Mundial de Alimentos (WFP)',
+        display: 'wfp.org',
+        url: 'https://www.wfp.org'
+      },
+      { name: 'World Central Kitchen (WCK)', display: 'wck.org', url: 'https://www.wck.org' }
+    ]
+  },
+  {
+    title: 'Ayuda veterinaria',
+    links: [
+      { name: 'Laika', display: 'IG: @laikamascotas', url: 'https://instagram.com/laikamascotas' },
+      {
+        name: 'Fundación Ruta Animal',
+        display: 'IG: @fund_rutaanimal',
+        url: 'https://instagram.com/fund_rutaanimal'
+      }
+    ]
+  },
+  {
+    title: 'Registro de ayuda',
+    links: [
+      { name: 'VeneConnect', display: 'veneconnect.com', url: 'https://www.veneconnect.com' },
+      { name: 'Donar Seguro', display: 'donarseguro.com', url: 'https://www.donarseguro.com' }
+    ]
+  },
+  {
+    title: 'Ingenieros y arquitectos',
+    links: [
+      { name: 'SismoAyuda VE', display: 'sismoayudave.com', url: 'https://www.sismoayudave.com' },
+      {
+        name: 'Terremoto Venezuela',
+        display: 'terremotovenezuela.com',
+        url: 'https://www.terremotovenezuela.com'
+      }
+    ]
+  },
+  {
+    title: 'Búsqueda de desaparecidos',
+    links: [
+      {
+        name: 'Desaparecidos Terremoto Venezuela',
+        display: 'desaparecidosterremotovenezuela.com',
+        url: 'https://www.desaparecidosterremotovenezuela.com'
+      }
+    ]
+  }
+]
+
 export default function Home() {
   const router = useRouter()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -283,6 +409,7 @@ export default function Home() {
               <a href="#inicio">Inicio</a>
               <a href="#como-funciona">Cómo funciona</a>
               <a href="#por-que">¿Por qué usarlo?</a>
+              <a href="#aliadas">Páginas aliadas</a>
               <a href="#contacto">Contacto</a>
               <button className="nav-login" onClick={goPacienteLogin}>
                 Seguir mi caso
@@ -414,6 +541,38 @@ export default function Home() {
                 </li>
               ))}
             </ul>
+          </div>
+        </section>
+
+        {/* ---------- Páginas aliadas ---------- */}
+        <section id="aliadas" className="section">
+          <div className="section-head">
+            <h2 className="section-title">Páginas aliadas</h2>
+            <p className="section-lead">
+              Organizaciones que apoyan a Venezuela. Los enlaces abren sitios externos.
+            </p>
+          </div>
+
+          <div className="allies">
+            {ALLIES.map((group) => (
+              <div className="ally-group" key={group.title}>
+                <h3 className="ally-title">{group.title}</h3>
+                {group.links.length === 0 ? (
+                  <p className="ally-empty">Próximamente</p>
+                ) : (
+                  <ul className="ally-list">
+                    {group.links.map((l) => (
+                      <li key={l.url}>
+                        <a href={l.url} target="_blank" rel="noopener noreferrer">
+                          <span className="ally-name">{l.name}</span>
+                          <span className="ally-url">{l.display}</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
           </div>
         </section>
 
@@ -1010,6 +1169,68 @@ export default function Home() {
           }
         }
 
+        .allies {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 20px;
+        }
+        .ally-group {
+          background: var(--gray);
+          border: 1px solid #e8ecf3;
+          border-radius: 16px;
+          padding: 22px 22px 24px;
+        }
+        .ally-title {
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          font-size: 13.5px;
+          font-weight: 800;
+          color: var(--blue);
+          margin: 0 0 14px;
+        }
+        .ally-list {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+          display: grid;
+          gap: 10px;
+        }
+        .ally-list a {
+          display: block;
+          text-decoration: none;
+          padding: 11px 13px;
+          border-radius: 12px;
+          background: #fff;
+          border: 1px solid #e8ecf3;
+          transition:
+            box-shadow 0.15s ease,
+            transform 0.12s ease,
+            border-color 0.15s ease;
+        }
+        .ally-list a:hover {
+          box-shadow: 0 8px 20px rgba(8, 22, 48, 0.1);
+          transform: translateY(-1px);
+          border-color: var(--gold);
+        }
+        .ally-name {
+          display: block;
+          font-weight: 700;
+          color: var(--ink);
+          font-size: 15px;
+          line-height: 1.3;
+        }
+        .ally-url {
+          display: block;
+          font-size: 12.5px;
+          color: var(--muted);
+          margin-top: 3px;
+        }
+        .ally-empty {
+          color: var(--muted);
+          font-size: 14px;
+          margin: 0;
+        }
+
         /* Responsive */
         @media (max-width: 620px) {
           .float-banner {
@@ -1023,6 +1244,9 @@ export default function Home() {
         }
 
         @media (max-width: 860px) {
+          .allies {
+            grid-template-columns: 1fr;
+          }
           .nav-toggle {
             display: flex;
           }

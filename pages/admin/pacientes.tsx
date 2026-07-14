@@ -11,7 +11,11 @@ import {
 } from '../../lib/admin'
 import { useEscapeToClose } from '../../lib/hooks'
 import { supabase } from '../../lib/supabase'
-import { SPECIALTIES, STATUS_LABELS } from '../../lib/utils'
+import { eligibleSpecialties, SPECIALTIES, STATUS_LABELS } from '../../lib/utils'
+// Catálogo real de especialidades ({id, name}) del backend: la consulta matchea con el médico por
+// `specialty_id` (el registro del paciente ya la setea), así que el admin re-rutea editando ESA
+// columna — el mismo catálogo que usa el registro.
+import { fetchSpecialties } from '../../lib/doctors'
 
 // Sortable columns of the cases table, with fixed widths so the table distributes space evenly
 // (table-layout: fixed). The trailing "Acciones" column is not sortable.
@@ -36,6 +40,8 @@ export default function AdminPacientes() {
   const [caseStatus, setCaseStatus] = useState('')
   const [caseDoctor, setCaseDoctor] = useState('')
   const [caseNote, setCaseNote] = useState('')
+  const [caseSpecialtyId, setCaseSpecialtyId] = useState('')
+  const [specialtyCatalog, setSpecialtyCatalog] = useState<{ id: string; name: string }[]>([])
   const [savingCase, setSavingCase] = useState(false)
   // Searchable "Médico asignado" combobox (queries the DB so it reaches all doctors, not the 1000 cap).
   const [caseDoctorName, setCaseDoctorName] = useState('')
@@ -137,6 +143,17 @@ export default function AdminPacientes() {
 
     if (profilesRes.data) setProfiles(profilesRes.data as Profile[])
     if (consultationsRes.data) setConsultations(consultationsRes.data as Consultation[])
+    // El catálogo de especialidades no cambia entre recargas del listado: una sola vez.
+    if (specialtyCatalog.length === 0) {
+      try {
+        const list = await fetchSpecialties()
+        setSpecialtyCatalog(
+          list.filter((s) => s.status === 'active').map((s) => ({ id: s.id, name: s.name }))
+        )
+      } catch {
+        // Sin catálogo el select queda solo con "— Sin especialidad —"; el resto del panel sigue.
+      }
+    }
 
     // Resolve names of assigned doctors that may live beyond the loaded 1000 profiles, so the cases
     // table shows the real name (not a generic "Médico") for cases claimed by older doctors.
@@ -181,6 +198,9 @@ export default function AdminPacientes() {
   const doctorName = (id: string | null) =>
     doctors.find((d) => d.id === id)?.full_name ||
     (id ? doctorNameCache[id] || 'Médico' : 'Sin asignar')
+
+  const specialtyName = (id: string | null) =>
+    (id && specialtyCatalog.find((s) => s.id === id)?.name) || ''
 
   // Super-admins available in the "Seguimiento" dropdown (who is following up a case).
   const superAdmins = useMemo(() => profiles.filter((p) => p.role === 'super_admin'), [profiles])
@@ -250,6 +270,7 @@ export default function AdminPacientes() {
     setCaseStatus(c.status)
     setCaseDoctor(c.assigned_doctor_id || '')
     setCaseNote(c.internal_note || '')
+    setCaseSpecialtyId(c.specialty_id || '')
     setCaseDoctorName(c.assigned_doctor_id ? doctorName(c.assigned_doctor_id) : '')
     setDoctorQuery('')
     setDoctorMenuOpen(false)
@@ -261,7 +282,8 @@ export default function AdminPacientes() {
     const update: Record<string, unknown> = {
       status: caseStatus,
       assigned_doctor_id: caseDoctor || null,
-      internal_note: caseNote
+      internal_note: caseNote,
+      specialty_id: caseSpecialtyId || null
     }
     if (['closed', 'patient_no_show', 'closed_by_admin'].includes(caseStatus))
       update.closed_at = new Date().toISOString()
@@ -281,7 +303,11 @@ export default function AdminPacientes() {
     await supabase.from('consultation_events').insert({
       consultation_id: selected.id,
       event_type: 'admin_update',
-      note: `Estado: ${STATUS_LABELS[caseStatus] || caseStatus}; médico: ${doctorName(caseDoctor || null)}`
+      note:
+        `Estado: ${STATUS_LABELS[caseStatus] || caseStatus}; médico: ${doctorName(caseDoctor || null)}` +
+        ((caseSpecialtyId || null) !== (selected.specialty_id || null)
+          ? `; especialidad: ${specialtyName(caseSpecialtyId) || '—'}`
+          : '')
     })
     setSavingCase(false)
     setMessage('Caso actualizado.')
@@ -566,6 +592,27 @@ export default function AdminPacientes() {
                 </select>
               </div>
               <div>
+                <label className="label">Especialidad</label>
+                {/* `specialty_id` es la columna con la que la consulta matchea con el médico
+                    (el registro del paciente la setea): cambiarla re-rutea el caso. */}
+                <select
+                  value={caseSpecialtyId}
+                  onChange={(e) => setCaseSpecialtyId(e.target.value)}
+                >
+                  <option value="">— Sin especialidad —</option>
+                  {(caseSpecialtyId && !specialtyCatalog.some((s) => s.id === caseSpecialtyId)
+                    ? [{ id: caseSpecialtyId, name: 'Especialidad inactiva/desconocida' }]
+                    : []
+                  )
+                    .concat(specialtyCatalog)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
                 <label className="label">Nota interna</label>
                 <textarea rows={4} value={caseNote} onChange={(e) => setCaseNote(e.target.value)} />
               </div>
@@ -764,6 +811,18 @@ export default function AdminPacientes() {
                     <td>
                       <Line label="Categoría" value={c.category} />
                       <Line label="Motivo" value={c.chief_complaint} />
+                      {/* Especialidad asignada (la columna del match); los casos viejos sin
+                          specialty_id caen a las especialidades derivadas del tipo/necesidades. */}
+                      <Line
+                        label="La pueden atender"
+                        value={
+                          specialtyName(c.specialty_id) ||
+                          eligibleSpecialties(
+                            c.category || null,
+                            c.patients?.needs_tags || null
+                          ).join(', ')
+                        }
+                      />
                     </td>
                     <td>
                       <select

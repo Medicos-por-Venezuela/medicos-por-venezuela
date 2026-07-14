@@ -41,6 +41,9 @@ export interface PanelConsultation {
   status: string
   priority: string
   category: string | null
+  // Nombre de la especialidad solicitada (specialty_id resuelta por el backend): la columna
+  // con la que la consulta matchea con el médico. null en consultas viejas (fallback legacy).
+  specialty: string | null
   chief_complaint: string | null
   referred_specialty: string | null
   video_room_url: string | null

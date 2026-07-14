@@ -39,6 +39,7 @@ export type Consultation = {
   status: string
   priority: string
   category: string | null
+  specialty_id: string | null
   chief_complaint: string | null
   referred_specialty: string | null
   internal_note: string | null

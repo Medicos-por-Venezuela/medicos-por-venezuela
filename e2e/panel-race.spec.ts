@@ -33,8 +33,9 @@ test('consulta nueva visible en tiempo real y solo un médico la toma (carrera)'
   await page1.goto('/panel-medico')
   await page2.goto('/panel-medico')
 
-  // El panel carga por el backend (no se queda en "Cargando") y muestra la cola.
-  await expect(page1.getByText('Pacientes esperando')).toBeVisible()
+  // El panel carga por el backend (no se queda en "Cargando") y muestra los KPIs de la cola
+  // (partidos en "En videollamada ahora" / "Sin atender (+20 min)").
+  await expect(page1.getByText('En videollamada ahora')).toBeVisible()
 
   // Ambos ven el caso recién creado de inmediato (sin el gate de 20 min).
   await expect(page1.getByText('E2E Paciente Carrera')).toBeVisible()
@@ -42,9 +43,13 @@ test('consulta nueva visible en tiempo real y solo un médico la toma (carrera)'
 
   // Ambos abren el modal ANTES de que ninguno confirme: así la carrera es determinista (si doc1
   // confirmara primero, Realtime le quitaría la card a doc2 y no podría intentar tomarla).
+  // El botón se busca DENTRO de la card de este paciente: la cola puede traer otros casos en
+  // espera (de otros specs o datos manuales) y sin scoping el localizador strict fallaría.
   const waBtn = /Puedo atender a este paciente vía WhatsApp/i
-  await page1.getByRole('button', { name: waBtn }).click()
-  await page2.getByRole('button', { name: waBtn }).click()
+  const cardIn = (page: typeof page1) =>
+    page.locator('.card-flat').filter({ hasText: 'E2E Paciente Carrera' })
+  await cardIn(page1).getByRole('button', { name: waBtn }).click()
+  await cardIn(page2).getByRole('button', { name: waBtn }).click()
   await expect(page1.getByRole('button', { name: /^Aceptar$/ })).toBeVisible()
   await expect(page2.getByRole('button', { name: /^Aceptar$/ })).toBeVisible()
 
