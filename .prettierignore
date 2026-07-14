@@ -1,0 +1,3 @@
+# Generado por pnpm — nunca se formatea a mano (prettier --check lo hacía fallar en CI;
+# lint-staged nunca lo tocó porque solo formatea ts/tsx/js/jsx/json/md/css).
+pnpm-lock.yaml
