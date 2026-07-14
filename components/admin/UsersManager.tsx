@@ -2,7 +2,7 @@
 // users and grant/revoke roles. This is additive to (and independent from) the Supabase-direct
 // single-role `profiles.role` mechanism used by pages/admin/doctores.tsx ("Revocar acceso") — do
 // not merge the two, they're different backends for different account kinds.
-import { Fragment, FormEvent, useState } from 'react'
+import { Fragment, FormEvent, useEffect, useRef, useState } from 'react'
 import { getAccessToken } from '../../lib/admin'
 import { fmtDate } from '../../lib/admin'
 import { useMountEffect } from '../../lib/hooks'
@@ -56,6 +56,7 @@ export default function UsersManager() {
   const [usersLoading, setUsersLoading] = useState(false)
   const [usersError, setUsersError] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
+  const [search, setSearch] = useState('')
   const [skip, setSkip] = useState(0)
   const [hasMore, setHasMore] = useState(false)
 
@@ -82,7 +83,7 @@ export default function UsersManager() {
   const canAssignRoles = !!permissions?.permissions.includes('roles.assign')
   const canGrantSuperAdmin = !!permissions?.roles.includes('super_admin')
 
-  async function loadUsersPage(nextSkip: number, role: string) {
+  async function loadUsersPage(nextSkip: number, role: string, searchTerm: string) {
     setUsersLoading(true)
     setUsersError('')
     try {
@@ -90,7 +91,8 @@ export default function UsersManager() {
       const data = await fetchProfiles(token, {
         skip: nextSkip,
         limit: PAGE_SIZE,
-        role: role !== 'all' ? role : undefined
+        role: role !== 'all' ? role : undefined,
+        search: searchTerm || undefined
       })
       setUsers(data)
       setSkip(nextSkip)
@@ -121,14 +123,28 @@ export default function UsersManager() {
       setLoading(false)
       // Deliberately outside the try/catch above: reuses loadUsersPage's own error handling
       // (setUsersError, not setLoadError) instead of duplicating its fetch here.
-      if (perms.permissions.includes('profiles.read')) await loadUsersPage(0, 'all')
+      if (perms.permissions.includes('profiles.read')) await loadUsersPage(0, 'all', '')
     })()
   })
 
   function changeRoleFilter(role: string) {
     setRoleFilter(role)
-    loadUsersPage(0, role)
+    loadUsersPage(0, role, search)
   }
+
+  // Debounce del buscador (300ms, como el resto de buscadores del admin): recarga desde la
+  // primera página con el término nuevo. El ref salta el disparo del montaje (useMountEffect
+  // ya hace la carga inicial; sin el guard, se duplicaría el primer fetch).
+  const searchMounted = useRef(false)
+  useEffect(() => {
+    if (!searchMounted.current) {
+      searchMounted.current = true
+      return
+    }
+    const t = setTimeout(() => loadUsersPage(0, roleFilter, search), 300)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
 
   async function submitCreate(e: FormEvent) {
     e.preventDefault()
@@ -148,7 +164,7 @@ export default function UsersManager() {
       )
       setCreateMessage(`Usuario ${created.email} creado con rol ${created.role}.`)
       setCreateForm(emptyCreateForm)
-      if (canReadProfiles) await loadUsersPage(0, roleFilter)
+      if (canReadProfiles) await loadUsersPage(0, roleFilter, search)
     } catch (e) {
       if (e instanceof ApiError && e.status === 502) {
         setCreateError(
@@ -319,6 +335,12 @@ export default function UsersManager() {
               </div>
             )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+              <input
+                style={{ flex: '1 1 220px' }}
+                placeholder="Buscar por nombre o email…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
               <select
                 style={{ flex: '0 1 160px' }}
                 value={roleFilter}
@@ -521,14 +543,14 @@ export default function UsersManager() {
               <button
                 className="btn btn-muted"
                 disabled={skip === 0 || usersLoading}
-                onClick={() => loadUsersPage(Math.max(0, skip - PAGE_SIZE), roleFilter)}
+                onClick={() => loadUsersPage(Math.max(0, skip - PAGE_SIZE), roleFilter, search)}
               >
                 Anterior
               </button>
               <button
                 className="btn btn-muted"
                 disabled={!hasMore || usersLoading}
-                onClick={() => loadUsersPage(skip + PAGE_SIZE, roleFilter)}
+                onClick={() => loadUsersPage(skip + PAGE_SIZE, roleFilter, search)}
               >
                 Siguiente
               </button>
