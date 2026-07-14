@@ -118,11 +118,61 @@ export default function ConsultaDetalle() {
   const [poolOpen, setPoolOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
+  // Error específico del cierre (se muestra en rojo debajo del botón "Cerrar consulta").
+  const [closeError, setCloseError] = useState('')
+  // Titila el borde de "Notas del médico" ~3s cuando el cierre se bloquea por falta de nota.
+  const [notesBlink, setNotesBlink] = useState(false)
+  // Fuerza re-render periódico para re-evaluar la presencia del paciente (ventana de tiempo).
+  const [, setPresenceTick] = useState(0)
+
+  function flagMissingNote(msg: string) {
+    setCloseError(msg)
+    setNotesBlink(true)
+    window.setTimeout(() => setNotesBlink(false), 3000)
+  }
 
   useEffect(() => {
     if (!consultationId) return
     init(consultationId)
   }, [consultationId])
+
+  // Presencia del paciente EN VIVO (Realtime): su heartbeat (mark_patient_waiting) actualiza la
+  // consulta en la BD; nos suscribimos a esos cambios y refrescamos patient_last_seen_at/status SIN
+  // pisar la nota que el médico está escribiendo. Así ve al paciente entrar/salir de la sala sin
+  // recargar (antes esta página cargaba una sola vez).
+  useEffect(() => {
+    if (!consultationId) return
+    const channel = supabase
+      .channel(`consulta-${consultationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'consultations',
+          filter: `id=eq.${consultationId}`
+        },
+        (payload) => {
+          const row = payload.new as { patient_last_seen_at: string | null; status: string }
+          setConsultation((prev) =>
+            prev
+              ? { ...prev, patient_last_seen_at: row.patient_last_seen_at, status: row.status }
+              : prev
+          )
+        }
+      )
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [consultationId])
+
+  // Si el paciente se va (no llegan más heartbeats), re-evaluamos cada 30s para que "En sala" pase
+  // a "Sin conexión" al vencer la ventana, aunque no haya evento Realtime.
+  useEffect(() => {
+    const t = window.setInterval(() => setPresenceTick((n) => n + 1), 30000)
+    return () => window.clearInterval(t)
+  }, [])
 
   async function init(id: string) {
     const { data: sessionData } = await supabase.auth.getSession()
@@ -297,15 +347,16 @@ export default function ConsultaDetalle() {
   async function closeConsultation(outcome: 'closed' | 'patient_no_show' = 'closed') {
     if (!consultation || !profile) return
     setMessage('')
+    setCloseError('')
     const noShow = outcome === 'patient_no_show'
     // Cierre real (no ausencia): exige una nota NO vacía y YA guardada, y confirmación.
     if (!noShow) {
       if (!note.trim()) {
-        setMessage('Agrega una nota antes de cerrar la consulta.')
+        flagMissingNote('Agrega una nota antes de cerrar la consulta.')
         return
       }
       if (note !== savedNote) {
-        setMessage('Guarda la nota antes de cerrar la consulta.')
+        flagMissingNote('Guarda la nota antes de cerrar la consulta.')
         return
       }
       if (!window.confirm('¿Seguro que deseas cerrar la consulta? Esta acción la finaliza.')) {
@@ -318,7 +369,7 @@ export default function ConsultaDetalle() {
       .eq('id', consultation.id)
 
     if (error) {
-      setMessage(noShow ? 'No se pudo marcar como ausente.' : 'No se pudo cerrar la consulta.')
+      setCloseError(noShow ? 'No se pudo marcar como ausente.' : 'No se pudo cerrar la consulta.')
       return
     }
 
@@ -378,6 +429,20 @@ export default function ConsultaDetalle() {
               {STATUS_LABELS[consultation.status] || consultation.status}
             </span>
           </div>
+
+          {/* Unirse a la videoconsulta: acción principal, arriba de todo (antes del paciente).
+              Aparece siempre que exista la sala, aunque el caso se haya tomado por WhatsApp. */}
+          {consultation.video_room_url && (
+            <a
+              className="btn btn-primary btn-full"
+              href={browserRoomUrl(consultation.video_room_url)}
+              target="_blank"
+              rel="noreferrer"
+              style={{ marginBottom: 16 }}
+            >
+              Unirse a videoconsulta
+            </a>
+          )}
 
           {/* Acciones de referencia, en una fila debajo del encabezado. */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -539,22 +604,13 @@ export default function ConsultaDetalle() {
                 <div>
                   <label className="label">Notas del médico</label>
                   <textarea
+                    className={notesBlink ? 'note-blink' : undefined}
                     rows={6}
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     placeholder="Evita escribir historia clínica completa. Solo información necesaria para coordinación."
                   />
                 </div>
-                {!consultation.attended_via_whatsapp && consultation.video_room_url && (
-                  <a
-                    className="btn btn-primary"
-                    href={browserRoomUrl(consultation.video_room_url)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Unirse a videoconsulta
-                  </a>
-                )}
                 <button className="btn btn-secondary" onClick={saveNote}>
                   Guardar nota
                 </button>
@@ -575,6 +631,12 @@ export default function ConsultaDetalle() {
                 >
                   Cerrar consulta
                 </button>
+                {/* Error del cierre: en rojo, JUSTO debajo del botón. */}
+                {closeError && (
+                  <p style={{ color: '#dc2626', fontWeight: 500, fontSize: 14, margin: '4px 0 0' }}>
+                    {closeError}
+                  </p>
+                )}
               </div>
             </section>
           </div>
@@ -602,6 +664,22 @@ export default function ConsultaDetalle() {
 
         .detail-full-span {
           grid-column: 1 / -1;
+        }
+
+        /* Borde de "Notas del médico" titilando ~3s cuando falta la nota al cerrar. */
+        .note-blink {
+          animation: note-blink 0.5s ease-in-out 0s 6;
+        }
+        @keyframes note-blink {
+          0%,
+          100% {
+            border-color: #dc2626;
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.25);
+          }
+          50% {
+            border-color: #cbd5e1;
+            box-shadow: none;
+          }
         }
 
         @media (min-width: 640px) {

@@ -107,11 +107,11 @@ export async function createDoctor(payload: DoctorCreate): Promise<DoctorRespons
 
 export interface DoctorPoolItem {
   id: string
+  user_id: string | null // para cruzar con Realtime Presence y saber si está online
   full_name: string
   specialty_id: string | null
   professional_type_id: string | null
-  phone: string | null
-  online: boolean
+  // Sin teléfono: se revela (y audita) aparte con revealDoctorContact().
 }
 
 export interface DoctorPoolPage {
@@ -124,7 +124,9 @@ export interface DoctorPoolParams {
   limit?: number
   specialty_id?: string
   professional_type_id?: string
-  online?: boolean // true=logeados · false=offline · undefined=todos
+  search?: string
+  online?: boolean // true=solo online · false=solo offline · undefined=todos
+  online_ids?: string[] // user_ids que el cliente sabe online (Presence), para el filtro online
 }
 
 // GET /api/v1/doctors/pool — requiere Bearer (permiso doctors.read; el médico ya lo tiene).
@@ -137,10 +139,26 @@ export async function fetchDoctorPool(
   if (params.limit != null) qs.set('limit', String(params.limit))
   if (params.specialty_id) qs.set('specialty_id', params.specialty_id)
   if (params.professional_type_id) qs.set('professional_type_id', params.professional_type_id)
+  if (params.search) qs.set('search', params.search)
   if (params.online != null) qs.set('online', String(params.online))
+  for (const id of params.online_ids || []) qs.append('online_ids', id)
   return getJson<DoctorPoolPage>(
     `/api/v1/doctors/pool?${qs.toString()}`,
     'No se pudo cargar el pool de médicos',
+    token
+  )
+}
+
+// POST /api/v1/doctors/{id}/contact — revela el WhatsApp del médico y lo REGISTRA en audit_log
+// (quién vio el número de quién). El número no viene en el listado del pool: solo por acá.
+export async function revealDoctorContact(
+  doctorId: string,
+  token: string
+): Promise<{ phone: string | null }> {
+  return postJson<{ phone: string | null }>(
+    `/api/v1/doctors/${doctorId}/contact`,
+    {},
+    'No se pudo obtener el contacto',
     token
   )
 }
