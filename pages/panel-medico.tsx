@@ -18,6 +18,7 @@ import {
   minutesSince
 } from '../lib/utils'
 import { browserRoomUrl } from '../lib/jitsi'
+import { ensureVideoRoom } from '../lib/patients'
 
 type Patient = {
   id: string
@@ -306,8 +307,19 @@ export default function PanelMedico() {
 
   async function openConsultation(c: Consultation) {
     if (!profile) return
+    // Si el caso no tiene sala, créala ANTES del claim (el backend solo la genera mientras
+    // sigue en espera; es idempotente): sana consultas viejas sin video_room_url — casos
+    // tomados por WhatsApp que se liberaron, o creados mientras el hosting rompía la creación.
+    let room = c.video_room_url
+    if (!room) {
+      try {
+        room = (await ensureVideoRoom(c.id)).video_room_url || null
+      } catch {
+        // 409 (ya no está en espera) u otro fallo: se sigue sin sala, como antes.
+      }
+    }
     if (!(await claimCase(c, false))) return
-    if (c.video_room_url) window.open(browserRoomUrl(c.video_room_url), '_blank')
+    if (room) window.open(browserRoomUrl(room), '_blank')
     await router.push(`/panel-medico/consulta/${c.id}`)
   }
 

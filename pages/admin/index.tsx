@@ -4,6 +4,7 @@ import { useState } from 'react'
 import AuthField from '../../components/auth/AuthField'
 import AuthPanel from '../../components/auth/AuthPanel'
 import GoogleButton from '../../components/GoogleButton'
+import { effectiveAdminRole } from '../../lib/admin'
 import { signInWithGoogle } from '../../lib/auth'
 import { supabase } from '../../lib/supabase'
 
@@ -34,7 +35,12 @@ export default function AdminLogin() {
         .single()
       if (profileError) throw profileError
 
-      if (!profile.active || !['admin', 'super_admin'].includes(profile.role)) {
+      // Multi-rol RBAC: el rol legacy es UNO solo; un doctor puede tener admin/super_admin
+      // adicionales en user_roles — effectiveAdminRole consulta el backend cuando hace falta.
+      const adminRole = profile.active
+        ? await effectiveAdminRole(profile.role, authData.session?.access_token ?? '')
+        : null
+      if (!adminRole) {
         await supabase.auth.signOut()
         setError('No autorizado.')
         return

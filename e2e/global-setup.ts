@@ -116,4 +116,18 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
     { stdio: 'pipe' }
   )
   await saveSession('e2e-admin@example.com', baseURL, 'e2e/.auth/admin.json')
+
+  // DUAL multi-rol: rol legacy 'doctor' + super_admin ADICIONAL en user_roles (RBAC). Reproduce
+  // el caso real "primero doctor, luego se le agrega super_admin": el acceso admin debe salir
+  // del multi-rol del backend, no del único profiles.role.
+  const dualUid = await ensureAuthUser('e2e-dual@example.com')
+  const dualSql = [
+    `update public.users set role='doctor', verified=true, active=true, full_name='E2E Dual DoctorAdmin' where id='${dualUid}';`,
+    // idempotente: agrega super_admin activo solo si no lo tiene ya
+    `insert into public.user_roles (user_id, role_id) select '${dualUid}', r.id from public.roles r where r.code='super_admin' and not exists (select 1 from public.user_roles ur where ur.user_id='${dualUid}' and ur.role_id=r.id and ur.revoked_at is null);`
+  ].join(' ')
+  execSync(`docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c "${dualSql}"`, {
+    stdio: 'pipe'
+  })
+  await saveSession('e2e-dual@example.com', baseURL, 'e2e/.auth/dual.json')
 }

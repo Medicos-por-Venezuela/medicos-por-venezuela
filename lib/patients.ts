@@ -38,6 +38,7 @@ export interface ConsultationCreate {
 export interface ConsultationResponse {
   id: string
   code: string
+  video_room_url?: string | null
 }
 
 // POST /api/v1/patients — público.
@@ -53,5 +54,17 @@ export async function createConsultation(
     '/api/v1/consultations',
     payload,
     'No se pudo crear la consulta'
+  )
+}
+
+// POST /api/v1/consultations/{id}/video-room — público e idempotente: genera la sala Jitsi si la
+// consulta sigue en espera, o devuelve la existente. Reemplaza al viejo /api/videoconsulta de
+// Next (que necesitaba el service_role en el hosting del frontend y moría en Amplify con 500):
+// la sala SIEMPRE la crea el backend.
+export async function ensureVideoRoom(consultationId: string): Promise<ConsultationResponse> {
+  return postJson<ConsultationResponse>(
+    `/api/v1/consultations/${consultationId}/video-room`,
+    {},
+    'No se pudo iniciar la videoconsulta'
   )
 }

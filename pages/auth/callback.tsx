@@ -2,6 +2,7 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
+import { effectiveAdminRole } from '../../lib/admin'
 import { supabase } from '../../lib/supabase'
 
 export default function AuthCallback() {
@@ -81,7 +82,10 @@ export default function AuthCallback() {
         setError('Tu cuenta está desactivada. Contacta a un administrador.')
         return
       }
-      if (['admin', 'super_admin'].includes(profile.role)) router.replace('/admin/dashboard')
+      // Multi-rol RBAC: un dual (p. ej. doctor de rol principal + super_admin en user_roles)
+      // aterriza en el dashboard admin, igual que un admin puro — desde ahí puede ir al panel.
+      const adminRole = await effectiveAdminRole(profile.role, session.access_token)
+      if (adminRole) router.replace('/admin/dashboard')
       else if (['doctor', 'specialist'].includes(profile.role)) router.replace('/panel-medico')
       else router.replace('/mi-caso')
     }
