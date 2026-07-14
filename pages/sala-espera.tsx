@@ -88,6 +88,11 @@ export default function SalaEspera() {
                   Una vez dentro, <strong>espera a que tu médico asignado se conecte</strong>. Puede
                   tardar varios minutos. Mantén esta página abierta.
                 </div>
+                <div className="notice notice-info" style={{ marginTop: 12 }}>
+                  📱 De igual manera, un profesional de la salud podría{' '}
+                  <strong>contactarte por WhatsApp</strong> al número que registraste — mantente
+                  pendiente de tus mensajes.
+                </div>
                 <p style={{ color: '#64748b', fontSize: 14, marginTop: 12 }}>
                   Guarda este enlace{code ? ` (código ${code})` : ''} para volver a entrar si se
                   corta la conexión.

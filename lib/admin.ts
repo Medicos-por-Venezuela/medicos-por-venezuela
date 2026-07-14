@@ -5,6 +5,7 @@ import { useRouter } from 'next/router'
 import { useState } from 'react'
 import { useMountEffect } from './hooks'
 import { supabase } from './supabase'
+import { fetchMyPermissions } from './users'
 
 export type Profile = {
   id: string
@@ -106,8 +107,30 @@ export function inDateRange(iso: string, from: string, to: string): boolean {
   return true
 }
 
+// Rol admin EFECTIVO considerando el multi-rol RBAC del backend: `profiles.role` es UN solo rol
+// legacy — un usuario puede ser doctor de rol principal y tener admin/super_admin adicionales en
+// `user_roles`. Si el legacy no alcanza, consulta los roles RBAC efectivos (GET
+// /auth/me/permissions) y devuelve el más alto, o null si tampoco los tiene.
+export async function effectiveAdminRole(
+  legacyRole: string,
+  accessToken: string
+): Promise<'admin' | 'super_admin' | null> {
+  if (legacyRole === 'super_admin' || legacyRole === 'admin') {
+    return legacyRole as 'admin' | 'super_admin'
+  }
+  try {
+    const perms = await fetchMyPermissions(accessToken)
+    if (perms.roles.includes('super_admin')) return 'super_admin'
+    if (perms.roles.includes('admin')) return 'admin'
+  } catch {
+    // Backend caído/no accesible: se queda con el veredicto del rol legacy.
+  }
+  return null
+}
+
 // Session + role guard shared by every /admin/* page (except the login page itself): redirects to
-// /admin unless there's a session AND the profile is an active admin/super_admin.
+// /admin unless there's a session AND the user is an active admin/super_admin — by legacy role OR
+// by RBAC multi-role (e.g. primary doctor + super_admin in user_roles).
 export function useAdminGuard() {
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -125,12 +148,18 @@ export function useAdminGuard() {
         .select('*')
         .eq('id', sessionData.session.user.id)
         .single()
-      if (error || !me || !me.active || !['admin', 'super_admin'].includes(me.role)) {
+      const adminRole =
+        !error && me && me.active
+          ? await effectiveAdminRole(me.role, sessionData.session.access_token)
+          : null
+      if (!adminRole) {
         await supabase.auth.signOut()
         router.push('/admin')
         return
       }
-      setProfile(me as Profile)
+      // El perfil expone el rol admin EFECTIVO: así toda la UI admin (p. ej. isSuperAdmin en
+      // pacientes.tsx) funciona igual para un dual doctor+super_admin que para uno puro.
+      setProfile({ ...me, role: adminRole } as Profile)
       setLoading(false)
     })()
   })

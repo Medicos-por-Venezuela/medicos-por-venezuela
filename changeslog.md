@@ -7,6 +7,29 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-14
 
+- **Fix multi-rol en el acceso admin + videoconsulta del paciente vía backend** — dos regresiones
+  de producción:
+  - **Multi-rol RBAC**: el guard de `/admin/*`, el login `/admin` y el callback de Google solo
+    miraban `profiles.role` (UN rol legacy) — un usuario "doctor primero + super_admin después"
+    (RBAC en `user_roles`) rebotaba al login. Nuevo `effectiveAdminRole()` en `lib/admin.ts`: si
+    el legacy no alcanza, consulta `GET /auth/me/permissions` y usa el rol RBAC más alto; el
+    perfil del guard expone ese rol efectivo (así `isSuperAdmin` y toda la UI admin funcionan
+    para duales). Un dual que entra por Google aterriza en el dashboard, como un admin puro.
+  - **Videoconsulta del paciente**: `/api/videoconsulta` (API route de Next) moría con 500 en
+    Amplify (falta del service_role en el hosting) → el catch lo tragaba → sala-espera sin sala →
+    el paciente caía SIEMPRE al fallback de WhatsApp y la consulta quedaba sin `video_room_url`
+    (por eso "desapareció" el botón Unirse a videoconsulta del detalle). Ahora la sala la crea el
+    BACKEND: `ensureVideoRoom()` en `lib/patients.ts` → `POST /consultations/{id}/video-room`
+    (público e idempotente, ya existía) — se elimina la dependencia del service_role en el
+    frontend. La ruta de Next queda muerta (conserva el Twilio parked para el futuro).
+  - **Sala de espera**: aviso nuevo bajo el botón de video — también pueden contactarlo por
+    WhatsApp al número registrado.
+  - E2E nuevos: `admin-multirol.spec.ts` (usuario dual sembrado en global-setup: legacy doctor +
+    super_admin en user_roles → dashboard y usuarios cargan sin rebotar) y `sala-espera.spec.ts`
+    (el backend genera la sala por el mismo endpoint del registro; botón de video + aviso de
+    WhatsApp visibles). Files: `lib/{admin,patients}.ts`, `pages/admin/index.tsx`,
+    `pages/auth/callback.tsx`, `pages/registro-paciente.tsx`, `pages/sala-espera.tsx`,
+    `e2e/{global-setup,admin-multirol.spec,sala-espera.spec}.ts`.
 - **Port selectivo de main (PRs #27/#29) + Páginas aliadas** — main y dev_aws habían divergido;
   decisión: dev_aws manda, y de main se trae solo lo que faltaba:
   - KPIs del panel médico partidos (PR #27) recreados con la presencia real: "En videollamada

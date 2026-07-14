@@ -9,7 +9,7 @@ import { fetchAffectedZoneCatalog } from '../lib/api'
 // necesitamos el id real para specialty_id (fetchSpecialtyCatalog de lib/api solo
 // devuelve nombres).
 import { fetchSpecialties, type SpecialtyResponse } from '../lib/doctors'
-import { createConsultation, createPatient, ApiError } from '../lib/patients'
+import { createConsultation, createPatient, ensureVideoRoom, ApiError } from '../lib/patients'
 import { useMountEffect } from '../lib/hooks'
 import CedulaField from '../components/CedulaField'
 import PhoneField from '../components/PhoneField'
@@ -348,16 +348,13 @@ export default function RegistroPaciente() {
         specialty_id: specialtyId
       })
 
-      // Create the Jitsi video room (server-side) and show it on the waiting page. If this fails,
-      // we still continue — the case stays in the queue for a doctor to attend.
+      // Crea la sala Jitsi en el BACKEND (idempotente) y la muestra en la sala de espera. Si
+      // falla, seguimos igual: el caso queda en cola y el médico puede contactar por WhatsApp.
+      // (Antes esto era /api/videoconsulta de Next, que en Amplify moría con 500 por falta del
+      // service_role → el paciente caía SIEMPRE al fallback de WhatsApp sin videollamada.)
       let room = ''
       try {
-        const resp = await fetch('/api/videoconsulta', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ consultationId: consultation.id })
-        })
-        if (resp.ok) room = (await resp.json()).url || ''
+        room = (await ensureVideoRoom(consultation.id)).video_room_url || ''
       } catch (e) {
         console.error('No se pudo iniciar la videoconsulta:', e)
       }
