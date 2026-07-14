@@ -2,7 +2,15 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { ApiError, fetchMyDoctorProfile } from '../lib/doctors'
+import { getAccessToken } from '../lib/admin'
+import {
+  ApiError,
+  claimConsultation,
+  fetchMyProfile,
+  fetchPanel,
+  type MyProfile,
+  type PanelConsultation
+} from '../lib/consultations'
 import { STATUS_LABELS, canAttend, matchesSpecialty, minutesSince } from '../lib/utils'
 import { browserRoomUrl } from '../lib/jitsi'
 
@@ -37,30 +45,43 @@ type Consultation = {
   patients: Patient | null
 }
 
-// A patient surfaces in the "no han podido ser atendidos" queue once they've been waiting at least
-// this many minutes without a doctor assigned.
-const WAITING_FALLBACK_MIN = 20
-
-// "Still open" case statuses = not yet resolved. Includes patient_no_show (the patient registered
-// but never connected to the video call, so they still need follow-up) but excludes the truly
-// resolved statuses (closed, closed_by_admin, cancelled).
-const OPEN_STATUSES = [
-  'waiting',
-  'in_progress',
-  'referred_to_specialist',
-  'urgent_in_person',
-  'contacted_whatsapp',
-  'patient_no_show'
-]
-
-const PATIENT_COLS =
-  'id, full_name, cedula, phone_whatsapp, affected_zone, age_range, needs_tags, description'
+// El paciente cuenta como "en sala" si su heartbeat (patient_last_seen_at) es reciente. Ventana
+// generosa (30 min): el paciente hace ping cada 15s mientras tiene abierta la sala de espera.
+const PRESENCE_WINDOW_MS = 30 * 60 * 1000
+function isPatientPresent(c: Consultation): boolean {
+  if (!c.patient_last_seen_at) return false
+  return Date.now() - new Date(c.patient_last_seen_at).getTime() < PRESENCE_WINDOW_MS
+}
 
 function statusBadgeClass(status: string): string {
   if (status === 'urgent_in_person') return 'badge-red'
   if (status === 'referred_to_specialist') return 'badge-blue'
   if (status === 'in_progress') return 'badge-orange'
   return 'badge-green'
+}
+
+// El backend (fetchPanel) devuelve el paciente como `patient` y omite campos que la cola no
+// muestra (entered_call_at, internal_note). Lo adaptamos al tipo Consultation que usa el panel.
+function toConsultationRow(c: PanelConsultation): Consultation {
+  return {
+    id: c.id,
+    code: c.code,
+    status: c.status,
+    priority: c.priority,
+    category: c.category,
+    chief_complaint: c.chief_complaint,
+    created_at: c.created_at,
+    entered_call_at: null,
+    opened_at: c.opened_at,
+    closed_at: c.closed_at,
+    referred_specialty: c.referred_specialty,
+    internal_note: null,
+    video_room_url: c.video_room_url,
+    patient_last_seen_at: c.patient_last_seen_at,
+    assigned_doctor_id: c.assigned_doctor_id,
+    attended_via_whatsapp: c.attended_via_whatsapp,
+    patients: c.patient as Patient | null
+  }
 }
 
 const ADMIN_ROLES = ['admin', 'super_admin'] as const
@@ -107,23 +128,28 @@ export default function PanelMedico() {
     router.replace('/panel-medico', undefined, { shallow: true })
   }, [router.isReady, router.query.actualizado, profile?.id])
 
-  useEffect(() => {
-    if (!profile?.id) return
-    const updateOnline = async () => {
-      await supabase.rpc('mark_myself_online')
-    }
-    updateOnline()
-    const timer = window.setInterval(updateOnline, 60000)
-    return () => window.clearInterval(timer)
-  }, [profile?.id])
+  // La presencia (anunciar al médico como "online") la maneja PresenceProvider a nivel de app, así
+  // el médico sigue online al navegar del panel a la consulta. Aquí no hace falta anunciarla.
 
-  // Poll the queue so patient presence (and cases claimed by other doctors) stay fresh.
+  // Realtime (WebSocket) en vez de long-polling: nos suscribimos a los cambios de `consultations`
+  // en Supabase (el ÚNICO acceso directo que queda, junto con Auth) y ante cualquier evento
+  // refrescamos la cola DESDE EL BACKEND. Así el médico ve en vivo las consultas que entran o que
+  // otro médico toma, sin sondear cada 20s. El refetch se debouncea para coalescer ráfagas.
   useEffect(() => {
     if (!profile?.id) return
-    const timer = window.setInterval(() => {
-      loadConsultations(profile)
-    }, 20000)
-    return () => window.clearInterval(timer)
+    let debounce: number | undefined
+    const refetch = () => {
+      window.clearTimeout(debounce)
+      debounce = window.setTimeout(() => loadConsultations(profile), 400)
+    }
+    const channel = supabase
+      .channel('panel-consultations')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'consultations' }, refetch)
+      .subscribe()
+    return () => {
+      window.clearTimeout(debounce)
+      supabase.removeChannel(channel)
+    }
   }, [profile])
 
   // Refresh when returning to this tab/page after actions performed in the detail page.
@@ -143,97 +169,58 @@ export default function PanelMedico() {
       return
     }
 
-    const { data: p, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, full_name, role, specialty, verified, active')
-      .eq('id', sessionData.session.user.id)
-      .single()
-
-    if (profileError || !p || !p.active || !p.verified) {
+    // Perfil + contexto de médico por el backend en UNA sola llamada (GET /auth/me), no por
+    // PostgREST directo a `profiles` ni una segunda a /doctors/me.
+    let me: MyProfile
+    try {
+      me = await fetchMyProfile(sessionData.session.access_token)
+    } catch {
       await supabase.auth.signOut()
       router.push('/login-medico')
       return
     }
 
-    if (!PANEL_ALLOWED_ROLES.includes(p.role as (typeof PANEL_ALLOWED_ROLES)[number])) {
+    if (!me.active || !me.verified) {
+      await supabase.auth.signOut()
+      router.push('/login-medico')
+      return
+    }
+
+    if (!PANEL_ALLOWED_ROLES.includes(me.role as (typeof PANEL_ALLOWED_ROLES)[number])) {
       router.push('/')
       return
     }
 
-    setProfile(p)
-    // Cualquiera con ficha de médico (admin o no) y sin cédula debe completar su perfil antes de
-    // usar el panel: una cédula vacía es un registro a medias (cuenta de Google que eligió el rol
-    // pero nunca verificó SACS/FPV, o una ficha creada sin cédula). Un 404 = cuenta sin ficha
-    // (admin puro): no se redirige, se le deja entrar y solo se oculta el botón "Mi perfil".
-    try {
-      const me = await fetchMyDoctorProfile(sessionData.session.access_token)
-      setHasDoctorProfile(true)
-      if (!me.cedula?.trim()) {
-        router.replace('/panel-medico/perfil')
-        return
-      }
-    } catch (e) {
-      if (!(e instanceof ApiError && e.status === 404)) console.error(e)
-      setHasDoctorProfile(false)
+    setProfile(me)
+    setHasDoctorProfile(me.has_doctor_profile)
+    // Médico (con o sin ficha) y sin cédula = registro a medias: completar perfil antes de usar el
+    // panel. Un admin puro (has_doctor_profile=false) no se redirige y solo se le oculta "Mi perfil".
+    if (me.has_doctor_profile && !me.doctor_cedula?.trim()) {
+      router.replace('/panel-medico/perfil')
+      return
     }
-    await loadConsultations(p)
+    await loadConsultations(me)
     setLoading(false)
   }
 
-  async function loadConsultations(currentProfile: Profile | null = profile) {
-    const twentyMinAgo = new Date(Date.now() - WAITING_FALLBACK_MIN * 60000).toISOString()
-
-    // "Pacientes que no han podido ser atendidos": three filters, all in the DB so a large backlog
-    // can't push recent patients past the row cap — (1) case still open (not resolved), (2) not
-    // assigned to any doctor, (3) waiting longer than WAITING_FALLBACK_MIN minutes.
-    const { data: unattended, error } = await supabase
-      .from('consultations')
-      .select(`*, patients(${PATIENT_COLS})`)
-      .in('status', OPEN_STATUSES)
-      .is('assigned_doctor_id', null)
-      .lte('created_at', twentyMinAgo)
-      .order('created_at', { ascending: true })
-
-    if (error) {
-      console.error(error)
+  async function loadConsultations(_currentProfile: Profile | null = profile) {
+    // Todo el panel en una sola llamada al backend (cola de espera + mías + cerradas). La cola trae
+    // TODA consulta sin asignar en estado abierto — en tiempo real, sin el gate de 20 min de antes.
+    try {
+      const panel = await fetchPanel(await getAccessToken())
+      setConsultations([...panel.waiting, ...panel.mine].map(toConsultationRow))
+      setMyClosed(panel.my_closed_count)
+    } catch (e) {
+      console.error(e)
       setMessage('No se pudieron cargar las consultas.')
-      return
-    }
-
-    // The doctor's own open cases, fetched separately so the cap can't drop them either.
-    const id = currentProfile?.id
-    let mine: Consultation[] = []
-    if (id) {
-      const { data: mineData } = await supabase
-        .from('consultations')
-        .select(`*, patients(${PATIENT_COLS})`)
-        .eq('assigned_doctor_id', id)
-        .in('status', ['in_progress', 'contacted_whatsapp'])
-        .order('created_at', { ascending: true })
-      mine = (mineData || []) as Consultation[]
-    }
-
-    setConsultations([...((unattended || []) as Consultation[]), ...mine])
-
-    // How many cases this doctor has closed.
-    if (id) {
-      const { count } = await supabase
-        .from('consultations')
-        .select('id', { count: 'exact', head: true })
-        .eq('assigned_doctor_id', id)
-        .eq('status', 'closed')
-      setMyClosed(count || 0)
     }
   }
 
   // "Pacientes que no han podido ser atendidos hasta ahora": registered cases not assigned to any
-  // doctor, waiting longer than WAITING_FALLBACK_MIN minutes. (The DB query already enforces this;
-  // the client filter keeps it correct as time passes between refreshes.)
+  // doctor. Sin gate de tiempo: el backend ya devuelve toda consulta en espera sin asignar, y el
+  // médico las ve entrar en tiempo real para atenderlas de una vez.
   const waiting = useMemo(
-    () =>
-      consultations.filter(
-        (c) => c.assigned_doctor_id === null && minutesSince(c.created_at) >= WAITING_FALLBACK_MIN
-      ),
+    () => consultations.filter((c) => c.assigned_doctor_id === null),
     [consultations]
   )
   // The doctor's own active cases they can reopen: in-progress ones plus WhatsApp cases already
@@ -270,76 +257,41 @@ export default function PanelMedico() {
   const waitingEmptyMessage =
     'No hay pacientes nuevos en cola (waiting). Si ya tomaste un caso, aparecerá en “Mis consultas abiertas”.'
 
-  async function addEvent(consultationId: string, eventType: string, eventNote?: string) {
-    await supabase.from('consultation_events').insert({
-      consultation_id: consultationId,
-      event_type: eventType,
-      note: eventNote || null
-    })
+  // Claim atómico por el backend: POST /consultations/{id}/claim solo asigna si el caso sigue sin
+  // médico; si otro lo tomó primero responde 409 y NO abrimos la sala (dos médicos jamás caen en la
+  // misma reunión). El evento 'opened' lo registra el backend. Devuelve true si el claim fue nuestro.
+  async function claimCase(c: Consultation, viaWhatsapp: boolean): Promise<boolean> {
+    try {
+      await claimConsultation(c.id, viaWhatsapp, await getAccessToken())
+      return true
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        setMessage(
+          viaWhatsapp
+            ? 'Ya fue asignado a otro doctor.'
+            : 'Este paciente ya fue tomado por otro médico.'
+        )
+        await loadConsultations()
+        return false
+      }
+      setMessage(viaWhatsapp ? 'No se pudo asignar la consulta.' : 'No se pudo abrir la consulta.')
+      return false
+    }
   }
 
   async function openConsultation(c: Consultation) {
     if (!profile) return
-    const now = new Date().toISOString()
-    // Atomic claim: the update only matches while the case is still unassigned, so if another
-    // doctor grabbed it first it returns 0 rows. We must NOT open the video room in that case,
-    // otherwise two doctors could land in the same meeting.
-    const { data: claimed, error } = await supabase
-      .from('consultations')
-      .update({
-        status: 'in_progress',
-        assigned_doctor_id: profile.id,
-        opened_at: c.opened_at || now
-      })
-      .eq('id', c.id)
-      .is('assigned_doctor_id', null)
-      .select('id')
-
-    if (error) {
-      setMessage('No se pudo abrir la consulta.')
-      return
-    }
-    if (!claimed || claimed.length === 0) {
-      setMessage('Este paciente ya fue tomado por otro médico.')
-      await loadConsultations()
-      return
-    }
-
-    await addEvent(c.id, 'opened', `Abierta por ${profile.full_name}`)
+    if (!(await claimCase(c, false))) return
     if (c.video_room_url) window.open(browserRoomUrl(c.video_room_url), '_blank')
     await router.push(`/panel-medico/consulta/${c.id}`)
   }
 
-  // Claim a waiting patient to attend directly via WhatsApp (no video). Same atomic claim as
-  // openConsultation: the update only matches while the case is 'waiting', so if another doctor took
-  // it first we show "Ya fue asignado a otro doctor" instead. Runs only after the doctor accepts the
-  // commitment modal.
+  // Toma un paciente en espera para atenderlo por WhatsApp (sin video). Solo tras aceptar el modal
+  // de compromiso.
   async function attendViaWhatsapp(c: Consultation) {
     if (!profile) return
-    const now = new Date().toISOString()
-    const { data: claimed, error } = await supabase
-      .from('consultations')
-      .update({
-        status: 'in_progress',
-        assigned_doctor_id: profile.id,
-        opened_at: c.opened_at || now,
-        attended_via_whatsapp: true
-      })
-      .eq('id', c.id)
-      .is('assigned_doctor_id', null)
-      .select('id')
-
     setWhatsappTarget(null)
-    if (error) {
-      setMessage('No se pudo asignar la consulta.')
-      return
-    }
-    if (!claimed || claimed.length === 0) {
-      setMessage('Ya fue asignado a otro doctor.')
-      await loadConsultations()
-      return
-    }
-    await addEvent(c.id, 'opened', `Atendido vía WhatsApp por ${profile.full_name}`)
+    if (!(await claimCase(c, true))) return
     await router.push(`/panel-medico/consulta/${c.id}`)
   }
 
@@ -480,7 +432,12 @@ export default function PanelMedico() {
               ) : (
                 <div className="grid">
                   {waiting.map((c) => (
-                    <ConsultationCard key={c.id} c={c} onWhatsapp={() => setWhatsappTarget(c)} />
+                    <ConsultationCard
+                      key={c.id}
+                      c={c}
+                      onOpen={() => openConsultation(c)}
+                      onWhatsapp={() => setWhatsappTarget(c)}
+                    />
                   ))}
                 </div>
               )}
@@ -608,7 +565,15 @@ export default function PanelMedico() {
   )
 }
 
-function ConsultationCard({ c, onWhatsapp }: { c: Consultation; onWhatsapp: () => void }) {
+function ConsultationCard({
+  c,
+  onOpen,
+  onWhatsapp
+}: {
+  c: Consultation
+  onOpen: () => void
+  onWhatsapp: () => void
+}) {
   return (
     <div className="card-flat">
       <div className="panel-card-header">
@@ -618,7 +583,13 @@ function ConsultationCard({ c, onWhatsapp }: { c: Consultation; onWhatsapp: () =
             {c.patients?.affected_zone} · hace {minutesSince(c.created_at)} min
           </div>
           <div style={{ marginTop: 4 }}>
-            <span className="badge badge-green">● Disponible</span>
+            {isPatientPresent(c) ? (
+              <span className="badge badge-green">● En sala</span>
+            ) : (
+              <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>
+                ○ Sin conexión
+              </span>
+            )}
           </div>
         </div>
         <span className={`badge ${statusBadgeClass(c.status)}`}>
@@ -638,7 +609,11 @@ function ConsultationCard({ c, onWhatsapp }: { c: Consultation; onWhatsapp: () =
           </span>
         ))}
       </div>
-      <button className="btn btn-primary btn-full" onClick={onWhatsapp}>
+      {/* Acción principal: tomar a ESTE paciente por video (abre la sala). WhatsApp es el fallback. */}
+      <button className="btn btn-primary btn-full" onClick={onOpen}>
+        Atender por videoconsulta
+      </button>
+      <button className="btn btn-secondary btn-full" style={{ marginTop: 8 }} onClick={onWhatsapp}>
         Puedo atender a este paciente vía WhatsApp con mi número personal
       </button>
     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import AdminLayout, { AdminLoading, Line } from '../../components/admin/AdminLayout'
 import {
   fmtDate,
@@ -8,14 +8,25 @@ import {
   useAdminGuard,
   USERS_PAGE_SIZE
 } from '../../lib/admin'
+import { useOnlineDoctors } from '../../lib/presence'
 import { supabase } from '../../lib/supabase'
 
 export default function AdminDoctores() {
   const { profile, loading } = useAdminGuard()
   const [message, setMessage] = useState('')
 
-  // Specialties of the currently-online doctors, as [specialty, count] sorted desc.
-  const [onlineBySpecialty, setOnlineBySpecialty] = useState<[string, number][]>([])
+  // Médicos online en vivo por Realtime Presence (el admin solo observa, no se anuncia).
+  const onlineDoctors = useOnlineDoctors()
+  const onlineIds = useMemo(() => new Set(onlineDoctors.map((d) => d.id)), [onlineDoctors])
+  // Especialidades de los médicos online, como [especialidad, conteo] desc.
+  const onlineBySpecialty = useMemo(() => {
+    const bySpec: Record<string, number> = {}
+    for (const d of onlineDoctors) {
+      const key = d.specialty || 'Sin especialidad'
+      bySpec[key] = (bySpec[key] || 0) + 1
+    }
+    return Object.entries(bySpec).sort((a, b) => b[1] - a[1])
+  }, [onlineDoctors])
 
   // Users (doctors/admins) table filters
   const [userSearch, setUserSearch] = useState('')
@@ -46,26 +57,6 @@ export default function AdminDoctores() {
     if (profile) loadUsers()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, debouncedUserSearch, userRole, userState, userFrom, userTo, usersPage])
-
-  useEffect(() => {
-    if (profile) loadOnlineBySpecialty()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile])
-
-  async function loadOnlineBySpecialty() {
-    const onlineThreshold = new Date(Date.now() - 3 * 60 * 1000).toISOString()
-    const { data } = await supabase
-      .from('profiles')
-      .select('specialty')
-      .in('role', ['doctor', 'specialist'])
-      .gte('last_seen_at', onlineThreshold)
-    const bySpec: Record<string, number> = {}
-    ;((data || []) as { specialty: string | null }[]).forEach((d) => {
-      const key = d.specialty || 'Sin especialidad'
-      bySpec[key] = (bySpec[key] || 0) + 1
-    })
-    setOnlineBySpecialty(Object.entries(bySpec).sort((a, b) => b[1] - a[1]))
-  }
 
   // Staff-only, server-side filtered + paginated list for the Médicos y administradores table.
   async function loadUsers() {
@@ -99,9 +90,6 @@ export default function AdminDoctores() {
     else await loadUsers()
   }
 
-  const now = Date.now()
-  const isOnline = (lastSeen: string | null) =>
-    !!lastSeen && now - new Date(lastSeen).getTime() < 3 * 60 * 1000
   const onlineCount = onlineBySpecialty.reduce((sum, [, n]) => sum + n, 0)
 
   if (loading) return <AdminLoading />
@@ -232,7 +220,7 @@ export default function AdminDoctores() {
                       </div>
                     </td>
                     <td>{fmtDate(p.created_at)}</td>
-                    <td>{isOnline(p.last_seen_at) ? 'Sí' : 'No'}</td>
+                    <td>{onlineIds.has(p.id) ? 'Sí' : 'No'}</td>
                     <td>
                       {['admin', 'super_admin'].includes(p.role) ? (
                         <span style={{ color: '#94a3b8', fontSize: 13 }}>—</span>

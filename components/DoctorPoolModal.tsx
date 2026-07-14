@@ -1,32 +1,29 @@
-// Modal "Ver Pool de médicos" para la consulta médico-paciente: lista paginada de médicos
-// (activos=logeados / inactivos=offline / todos), filtrable por especialidad y tipo de profesional.
-// Datos del backend (GET /doctors/pool), que cruza doctors↔users para el estado online. El overlay
-// reusa el patrón inline role="dialog" del modal de borrado en pages/admin/pacientes.tsx (no hay
-// componente Modal compartido en el repo).
+// Modal "Ver Pool de médicos" para la consulta médico-paciente: lista paginada de médicos, con
+// buscador por nombre, filtros por especialidad/tipo y tabs En línea / Desconectados / Todos. El
+// estado ONLINE lo resuelve Supabase Realtime Presence (cliente); para no romper la paginación, el
+// cliente le pasa al backend los user_ids online y el backend filtra IN/NOT IN. El WhatsApp viene
+// oculto tras un 👁: al revelarlo se llama a un endpoint que lo registra en audit_log (quién vio el
+// número de quién). Reusa el patrón inline role="dialog" del modal de borrado en admin/pacientes.
 import { useEffect, useMemo, useState } from 'react'
 import { getAccessToken } from '../lib/admin'
 import {
   DoctorPoolItem,
   fetchDoctorPool,
   fetchProfessionalTypes,
-  fetchSpecialties
+  fetchSpecialties,
+  revealDoctorContact
 } from '../lib/doctors'
+import { useOnlineDoctorIds } from '../lib/presence'
 
 const PAGE_SIZE = 20
 
-type Tab = 'activos' | 'inactivos' | 'todos'
-const TAB_ONLINE: Record<Tab, boolean | undefined> = {
-  activos: true,
-  inactivos: false,
-  todos: undefined
-}
+type Catalog = { id: string; name: string }
+type Tab = 'online' | 'offline' | 'todos'
 const TAB_LABEL: Record<Tab, string> = {
-  activos: 'Activos',
-  inactivos: 'Inactivos',
+  online: 'En línea',
+  offline: 'Desconectados',
   todos: 'Todos'
 }
-
-type Catalog = { id: string; name: string }
 
 // Número para el enlace de WhatsApp (https://wa.me/<número>): sin el "+" de adelante y,
 // si no trae prefijo internacional, se le antepone 58 (Venezuela). Ej: "+584145200715" o
@@ -41,7 +38,11 @@ function waNumber(phone: string): string {
 }
 
 export default function DoctorPoolModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [tab, setTab] = useState<Tab>('activos')
+  // Estado online en vivo por Realtime Presence (solo lectura: el modal no anuncia presencia).
+  const onlineIds = useOnlineDoctorIds()
+  const [tab, setTab] = useState<Tab>('online')
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [specialtyId, setSpecialtyId] = useState('')
   const [typeId, setTypeId] = useState('')
   const [page, setPage] = useState(0)
@@ -51,6 +52,15 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
   const [error, setError] = useState('')
   const [specialties, setSpecialties] = useState<Catalog[]>([])
   const [types, setTypes] = useState<Catalog[]>([])
+  // Teléfonos revelados (bajo auditoría) por doctor id; `undefined` = aún oculto.
+  const [revealed, setRevealed] = useState<Record<string, string | null>>({})
+  const [revealing, setRevealing] = useState<string | null>(null)
+
+  // Debounce del buscador (no dispara una query por tecla).
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
 
   // Catálogos para los dropdowns y para mapear id→nombre en la tabla. Se cargan una vez.
   useEffect(() => {
@@ -66,12 +76,18 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
     })()
   }, [open, specialties.length, types.length])
 
-  // Cualquier cambio de tab/filtro vuelve a la primera página.
+  // Cualquier cambio de tab/filtro/búsqueda vuelve a la primera página.
   useEffect(() => {
     setPage(0)
-  }, [tab, specialtyId, typeId])
+  }, [tab, specialtyId, typeId, debouncedSearch])
 
-  // (Re)carga la página actual cuando el modal está abierto y cambian filtros/página.
+  // Para los tabs En línea/Desconectados, el cliente le pasa al backend los user_ids que Presence
+  // sabe online (así el filtro respeta la paginación). Clave estable para las deps del fetch: en
+  // "Todos" no depende de la presencia (no re-fetch al cambiar quién está online).
+  const onlineParamKey =
+    tab === 'todos' ? 'todos' : `${tab}:${Array.from(onlineIds).sort().join(',')}`
+
+  // (Re)carga la página actual cuando el modal está abierto y cambian filtros/tab/búsqueda/página.
   useEffect(() => {
     if (!open) return
     let cancelled = false
@@ -86,7 +102,9 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
             limit: PAGE_SIZE,
             specialty_id: specialtyId || undefined,
             professional_type_id: typeId || undefined,
-            online: TAB_ONLINE[tab]
+            search: debouncedSearch || undefined,
+            online: tab === 'todos' ? undefined : tab === 'online',
+            online_ids: tab === 'todos' ? undefined : Array.from(onlineIds)
           },
           token
         )
@@ -103,13 +121,29 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
     return () => {
       cancelled = true
     }
-  }, [open, tab, specialtyId, typeId, page])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, specialtyId, typeId, page, debouncedSearch, tab, onlineParamKey])
 
   const specName = useMemo(
     () => Object.fromEntries(specialties.map((s) => [s.id, s.name])),
     [specialties]
   )
   const typeName = useMemo(() => Object.fromEntries(types.map((t) => [t.id, t.name])), [types])
+  const isOnline = (d: DoctorPoolItem) => !!d.user_id && onlineIds.has(d.user_id)
+
+  // Revela el WhatsApp de un médico: llama al backend (que lo registra en audit_log) y lo muestra.
+  async function reveal(doctorId: string) {
+    if (revealed[doctorId] !== undefined || revealing) return
+    setRevealing(doctorId)
+    try {
+      const { phone } = await revealDoctorContact(doctorId, await getAccessToken())
+      setRevealed((r) => ({ ...r, [doctorId]: phone }))
+    } catch {
+      // Si falla, el botón queda disponible para reintentar.
+    } finally {
+      setRevealing(null)
+    }
+  }
 
   if (!open) return null
 
@@ -158,7 +192,7 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
           </button>
         </div>
 
-        {/* Tabs Activos / Inactivos / Todos */}
+        {/* Tabs En línea / Desconectados / Todos */}
         <div style={{ display: 'flex', gap: 8, margin: '14px 0', flexWrap: 'wrap' }}>
           {(Object.keys(TAB_LABEL) as Tab[]).map((t) => (
             <button
@@ -170,6 +204,15 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
             </button>
           ))}
         </div>
+
+        {/* Buscador por nombre */}
+        <input
+          type="search"
+          placeholder="Buscar médico por nombre…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ width: '100%', marginBottom: 10 }}
+        />
 
         {/* Filtros */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -212,20 +255,20 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
                 <th>Médico</th>
                 <th>Especialidad</th>
                 <th>Tipo</th>
-                {/* En "Todos" muestra el estado online; en Activos/Inactivos, el WhatsApp. */}
-                <th>{tab === 'todos' ? 'Estado' : 'WhatsApp'}</th>
+                <th>Estado</th>
+                <th>WhatsApp</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={4} style={{ color: '#64748b' }}>
+                  <td colSpan={5} style={{ color: '#64748b' }}>
                     Cargando...
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={4} style={{ color: '#64748b' }}>
+                  <td colSpan={5} style={{ color: '#64748b' }}>
                     No hay médicos que coincidan con el filtro.
                   </td>
                 </tr>
@@ -236,29 +279,39 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
                     <td>{(d.specialty_id && specName[d.specialty_id]) || '—'}</td>
                     <td>{(d.professional_type_id && typeName[d.professional_type_id]) || '—'}</td>
                     <td>
-                      {tab === 'todos' ? (
-                        d.online ? (
-                          <span className="badge badge-green">● En línea</span>
-                        ) : (
-                          <span
-                            className="badge"
-                            style={{ background: '#e2e8f0', color: '#64748b' }}
-                          >
-                            ○ Desconectado
-                          </span>
-                        )
-                      ) : d.phone ? (
-                        <a
-                          href={`https://wa.me/${waNumber(d.phone)}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="badge badge-green"
-                          style={{ textDecoration: 'none' }}
-                        >
-                          {d.phone}
-                        </a>
+                      {isOnline(d) ? (
+                        <span className="badge badge-green">● En línea</span>
                       ) : (
-                        '—'
+                        <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>
+                          ○ Desconectado
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {revealed[d.id] !== undefined ? (
+                        revealed[d.id] ? (
+                          <a
+                            href={`https://wa.me/${waNumber(revealed[d.id] as string)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="badge badge-green"
+                            style={{ textDecoration: 'none' }}
+                          >
+                            {revealed[d.id]}
+                          </a>
+                        ) : (
+                          '—'
+                        )
+                      ) : (
+                        <button
+                          className="btn btn-muted"
+                          style={{ padding: '4px 10px', fontSize: 13 }}
+                          disabled={revealing === d.id}
+                          onClick={() => reveal(d.id)}
+                          aria-label={`Ver WhatsApp de ${d.full_name}`}
+                        >
+                          {revealing === d.id ? '…' : '👁 Ver'}
+                        </button>
                       )}
                     </td>
                   </tr>
