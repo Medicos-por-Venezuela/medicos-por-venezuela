@@ -2,6 +2,11 @@
   --green: #0f6e56;
   --green-light: #e1f5ee;
   --green-soft: #f0faf6;
+  /* Azul del home (pages/index.tsx). Hoy solo se usa scopeado a
+     .registro-medico-page — ver esa regla más abajo. */
+  --home-blue: #1a3a6b;
+  --home-blue-deep: #122a4f;
+  --home-gold: #f5c400;
   --red: #b91c1c;
   --red-light: #fee2e2;
   --orange: #b45309;
@@ -239,6 +244,36 @@ select:focus {
   border-color: #93c5fd;
   color: #1e3a8a;
 }
+.notice-success {
+  background: var(--green-light);
+  border-color: var(--green);
+  color: var(--green);
+}
+input:disabled,
+input[readonly] {
+  background: var(--bg);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* Alineado al azul del home (pages/index.tsx) solo en esta pantalla — el
+   resto de la app sigue en --green hasta que se decida un rebrand completo. */
+.registro-medico-page .btn-primary {
+  background: #fff;
+  color: var(--home-blue);
+  border: 2px solid var(--home-gold);
+}
+.registro-medico-page .btn-primary:hover {
+  background: var(--home-gold);
+  color: var(--home-blue);
+}
+.registro-medico-page input:focus,
+.registro-medico-page select:focus {
+  border-color: var(--home-gold);
+}
+.registro-medico-page .link-button {
+  color: var(--home-blue);
+}
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -273,6 +308,26 @@ select:focus {
   font-size: 14px;
   margin-top: 6px;
 }
+/* Registro de paciente: reemplaza el acento verde por el mismo azul de la tarjeta
+   "Soy paciente" del home (pages/index.tsx: --blue: #1a3a6b, hcard-icon--blue: #e8effb),
+   ahora que el médico usa amarillo/dorado ahí. Shadowing de las custom properties que ya
+   consumen .btn-primary/.link-button/.badge-green/.tag.selected — sin tocar otras páginas. */
+.patient-theme {
+  --green: #1a3a6b;
+  --green-light: #e8effb;
+}
+
+.input-group {
+  display: flex;
+  gap: 8px;
+}
+.input-group select {
+  flex: 0 0 92px;
+}
+.input-group input {
+  flex: 1;
+  min-width: 0;
+}
 .tag-row {
   display: flex;
   flex-wrap: wrap;
@@ -295,11 +350,63 @@ select:focus {
   border-color: var(--green);
 }
 
-/* Admin dashboard — denser + mobile-friendly. All rules are scoped to `.dash-page`
-   (only /admin/dashboard uses it), so other pages are untouched. */
-/* Give the data-heavy dashboard more horizontal room on desktop (wider than the default 1100px),
-   so the columns expand and there's less blank margin on large screens. */
-.dash-page .container {
+/* Admin section (dashboard + pacientes/doctores/catálogos) — denser tables + a left sidebar,
+   all scoped under AdminLayout's `.admin-shell` so the rest of the app is untouched. */
+.admin-shell {
+  display: flex;
+  align-items: stretch;
+  min-height: 100vh;
+}
+.admin-sidebar {
+  flex: 0 0 220px;
+  background: white;
+  border-right: 1px solid var(--border);
+  padding: 20px 12px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.admin-sidebar-brand {
+  font-weight: 900;
+  color: var(--green);
+  padding: 0 10px 18px;
+  font-size: 15px;
+}
+.admin-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.admin-nav-link {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+}
+.admin-nav-link:hover {
+  background: var(--bg);
+}
+.admin-nav-link.active {
+  background: var(--green-light);
+  color: var(--green);
+}
+.admin-menu-toggle {
+  display: none;
+}
+.admin-sidebar-backdrop {
+  display: none;
+}
+.admin-main {
+  flex: 1;
+  min-width: 0;
+  padding: 32px 16px;
+}
+/* Give the data-heavy admin pages more horizontal room on desktop (wider than the default
+   1100px), so table columns expand and there's less blank margin on large screens. */
+.admin-main .container {
   max-width: 1400px;
 }
 .dash-kpis {
@@ -308,29 +415,69 @@ select:focus {
   gap: 12px;
   margin-bottom: 16px;
 }
-.dash-page .cases-table {
+.admin-main .cases-table {
   min-width: 900px;
 }
-.dash-page .users-table {
+.admin-main .users-table {
   min-width: 720px;
 }
-.dash-page .cases-table td {
+.admin-main .cases-table td {
   overflow-wrap: anywhere;
 }
 @media (max-width: 850px) {
-  .page.dash-page {
+  /* .admin-sidebar becomes position:fixed below (out of flow), leaving the toggle button and
+     .admin-main as the shell's only two flex items -- without this they'd sit side by side
+     (flex row default) instead of stacking. */
+  .admin-shell {
+    flex-direction: column;
+  }
+  .admin-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    width: 100%;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: white;
+    padding: 14px 16px;
+    font-weight: 800;
+    color: var(--green);
+  }
+  .admin-sidebar {
+    position: fixed;
+    z-index: 60;
+    left: -260px;
+    top: 0;
+    width: 240px;
+    box-shadow: var(--shadow);
+    transition: left 0.2s ease;
+  }
+  .admin-sidebar-open {
+    left: 0;
+  }
+  .admin-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    z-index: 50;
+  }
+  .admin-main {
     padding: 16px 10px;
   }
-  .dash-page .card {
+  .admin-main .card {
     padding: 14px;
   }
-  .dash-page .kpi {
+  .admin-main .kpi {
     padding: 12px;
   }
-  .dash-page .kpi-value {
+  .admin-main .kpi-value {
     font-size: 26px;
   }
-  .dash-page .kpi-label {
+  .admin-main .kpi-label {
     font-size: 12px;
     margin-top: 2px;
   }
@@ -338,7 +485,7 @@ select:focus {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
-  .dash-page .topbar {
+  .admin-main .topbar {
     flex-wrap: wrap;
   }
 }

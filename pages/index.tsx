@@ -22,23 +22,6 @@ function LogoIcon() {
   )
 }
 
-function IconGlobe() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="26"
-      height="26"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18" />
-    </svg>
-  )
-}
 function IconUser() {
   return (
     <svg
@@ -208,14 +191,9 @@ function useReveal<T extends HTMLElement>() {
 
 const STEPS = [
   {
-    icon: <IconGlobe />,
-    title: 'Entra a la plataforma',
-    text: 'Ingresa a www.medicosporvenezuela.org'
-  },
-  {
     icon: <IconUser />,
     title: 'Haz clic en “Soy paciente”',
-    text: 'Selecciona la opción para personas que necesitan hablar con un médico o psicólogo.'
+    text: 'Selecciona la opción para personas que necesitan hablar con un médico, psicólogo u otro profesional de la salud.'
   },
   {
     icon: <IconClipboard />,
@@ -224,13 +202,13 @@ const STEPS = [
   },
   {
     icon: <IconVideo />,
-    title: 'Únete a la teleconsulta',
-    text: 'Cuando aparezca la opción, haz clic en “Unirse a la teleconsulta”.'
+    title: 'Entra a la sala de espera',
+    text: 'Ingresarás a una sala de espera virtual; cuando un médico, psicólogo u otro profesional de la salud esté listo para atenderte, haz clic en “Unirse a la teleconsulta”.'
   },
   {
     icon: <IconDoctor />,
-    title: 'Recibe atención médica y psicológica',
-    text: 'Un médico o psicólogo te orientará de forma gratuita.'
+    title: 'Recibe atención de un profesional de la salud',
+    text: 'Un médico, psicólogo u otro profesional de la salud te orientará de forma gratuita.'
   }
 ]
 
@@ -242,6 +220,132 @@ const REASONS = [
 ]
 
 /* ---------- Page ---------- */
+
+// Páginas aliadas: organizaciones externas que apoyan a Venezuela (mismo dato del MVP).
+const ALLIES: { title: string; links: { name: string; display: string; url: string }[] }[] = [
+  {
+    title: 'Donaciones',
+    links: [
+      {
+        name: 'We Love Foundation',
+        display: 'welove.foundation',
+        url: 'https://www.welove.foundation'
+      },
+      {
+        name: 'Sun Risas',
+        display: 'fundraise.sunrisas.org',
+        url: 'https://fundraise.sunrisas.org/campaign/815513/donate'
+      },
+      {
+        name: 'The House Project',
+        display: 'thehouse-project.org',
+        url: 'https://www.thehouse-project.org'
+      },
+      {
+        name: 'GoFundMe · Venezuela Earthquake Relief',
+        display: 'gofundme.com',
+        url: 'https://www.gofundme.com/c/act/venezuela-earthquake-relief'
+      }
+    ]
+  },
+  {
+    title: 'Ayuda a niños',
+    links: [
+      {
+        name: 'Venezuela Ayuda',
+        display: 'terremoto.hazlohoy.org',
+        url: 'https://www.terremoto.hazlohoy.org'
+      },
+      {
+        name: 'Ayuda Niños',
+        display: 'asonacop.com/directorio',
+        url: 'https://www.asonacop.com/directorio'
+      },
+      {
+        name: 'Plan International',
+        display: 'plan-international.org',
+        url: 'https://www.plan-international.org/get-involved/venezuela-earthquake-appeal/'
+      },
+      {
+        name: 'Fundación Red de Casas Don Bosco',
+        display: 'misionessalesianas.org',
+        url: 'https://www.misionessalesianas.org/emergencia-terremotos-en-venezuela'
+      }
+    ]
+  },
+  {
+    title: 'Salud y medicina',
+    links: [
+      {
+        name: 'International Medical Corps',
+        display: 'internationalmedicalcorps.org',
+        url: 'https://www.internationalmedicalcorps.org'
+      },
+      {
+        name: 'Escucha Activa · Consultas psicológicas',
+        display: 'escuchactiva.com',
+        url: 'https://escuchactiva.com'
+      },
+      { name: 'Direct Relief', display: 'directrelief.org', url: 'https://www.directrelief.org' },
+      { name: 'Project HOPE', display: 'projecthope.org', url: 'https://www.projecthope.org' }
+    ]
+  },
+  {
+    title: 'Donación de comida',
+    links: [
+      {
+        name: 'Alimenta la Solidaridad',
+        display: 'alimentasolidaridad.org',
+        url: 'https://www.alimentasolidaridad.org'
+      },
+      {
+        name: 'Programa Mundial de Alimentos (WFP)',
+        display: 'wfp.org',
+        url: 'https://www.wfp.org'
+      },
+      { name: 'World Central Kitchen (WCK)', display: 'wck.org', url: 'https://www.wck.org' }
+    ]
+  },
+  {
+    title: 'Ayuda veterinaria',
+    links: [
+      { name: 'Laika', display: 'IG: @laikamascotas', url: 'https://instagram.com/laikamascotas' },
+      {
+        name: 'Fundación Ruta Animal',
+        display: 'IG: @fund_rutaanimal',
+        url: 'https://instagram.com/fund_rutaanimal'
+      }
+    ]
+  },
+  {
+    title: 'Registro de ayuda',
+    links: [
+      { name: 'VeneConnect', display: 'veneconnect.com', url: 'https://www.veneconnect.com' },
+      { name: 'Donar Seguro', display: 'donarseguro.com', url: 'https://www.donarseguro.com' }
+    ]
+  },
+  {
+    title: 'Ingenieros y arquitectos',
+    links: [
+      { name: 'SismoAyuda VE', display: 'sismoayudave.com', url: 'https://www.sismoayudave.com' },
+      {
+        name: 'Terremoto Venezuela',
+        display: 'terremotovenezuela.com',
+        url: 'https://www.terremotovenezuela.com'
+      }
+    ]
+  },
+  {
+    title: 'Búsqueda de desaparecidos',
+    links: [
+      {
+        name: 'Desaparecidos Terremoto Venezuela',
+        display: 'desaparecidosterremotovenezuela.com',
+        url: 'https://www.desaparecidosterremotovenezuela.com'
+      }
+    ]
+  }
+]
 
 export default function Home() {
   const router = useRouter()
@@ -262,7 +366,7 @@ export default function Home() {
         <title>Médicos por Venezuela — Teleconsultas gratuitas</title>
         <meta
           name="description"
-          content="Atención médica y psicológica gratuita por teleconsulta. Médicos por Venezuela conecta pacientes con médicos y psicólogos voluntarios."
+          content="Atención médica, psicológica y de otros profesionales de la salud, gratuita por teleconsulta. Médicos por Venezuela conecta pacientes con profesionales de la salud voluntarios."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
@@ -305,6 +409,7 @@ export default function Home() {
               <a href="#inicio">Inicio</a>
               <a href="#como-funciona">Cómo funciona</a>
               <a href="#por-que">¿Por qué usarlo?</a>
+              <a href="#aliadas">Páginas aliadas</a>
               <a href="#contacto">Contacto</a>
               <button className="nav-login" onClick={goPacienteLogin}>
                 Seguir mi caso
@@ -314,7 +419,7 @@ export default function Home() {
                   Soy Paciente
                 </button>
                 <button className="btn-pill btn-gold-outline" onClick={goMedico}>
-                  Soy Médico
+                  Soy profesional de la salud
                 </button>
               </div>
             </nav>
@@ -324,9 +429,10 @@ export default function Home() {
         {/* ---------- Hero ---------- */}
         <section id="inicio" className="hero">
           <div ref={heroReveal.ref} className={`hero-inner ${heroReveal.className}`}>
-            <span className="pill">Incluye atención médica y psicológica</span>
+            <span className="pill">Incluye atención médica, psicológica y más</span>
             <h1 className="hero-title">
-              ¿Necesitas atención médica o psicológica <span className="gold">gratuita</span>?
+              ¿Necesitas atención médica, psicológica o en otra área de la salud,{' '}
+              <span className="gold">gratuita</span>?
             </h1>
             <p className="hero-sub">
               Paso a paso para solicitar una teleconsulta en Médicos por Venezuela.
@@ -338,7 +444,7 @@ export default function Home() {
                   <IconUser />
                 </div>
                 <h2>Soy Paciente</h2>
-                <p>Necesito hablar con un médico o psicólogo.</p>
+                <p>Necesito hablar con un médico, psicólogo u otro profesional de la salud.</p>
                 <button className="btn-pill btn-blue btn-block" onClick={goPaciente}>
                   Solicitar consulta →
                 </button>
@@ -351,7 +457,7 @@ export default function Home() {
                 <div className="hcard-icon hcard-icon--gold">
                   <IconDoctor />
                 </div>
-                <h2>Soy Médico</h2>
+                <h2>Soy profesional de la salud</h2>
                 <p>Quiero ofrecer mi ayuda voluntaria.</p>
                 <button className="btn-pill btn-gold-outline btn-block" onClick={goMedico}>
                   Registrarme →
@@ -395,8 +501,8 @@ export default function Home() {
               <div className="trust-body">
                 <h3>100% Confidencial</h3>
                 <p>
-                  Tu información y tu consulta son privadas y seguras. Solo el médico o psicólogo
-                  que te atiende puede verlas.
+                  Tu información y tu consulta son privadas y seguras. Solo el profesional de la
+                  salud que te atiende puede verlas.
                 </p>
               </div>
             </div>
@@ -438,6 +544,38 @@ export default function Home() {
           </div>
         </section>
 
+        {/* ---------- Páginas aliadas ---------- */}
+        <section id="aliadas" className="section">
+          <div className="section-head">
+            <h2 className="section-title">Páginas aliadas</h2>
+            <p className="section-lead">
+              Organizaciones que apoyan a Venezuela. Los enlaces abren sitios externos.
+            </p>
+          </div>
+
+          <div className="allies">
+            {ALLIES.map((group) => (
+              <div className="ally-group" key={group.title}>
+                <h3 className="ally-title">{group.title}</h3>
+                {group.links.length === 0 ? (
+                  <p className="ally-empty">Próximamente</p>
+                ) : (
+                  <ul className="ally-list">
+                    {group.links.map((l) => (
+                      <li key={l.url}>
+                        <a href={l.url} target="_blank" rel="noopener noreferrer">
+                          <span className="ally-name">{l.name}</span>
+                          <span className="ally-url">{l.display}</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* ---------- Footer ---------- */}
         <footer id="contacto" className="footer">
           <div className="footer-inner">
@@ -446,7 +584,8 @@ export default function Home() {
               <span>Médicos por Venezuela</span>
             </div>
             <p className="footer-text">
-              Servicio gratuito para personas que necesitan orientación médica y psicológica.
+              Servicio gratuito para personas que necesitan orientación médica, psicológica y de
+              otros profesionales de la salud.
             </p>
             <div className="footer-badges">
               <span className="fbadge">
@@ -1030,6 +1169,68 @@ export default function Home() {
           }
         }
 
+        .allies {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 20px;
+        }
+        .ally-group {
+          background: var(--gray);
+          border: 1px solid #e8ecf3;
+          border-radius: 16px;
+          padding: 22px 22px 24px;
+        }
+        .ally-title {
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          font-size: 13.5px;
+          font-weight: 800;
+          color: var(--blue);
+          margin: 0 0 14px;
+        }
+        .ally-list {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+          display: grid;
+          gap: 10px;
+        }
+        .ally-list a {
+          display: block;
+          text-decoration: none;
+          padding: 11px 13px;
+          border-radius: 12px;
+          background: #fff;
+          border: 1px solid #e8ecf3;
+          transition:
+            box-shadow 0.15s ease,
+            transform 0.12s ease,
+            border-color 0.15s ease;
+        }
+        .ally-list a:hover {
+          box-shadow: 0 8px 20px rgba(8, 22, 48, 0.1);
+          transform: translateY(-1px);
+          border-color: var(--gold);
+        }
+        .ally-name {
+          display: block;
+          font-weight: 700;
+          color: var(--ink);
+          font-size: 15px;
+          line-height: 1.3;
+        }
+        .ally-url {
+          display: block;
+          font-size: 12.5px;
+          color: var(--muted);
+          margin-top: 3px;
+        }
+        .ally-empty {
+          color: var(--muted);
+          font-size: 14px;
+          margin: 0;
+        }
+
         /* Responsive */
         @media (max-width: 620px) {
           .float-banner {
@@ -1043,6 +1244,9 @@ export default function Home() {
         }
 
         @media (max-width: 860px) {
+          .allies {
+            grid-template-columns: 1fr;
+          }
           .nav-toggle {
             display: flex;
           }

@@ -1,8 +1,10 @@
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
+import DoctorPoolModal from '../../../components/DoctorPoolModal'
 import { supabase } from '../../../lib/supabase'
 import { STATUS_LABELS, minutesSince } from '../../../lib/utils'
+import { browserRoomUrl } from '../../../lib/jitsi'
 
 type Patient = {
   id: string
@@ -58,15 +60,19 @@ const ADMIN_ROLES = ['admin', 'super_admin'] as const
 const PANEL_ALLOWED_ROLES = ['doctor', 'specialist', ...ADMIN_ROLES] as const
 const PRESENCE_WINDOW_MS = 30 * 60 * 1000 // generous; see note in panel-medico.tsx
 
-// Case status options the attending doctor can set from "Gestión de la consulta".
-const DOCTOR_STATUS_OPTIONS: { value: string; label: string }[] = [
+// Status options shown for WhatsApp-attended cases (the doctor handles these outside video).
+// 'closed' y 'referred_to_specialist' se quitaron a propósito: cerrar es solo vía el botón
+// "Cerrar consulta" (con confirmación + nota guardada); referir será vía "Agendar con especialista".
+const WHATSAPP_STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'in_progress', label: 'Abierta' },
   { value: 'contacted_whatsapp', label: 'Ya contactado vía WhatsApp' },
-  { value: 'referred_to_specialist', label: 'Referenciado a otro médico' },
-  { value: 'urgent_in_person', label: 'Necesita ir a centro de atención' },
-  { value: 'patient_no_show', label: 'Paciente no se presentó' },
-  { value: 'closed', label: 'Cerrado' }
+  { value: 'urgent_in_person', label: 'Necesita ir a centro de atención' }
 ]
+
+// Estados que finalizan el caso: con uno de estos ya no se muestra el select de estado
+// ni los botones de cierre (evita re-cerrar pisando closed_at, y que el select de
+// WhatsApp "mienta" mostrando la primera opción cuando el estado real no está listado).
+const FINAL_STATUSES = ['closed', 'patient_no_show', 'closed_by_admin', 'cancelled']
 
 function isAdminRole(role?: string | null): boolean {
   return !!role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])
@@ -89,9 +95,7 @@ function eventLabel(type: string): string {
     opened: 'Consulta abierta',
     closed: 'Consulta cerrada',
     patient_no_show: 'Paciente ausente',
-    admin_update: 'Actualización administrativa',
-    patient_entered_call: 'Paciente ingresó a la videollamada',
-    patient_wants_whatsapp: 'Paciente prefirió ser contactado por WhatsApp'
+    admin_update: 'Actualización administrativa'
   }
   return labels[type] || type
 }
@@ -114,14 +118,68 @@ export default function ConsultaDetalle() {
   const [eventAuthorsById, setEventAuthorsById] = useState<Record<string, EventAuthor>>({})
   const [assignedDoctor, setAssignedDoctor] = useState<EventAuthor | null>(null)
   const [note, setNote] = useState('')
+  // Última nota persistida (para exigir "nota guardada" antes de cerrar la consulta).
+  const [savedNote, setSavedNote] = useState('')
+  const [poolOpen, setPoolOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  // in-flight guard compartido por las acciones de escritura (evita dobles submits).
+  const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
-  const [problemOpen, setProblemOpen] = useState(false)
+  // Error específico del cierre (se muestra en rojo debajo del botón "Cerrar consulta").
+  const [closeError, setCloseError] = useState('')
+  // Titila el borde de "Notas del médico" ~3s cuando el cierre se bloquea por falta de nota.
+  const [notesBlink, setNotesBlink] = useState(false)
+  // Fuerza re-render periódico para re-evaluar la presencia del paciente (ventana de tiempo).
+  const [, setPresenceTick] = useState(0)
+
+  function flagMissingNote(msg: string) {
+    setCloseError(msg)
+    setNotesBlink(true)
+    window.setTimeout(() => setNotesBlink(false), 3000)
+  }
 
   useEffect(() => {
     if (!consultationId) return
     init(consultationId)
   }, [consultationId])
+
+  // Presencia del paciente EN VIVO (Realtime): su heartbeat (mark_patient_waiting) actualiza la
+  // consulta en la BD; nos suscribimos a esos cambios y refrescamos patient_last_seen_at/status SIN
+  // pisar la nota que el médico está escribiendo. Así ve al paciente entrar/salir de la sala sin
+  // recargar (antes esta página cargaba una sola vez).
+  useEffect(() => {
+    if (!consultationId) return
+    const channel = supabase
+      .channel(`consulta-${consultationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'consultations',
+          filter: `id=eq.${consultationId}`
+        },
+        (payload) => {
+          const row = payload.new as { patient_last_seen_at: string | null; status: string }
+          setConsultation((prev) =>
+            prev
+              ? { ...prev, patient_last_seen_at: row.patient_last_seen_at, status: row.status }
+              : prev
+          )
+        }
+      )
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [consultationId])
+
+  // Si el paciente se va (no llegan más heartbeats), re-evaluamos cada 30s para que "En sala" pase
+  // a "Sin conexión" al vencer la ventana, aunque no haya evento Realtime.
+  useEffect(() => {
+    const t = window.setInterval(() => setPresenceTick((n) => n + 1), 30000)
+    return () => window.clearInterval(t)
+  }, [])
 
   async function init(id: string) {
     const { data: sessionData } = await supabase.auth.getSession()
@@ -177,6 +235,7 @@ export default function ConsultaDetalle() {
 
     setConsultation(row)
     setNote(row.internal_note || '')
+    setSavedNote(row.internal_note || '')
     await Promise.all([loadAssignedDoctor(row, currentProfile), loadEvents(id)])
   }
 
@@ -253,39 +312,112 @@ export default function ConsultaDetalle() {
   }
 
   async function saveNote() {
-    if (!consultation) return
+    if (!consultation || busy) return
     setMessage('')
+    setBusy(true)
     const { error } = await supabase
       .from('consultations')
       .update({ internal_note: note })
       .eq('id', consultation.id)
-    if (error) setMessage('No se pudo guardar la nota.')
-    else setMessage('Nota guardada.')
+    setBusy(false)
+    if (error) {
+      setMessage('No se pudo guardar la nota.')
+    } else {
+      setSavedNote(note)
+      setMessage('Nota guardada.')
+    }
   }
 
   // Change the case status from the WhatsApp status dropdown (no video / close-button flow).
+  // 'closed' ya no está entre las opciones: cerrar es solo vía el botón (con sus guardas).
   async function updateStatus(newStatus: string) {
-    if (!consultation || !profile) return
+    if (!consultation || !profile || busy) return
     setMessage('')
-    const isTerminal = ['closed', 'closed_by_admin', 'patient_no_show'].includes(newStatus)
+    setBusy(true)
     const { error } = await supabase
       .from('consultations')
-      .update({
-        status: newStatus,
-        ...(isTerminal ? { closed_at: new Date().toISOString() } : {})
-      })
+      .update({ status: newStatus })
       .eq('id', consultation.id)
     if (error) {
+      setBusy(false)
       setMessage('No se pudo actualizar el estado.')
       return
     }
-    setConsultation({ ...consultation, status: newStatus })
+    // Functional update: durante el await, Realtime pudo aplicar otros campos
+    // (patient_last_seen_at, o un cierre hecho por un admin) — no pisarlos con
+    // el objeto capturado al entrar a la función.
+    setConsultation((prev) => (prev ? { ...prev, status: newStatus } : prev))
     await addEvent(
       consultation.id,
       'admin_update',
       `Estado: ${STATUS_LABELS[newStatus] || newStatus} (${profile.full_name})`
     )
+    setBusy(false)
     setMessage('Estado actualizado.')
+  }
+
+  async function closeConsultation(outcome: 'closed' | 'patient_no_show' = 'closed') {
+    if (!consultation || !profile || busy) return
+    setMessage('')
+    setCloseError('')
+    const noShow = outcome === 'patient_no_show'
+    // Cierre real (no ausencia): exige una nota NO vacía y YA guardada.
+    if (!noShow) {
+      if (!note.trim()) {
+        flagMissingNote('Agrega una nota antes de cerrar la consulta.')
+        return
+      }
+      if (note !== savedNote) {
+        flagMissingNote('Guarda la nota antes de cerrar la consulta.')
+        return
+      }
+    }
+    // Ambos caminos finalizan el caso: siempre se confirma (un tap accidental en
+    // "no estaba en la sala" cerraba el caso sin vuelta atrás).
+    const confirmMsg = noShow
+      ? '¿Confirmas que el paciente no estaba en la sala de espera? Esto finaliza el caso.'
+      : '¿Seguro que deseas cerrar la consulta? Esta acción la finaliza.'
+    if (!window.confirm(confirmMsg)) return
+
+    setBusy(true)
+    // En no-show NO se persiste la nota: puede haber texto a medio escribir en el
+    // textarea que el médico nunca guardó.
+    const update: Record<string, unknown> = {
+      status: outcome,
+      closed_at: new Date().toISOString(),
+      ...(noShow ? {} : { internal_note: note })
+    }
+    // Escritura CONDICIONAL: mientras window.confirm bloqueaba, un admin pudo cerrar el
+    // caso por otro lado (y los mensajes Realtime quedaron encolados). El filtro por
+    // estados finales hace que ese cierre tardío afecte 0 filas en vez de pisar closed_at.
+    const { data: updated, error } = await supabase
+      .from('consultations')
+      .update(update)
+      .eq('id', consultation.id)
+      .not('status', 'in', `(${FINAL_STATUSES.join(',')})`)
+      .select('id')
+
+    if (error) {
+      setBusy(false)
+      setCloseError(noShow ? 'No se pudo marcar como ausente.' : 'No se pudo cerrar la consulta.')
+      return
+    }
+    if (!updated || updated.length === 0) {
+      // Ya estaba finalizada (otro médico/admin ganó): no registrar evento ni navegar;
+      // el estado real llega por Realtime y la UI pasa sola al modo "caso finalizado".
+      setBusy(false)
+      setCloseError('La consulta ya fue finalizada por otra persona.')
+      return
+    }
+
+    await addEvent(
+      consultation.id,
+      noShow ? 'patient_no_show' : 'closed',
+      noShow
+        ? `Paciente no estaba en la sala de espera (${profile.full_name})`
+        : `Cerrada por ${profile.full_name}`
+    )
+    router.push('/panel-medico?actualizado=1')
   }
 
   if (loading) {
@@ -313,6 +445,8 @@ export default function ConsultaDetalle() {
     )
   }
 
+  const isCaseClosed = FINAL_STATUSES.includes(consultation.status)
+
   return (
     <>
       <Head>
@@ -330,29 +464,42 @@ export default function ConsultaDetalle() {
                 Caso {consultation.code} · hace {minutesSince(consultation.created_at)} min
               </p>
             </div>
-            <div style={{ textAlign: 'right', maxWidth: 280 }}>
-              <span className={`badge ${statusBadgeClass(consultation.status)}`}>
-                {STATUS_LABELS[consultation.status] || consultation.status}
-              </span>
-              <div style={{ marginTop: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => setProblemOpen(true)}
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: '#b91c1c',
-                    background: 'var(--red-light)',
-                    border: '1px solid #fca5a5',
-                    borderRadius: 8,
-                    padding: '8px 12px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Tengo un problema
-                </button>
-              </div>
-            </div>
+            <span className={`badge ${statusBadgeClass(consultation.status)}`}>
+              {STATUS_LABELS[consultation.status] || consultation.status}
+            </span>
+          </div>
+
+          {/* Unirse a la videoconsulta: acción principal, arriba de todo (antes del paciente).
+              Aparece siempre que exista la sala, aunque el caso se haya tomado por WhatsApp —
+              pero no en casos finalizados (la sala ya no existe operativamente). */}
+          {consultation.video_room_url && !isCaseClosed && (
+            <a
+              className="btn btn-primary btn-full"
+              href={browserRoomUrl(consultation.video_room_url)}
+              target="_blank"
+              rel="noreferrer"
+              style={{ marginBottom: 16 }}
+            >
+              Unirse a videoconsulta
+            </a>
+          )}
+
+          {/* Acciones de referencia, en una fila debajo del encabezado. */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-outline"
+              style={{ flex: '1 1 200px' }}
+              onClick={() => setPoolOpen(true)}
+            >
+              Ver Pool de médicos
+            </button>
+            <button
+              className="btn btn-outline"
+              style={{ flex: '1 1 200px' }}
+              onClick={() => setMessage('Función de agendar con especialista: próximamente.')}
+            >
+              Agendar con Especialista
+            </button>
           </div>
 
           {message && (
@@ -364,101 +511,17 @@ export default function ConsultaDetalle() {
           <div className="detail-grid">
             <section className="card">
               <h2 style={{ marginTop: 0 }}>Paciente</h2>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: 8,
-                  marginBottom: 4
-                }}
-              >
-                <h3 style={{ margin: 0 }}>{consultation.patients?.full_name || 'Paciente'}</h3>
-                {consultation.category && (
-                  <span
-                    className="badge"
-                    style={{
-                      background: '#eef2ff',
-                      color: '#4338ca',
-                      border: '1px solid #c7d2fe'
-                    }}
-                  >
-                    {consultation.category}
-                  </span>
-                )}
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: 16,
-                  margin: '8px 0',
-                  color: '#0f172a'
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>Zona</div>
-                  <div style={{ fontSize: 14 }}>{consultation.patients?.affected_zone || '—'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>Edad (años)</div>
-                  <div style={{ fontSize: 14 }}>{consultation.patients?.age_range || '—'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>Cédula</div>
-                  <div style={{ fontSize: 14 }}>{consultation.patients?.cedula || '—'}</div>
-                </div>
-              </div>
-              <div style={{ margin: '10px 0' }}>
-                <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginBottom: 4 }}>
-                  Tel. (WhatsApp)
-                </div>
-                {consultation.patients?.phone_whatsapp ? (
-                  <a
-                    href={`https://wa.me/${consultation.patients.phone_whatsapp.replace(/\D/g, '')}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      fontSize: 15,
-                      fontWeight: 700,
-                      color: '#fff',
-                      background: '#16a34a',
-                      borderRadius: 8,
-                      padding: '8px 14px',
-                      textDecoration: 'none',
-                      wordBreak: 'break-all'
-                    }}
-                  >
-                    <span aria-hidden="true">💬</span>
-                    {consultation.patients.phone_whatsapp}
-                  </a>
-                ) : (
-                  <span style={{ color: '#64748b', fontSize: 13 }}>—</span>
-                )}
-              </div>
-              <ul
-                style={{
-                  margin: '4px 0 0',
-                  paddingLeft: 16,
-                  color: '#b91c1c',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  lineHeight: 1.4
-                }}
-              >
-                <li>
-                  De ser posible por favor contacta al paciente vía WhatsApp intentando agendar una
-                  llamada y asegurar así una mejor conexión con el paciente.
-                </li>
-                <li>Por favor espera hasta 24 horas por una respuesta del paciente.</li>
-                <li>
-                  Si no hay respuesta alguna o el contacto es incorrecto, coméntalo en las notas
-                  médicas.
-                </li>
-              </ul>
+              <h3 style={{ marginBottom: 4 }}>{consultation.patients?.full_name || 'Paciente'}</h3>
+              <p style={{ marginTop: 0, color: '#64748b' }}>
+                {consultation.patients?.affected_zone || 'Zona no indicada'} ·{' '}
+                {consultation.patients?.age_range || 'Edad no indicada'}
+              </p>
+              <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
+                Cédula: {consultation.patients?.cedula || '—'}
+              </p>
+              <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
+                Tel. (solo seguimiento): {consultation.patients?.phone_whatsapp || '—'}
+              </p>
               <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
                 Email (opcional): {consultation.patients?.email || '—'}
               </p>
@@ -471,6 +534,13 @@ export default function ConsultaDetalle() {
                   </span>
                 )}
               </div>
+              <div className="tag-row" style={{ marginTop: 12 }}>
+                {consultation.patients?.needs_tags?.map((t) => (
+                  <span key={t} className="tag">
+                    {t}
+                  </span>
+                ))}
+              </div>
             </section>
 
             <section className="card">
@@ -480,14 +550,8 @@ export default function ConsultaDetalle() {
                   consultation.patients?.description ||
                   'Sin descripción'}
               </div>
-              {consultation.patients?.needs_tags && consultation.patients.needs_tags.length > 0 && (
-                <div className="tag-row" style={{ marginTop: 12 }}>
-                  {consultation.patients.needs_tags.map((t) => (
-                    <span key={t} className="tag">
-                      {t}
-                    </span>
-                  ))}
-                </div>
+              {consultation.category && (
+                <p style={{ color: '#64748b' }}>Tipo de ayuda: {consultation.category}</p>
               )}
               {consultation.referred_specialty && (
                 <p>
@@ -496,37 +560,6 @@ export default function ConsultaDetalle() {
                   </span>
                 </p>
               )}
-            </section>
-
-            <section className="card detail-full-span">
-              <h2 style={{ marginTop: 0 }}>Gestión de la consulta</h2>
-              <div className="detail-actions">
-                <div>
-                  <label className="label">Estado del caso</label>
-                  <select
-                    value={consultation.status}
-                    onChange={(e) => updateStatus(e.target.value)}
-                  >
-                    {DOCTOR_STATUS_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Notas del médico</label>
-                  <textarea
-                    rows={6}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Evita escribir historia clínica completa. Solo información necesaria para coordinación."
-                  />
-                </div>
-                <button className="btn btn-secondary" onClick={saveNote}>
-                  Guardar nota
-                </button>
-              </div>
             </section>
 
             <section className="card detail-full-span">
@@ -589,42 +622,80 @@ export default function ConsultaDetalle() {
                 )}
               </div>
             </section>
+
+            <section className="card detail-full-span">
+              <h2 style={{ marginTop: 0 }}>Gestión de la consulta</h2>
+              <div className="detail-actions">
+                {isCaseClosed && (
+                  <div className="notice">
+                    Este caso ya está finalizado (
+                    {STATUS_LABELS[consultation.status] || consultation.status}). Solo la nota sigue
+                    editable.
+                  </div>
+                )}
+                {consultation.attended_via_whatsapp && !isCaseClosed && (
+                  <div>
+                    <label className="label">Estado del caso</label>
+                    <select
+                      value={consultation.status}
+                      disabled={busy}
+                      onChange={(e) => updateStatus(e.target.value)}
+                    >
+                      {WHATSAPP_STATUS_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="label">Notas del médico</label>
+                  <textarea
+                    className={notesBlink ? 'note-blink' : undefined}
+                    rows={6}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Evita escribir historia clínica completa. Solo información necesaria para coordinación."
+                  />
+                </div>
+                <button className="btn btn-secondary" onClick={saveNote} disabled={busy}>
+                  Guardar nota
+                </button>
+
+                {!consultation.attended_via_whatsapp && !isCaseClosed && (
+                  <button
+                    className="btn btn-outline btn-full"
+                    onClick={() => closeConsultation('patient_no_show')}
+                    disabled={busy}
+                  >
+                    Paciente no estaba en la sala de espera
+                  </button>
+                )}
+
+                {/* Cerrar consulta: al final. Exige nota guardada + confirmación (ver closeConsultation). */}
+                {!isCaseClosed && (
+                  <button
+                    className="btn btn-primary btn-full"
+                    onClick={() => closeConsultation('closed')}
+                    disabled={busy}
+                  >
+                    Cerrar consulta
+                  </button>
+                )}
+                {/* Error del cierre: en rojo, JUSTO debajo del botón. */}
+                {closeError && (
+                  <p style={{ color: '#dc2626', fontWeight: 500, fontSize: 14, margin: '4px 0 0' }}>
+                    {closeError}
+                  </p>
+                )}
+              </div>
+            </section>
           </div>
+
+          <DoctorPoolModal open={poolOpen} onClose={() => setPoolOpen(false)} />
         </div>
       </main>
-
-      {problemOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setProblemOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.55)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            zIndex: 1000
-          }}
-        >
-          <div
-            className="card"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 420, width: '100%' }}
-          >
-            <h2 style={{ marginTop: 0 }}>¿Tienes un problema?</h2>
-            <p style={{ marginBottom: 20 }}>
-              Si tienes problemas con este caso, por favor contáctanos vía{' '}
-              <strong>+4915203003171</strong> en WhatsApp.
-            </p>
-            <button className="btn btn-primary btn-full" onClick={() => setProblemOpen(false)}>
-              Entendido
-            </button>
-          </div>
-        </div>
-      )}
 
       <style jsx global>{`
         .detail-topbar {
@@ -640,16 +711,27 @@ export default function ConsultaDetalle() {
         .detail-timeline {
           display: grid;
           grid-template-columns: 1fr;
-          gap: 20px;
-          align-items: start;
-        }
-
-        .detail-grid .card {
-          margin: 0;
+          gap: 16px;
         }
 
         .detail-full-span {
           grid-column: 1 / -1;
+        }
+
+        /* Borde de "Notas del médico" titilando ~3s cuando falta la nota al cerrar. */
+        .note-blink {
+          animation: note-blink 0.5s ease-in-out 0s 6;
+        }
+        @keyframes note-blink {
+          0%,
+          100% {
+            border-color: #dc2626;
+            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.25);
+          }
+          50% {
+            border-color: #cbd5e1;
+            box-shadow: none;
+          }
         }
 
         @media (min-width: 640px) {
@@ -663,7 +745,6 @@ export default function ConsultaDetalle() {
         @media (min-width: 900px) {
           .detail-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 24px;
           }
         }
       `}</style>

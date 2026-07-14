@@ -36,20 +36,6 @@ export const SPECIALTIES = [
   'Otra'
 ]
 
-// The patient "tipo de ayuda" options (shown on the registration form and editable by admins).
-export const NEEDS = [
-  'Medicina general',
-  'Lesión física',
-  'Primeros auxilios',
-  'Apoyo emocional',
-  'Crisis de ansiedad',
-  'Niño / pediatría',
-  'Embarazo',
-  'Medicamentos',
-  'Enfermedad crónica',
-  'Otra'
-]
-
 // Maps a doctor specialty to the patient "tipo de ayuda" / category values it covers
 // (values come from the NECESIDADES list in registro-paciente). '*' = handles anything.
 export const SPECIALTY_NEEDS: Record<string, string[]> = {
@@ -132,23 +118,37 @@ export function eligibleSpecialties(category: string | null, needsTags: string[]
   )
 }
 
-// The specialties that can see a case, honoring an admin override when present, otherwise the
-// derived set. `required` comes from consultations.required_specialties.
-export function effectiveSpecialties(
-  required: string[] | null | undefined,
-  category: string | null,
-  needsTags: string[] | null
-): string[] {
-  return required && required.length > 0 ? required : eligibleSpecialties(category, needsTags)
-}
+// El registro del paciente ahora pide la especialidad y la guarda en consultations.specialty_id:
+// esa columna ES el matching (el backend expone el nombre resuelto en el panel). category/needs
+// quedan como fallback para consultas viejas sin especialidad. Espejo exacto de
+// src/services/specialties.py (matches_consultation / can_attend_consultation) del backend.
+const PSYCH_SPECIALTIES = ['Psicología', 'Psiquiatría']
 
-// Whether a doctor of `specialty` can see/attend a case, honoring the admin override when present.
-export function specialtyCanSee(
+// Match de preferencia: igualdad exacta con la especialidad solicitada por el paciente;
+// fallback al matching legacy (category/needs) solo para consultas sin specialty_id.
+export function matchesConsultation(
   specialty: string | null | undefined,
-  required: string[] | null | undefined,
+  consultationSpecialty: string | null,
   category: string | null,
   needsTags: string[] | null
 ): boolean {
-  if (required && required.length > 0) return !!specialty && required.includes(specialty)
+  if (consultationSpecialty) return specialty === consultationSpecialty
+  return matchesSpecialty(specialty, category, needsTags)
+}
+
+// Elegibilidad dura con la especialidad explícita. La reserva de psicología se mantiene:
+// un caso de salud mental solo va a Psicología/Psiquiatría, y Psicología solo atiende salud
+// mental. Un caso físico explícito lo puede tomar cualquier no-psicólogo (que la especialidad
+// coincida es la PREFERENCIA de attend-next, no un bloqueo — nadie se queda sin atender).
+export function canAttendConsultation(
+  specialty: string | null | undefined,
+  consultationSpecialty: string | null,
+  category: string | null,
+  needsTags: string[] | null
+): boolean {
+  if (consultationSpecialty && PSYCH_SPECIALTIES.includes(consultationSpecialty)) {
+    return !!specialty && PSYCH_SPECIALTIES.includes(specialty)
+  }
+  if (consultationSpecialty) return specialty !== 'Psicología'
   return canAttend(specialty, category, needsTags)
 }

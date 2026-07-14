@@ -15,7 +15,9 @@ setup, and persistence conventions.
 Read [CLAUDE.md](CLAUDE.md) first. It documents:
 
 - Auth model (anonymous patients, instant-access doctors, admin revoke, Google OAuth role picker)
-- Architecture (Next.js frontend + Supabase BaaS, no separate backend server)
+- Architecture (Next.js frontend + Supabase BaaS for auth/queue/admin; doctor/patient/consultation
+  registration and the doctor self-profile `/panel-medico/perfil` now call a separate FastAPI
+  backend — see CLAUDE.md's Architecture section)
 - Routes, database schema, RLS policies, RPCs
 - Security trade-offs and mitigations
 
@@ -27,11 +29,16 @@ doesn't cover.
 Verified directly against `package.json` and the repo tree (not assumed):
 
 - **Next.js 14.2** (Pages Router) + **React 18** + **TypeScript 5**
-- **Supabase** (`@supabase/supabase-js` v2) — Postgres, Auth, RLS; no separate backend server
+- **Supabase** (`@supabase/supabase-js` v2) — Postgres, Auth, RLS for everything except doctor/patient/
+  consultation registration and the doctor self-profile, which now call a separate FastAPI backend
+- **Separate FastAPI backend** (`api-medicos-por-venezuela`, own repo) at `/api/v1/*`, called via
+  `lib/apiClient.ts` (`NEXT_PUBLIC_API_URL`, Supabase JWT as Bearer). Owns doctor/patient/consultation
+  registration (`lib/doctors.ts`/`lib/patients.ts`) and the doctor self-profile `/panel-medico/perfil`
+  — the migration is ongoing
 - One Vercel serverless API route: `pages/api/videoconsulta.ts` (Twilio v6 + Supabase service-role,
   server-only)
 - No CSS framework — plain global CSS classes
-- No state-management library, no ORM — raw Supabase JS client + RLS
+- No state-management library, no ORM — raw Supabase JS client + RLS, plus `fetch` via `lib/apiClient.ts`
 - `tsconfig.json` present; strictness not yet audited in depth
 
 ## Testing capabilities (strict_tdd: false)
@@ -107,6 +114,9 @@ To recover any artifact: `mem_search(query: "{topic_key}", project: "medicos-por
 
 - This is a thin frontend over Supabase — most "backend" behavior is in
   [supabase_schema.sql](supabase_schema.sql), not TypeScript. Check both when investigating behavior.
+  The exception is the doctor self-profile, which calls the separate FastAPI backend via
+  `lib/apiClient.ts`/`lib/doctors.ts` — that logic lives in the `api-medicos-por-venezuela` repo,
+  not here.
 - Package manager is **pnpm** — never use `npm` or `yarn` commands in this repo.
 - `lint`, `format`, `format:check` scripts exist (ESLint + Prettier) but there is still no `test`
   script — don't assume one and don't invent one without discussing it with the user first.
