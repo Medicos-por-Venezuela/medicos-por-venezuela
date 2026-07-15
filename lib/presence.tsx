@@ -30,10 +30,11 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
     // corrió uno más nuevo. Evita que un fetchMyProfile lento de una sesión vieja re-anuncie a un
     // médico ya deslogueado (fantasma online) o intercale resultados fuera de orden.
     let latest = 0
+    let disposed = false
     const resolve = async () => {
       const call = ++latest
       const { data } = await supabase.auth.getSession()
-      if (call !== latest) return
+      if (disposed || call !== latest) return
       if (!data.session) {
         setSelf(null)
         setStaff(false)
@@ -41,18 +42,26 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
       }
       try {
         const me = await fetchMyProfile(data.session.access_token)
-        if (call !== latest) return
+        if (disposed || call !== latest) return
         // Médico que cuenta como online = con ficha Y activo (un médico revocado deja de anunciarse).
         const isDoctor = me.has_doctor_profile && me.active
         setStaff(isDoctor || me.role === 'admin' || me.role === 'super_admin')
         setSelf(isDoctor ? { id: me.id, full_name: me.full_name, specialty: me.specialty } : null)
       } catch {
-        if (call === latest) setSelf(null)
+        if (!disposed && call === latest) setSelf(null)
       }
     }
     resolve()
-    const { data: sub } = supabase.auth.onAuthStateChange(() => resolve())
+    // NUNCA await-ees métodos de Supabase DENTRO del callback de onAuthStateChange: auth-js despacha
+    // este callback mientras retiene su lock interno de auth, así que un getSession()/query aquí
+    // vuelve a entrar al mismo lock y lo deadlockea. En un login eso cuelga a la propia llamada que
+    // disparó el evento (signInWithPassword nunca resuelve → el botón se queda en "Entrando…").
+    // Por eso diferimos resolve() con setTimeout(…, 0): corre FUERA del lock. (Guía oficial Supabase.)
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      setTimeout(resolve, 0)
+    })
     return () => {
+      disposed = true
       latest = -1 // invalida cualquier resolve en vuelo al desmontar
       sub.subscription.unsubscribe()
     }

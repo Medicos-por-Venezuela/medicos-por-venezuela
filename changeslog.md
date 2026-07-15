@@ -5,6 +5,17 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-07-15
+
+- **Fix login colgado en "Entrando…" (deadlock de auth)** — `lib/presence.tsx`: el callback de
+  `supabase.auth.onAuthStateChange` era `async` y `await`-eaba `getSession()`/`fetchMyProfile()`
+  DENTRO del callback. auth-js despacha ese callback mientras retiene su lock interno de auth, así
+  que al re-entrar el lock deadlockeaba la propia llamada que disparó el evento: en un login,
+  `signInWithPassword` nunca resolvía y el botón se quedaba en "Entrando…" para siempre (reportado
+  en `/login-medico`; afectaba a cualquier flujo de auth porque `PresenceProvider` envuelve toda la
+  app en `_app.tsx`). Ahora el callback difiere el trabajo con `setTimeout(resolve, 0)` para correr
+  FUERA del lock (guía oficial de Supabase), con un guard `disposed` extra al desmontar.
+
 ## 2026-07-14
 
 - **E2E del registro completo de paciente** — `e2e/registro-paciente.spec.ts`: formulario adulto
