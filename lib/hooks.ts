@@ -25,3 +25,17 @@ export function useEscapeToClose(open: boolean, onClose: () => void) {
     return () => document.removeEventListener('keydown', onKey)
   }, [open, onClose])
 }
+
+// Corre `effect` una vez al montar y luego cada `intervalMs`, limpiando el intervalo al desmontar
+// — sobre `useMountEffect` (el único primitivo de efecto-al-montar sancionado en el repo) en vez de
+// un `useEffect` crudo, para que los refrescos periódicos (KPIs del dashboard, etc.) cumplan la
+// regla no-use-effect. `effect` es siempre el capturado al montar (deps vacías de useMountEffect):
+// quien lo use debe mantenerlo estable leyendo datos frescos por sí mismo (p. ej. re-pedir el token
+// cada tick) en vez de cerrar sobre props/estado que puedan quedar obsoletos.
+export function usePolling(effect: () => void, intervalMs: number) {
+  useMountEffect(() => {
+    effect()
+    const id = setInterval(effect, intervalMs)
+    return () => clearInterval(id)
+  })
+}

@@ -5,6 +5,20 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-07-20
+
+- **Admin: dashboard sobre el backend + monitor de consultas en progreso** — el dashboard
+  (`pages/admin/dashboard.tsx`) migró sus KPIs a `GET /api/v1/stats/dashboard` del backend
+  (`lib/stats.ts`), reemplazando las 7 consultas directas a Supabase; se refresca con polling cada
+  30s vía `usePolling` (`lib/hooks.ts`, sin `useEffect` crudo). **Excepción: "Médicos online" sigue
+  en vivo por Realtime Presence** (`useOnlineDoctors` de `lib/presence.tsx`), no por el
+  `doctors_online` (last_seen_at) del backend, para no perder la presencia real por WebSocket. Se
+  agregó `components/admin/ConsultationsMonitorModal.tsx`, un modal de solo lectura para el KPI
+  "Consultas en progreso" con el detalle de cada caso (médico, paciente, tiempo transcurrido,
+  motivo), y un botón "Ver médicos conectados" que abre el modal ya existente `DoctorPoolModal`.
+  Files: `pages/admin/dashboard.tsx`, `components/admin/ConsultationsMonitorModal.tsx`,
+  `components/admin/AdminLayout.tsx`, `lib/consultations.ts`, `lib/hooks.ts`.
+
 ## 2026-07-15
 
 - **Fix login colgado en "Entrando…" (deadlock de auth)** — `lib/presence.tsx`: el callback de
