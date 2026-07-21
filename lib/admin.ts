@@ -3,6 +3,7 @@
 // catálogos) can reuse the same session/role check instead of duplicating it.
 import { useRouter } from 'next/router'
 import { useState } from 'react'
+import { getJson } from './apiClient'
 import { useMountEffect } from './hooks'
 import { supabase } from './supabase'
 import { fetchMyPermissions } from './users'
@@ -143,15 +144,24 @@ export function useAdminGuard() {
         router.push('/admin')
         return
       }
-      const { data: me, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', sessionData.session.user.id)
-        .single()
-      const adminRole =
-        !error && me && me.active
-          ? await effectiveAdminRole(me.role, sessionData.session.access_token)
-          : null
+      // El perfil se pide al backend (único gateway a la BD), NO a la tabla profiles de Supabase.
+      // GET /auth/me devuelve role + active del titular del JWT. El auth sigue en Supabase:
+      // getSession solo da la sesión y el token con que autenticamos la llamada.
+      let me: Profile
+      try {
+        me = await getJson<Profile>(
+          '/api/v1/auth/me',
+          'No se pudo cargar el perfil',
+          sessionData.session.access_token
+        )
+      } catch {
+        await supabase.auth.signOut()
+        router.push('/admin')
+        return
+      }
+      const adminRole = me.active
+        ? await effectiveAdminRole(me.role, sessionData.session.access_token)
+        : null
       if (!adminRole) {
         await supabase.auth.signOut()
         router.push('/admin')

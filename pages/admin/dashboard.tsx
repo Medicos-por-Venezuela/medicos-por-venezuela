@@ -1,68 +1,109 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import AdminLayout, { AdminLoading, Kpi } from '../../components/admin/AdminLayout'
-import { CLOSED_STATUSES, IN_PROGRESS_STATUSES, useAdminGuard } from '../../lib/admin'
+import ConsultationsMonitorModal from '../../components/admin/ConsultationsMonitorModal'
+import DoctorPoolModal from '../../components/DoctorPoolModal'
+import { getAccessToken, useAdminGuard } from '../../lib/admin'
+import { fetchInProgressConsultations, ConsultationMonitorItem } from '../../lib/consultations'
+import { usePolling } from '../../lib/hooks'
 import { useOnlineDoctors } from '../../lib/presence'
-import { supabase } from '../../lib/supabase'
+import { DashboardStats, fetchDashboardStats } from '../../lib/stats'
+
+const POLL_INTERVAL_MS = 30_000
 
 export default function AdminDashboard() {
   const { profile, loading } = useAdminGuard()
-  // "Médicos online" en vivo por Realtime Presence (el admin solo observa, no se anuncia).
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [statsError, setStatsError] = useState('')
+
+  // "Médicos online" en vivo por Realtime Presence (el admin solo observa, no se anuncia). El resto
+  // de KPIs viene del backend, pero la presencia real es WebSocket, no el last_seen_at del backend.
   const onlineDoctors = useOnlineDoctors()
-  const [counts, setCounts] = useState({
-    doctors: 0,
-    patients: 0,
-    waiting: 0,
-    open: 0,
-    closed: 0,
-    urgent: 0
-  })
 
-  useEffect(() => {
-    if (profile) loadStats()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile])
+  const [poolOpen, setPoolOpen] = useState(false)
 
+  const [monitorOpen, setMonitorOpen] = useState(false)
+  const [monitorItems, setMonitorItems] = useState<ConsultationMonitorItem[]>([])
+  const [monitorLoading, setMonitorLoading] = useState(false)
+  const [monitorError, setMonitorError] = useState('')
+
+  // Reemplaza las 7 consultas directas a Supabase por una sola llamada al backend
+  // (GET /stats/dashboard). getAccessToken() puede fallar en el primer tick si la sesión de
+  // useAdminGuard todavía no resolvió — el catch lo absorbe y el siguiente tick (30s) reintenta.
   async function loadStats() {
-    const staffRoles = ['doctor', 'specialist']
-    const consCount = () =>
-      supabase.from('consultations').select('id', { count: 'exact', head: true })
-    const [doctorsCnt, patientsCnt, waitingCnt, openCnt, closedCnt, urgentCnt] = await Promise.all([
-      supabase.from('profiles').select('id', { count: 'exact', head: true }).in('role', staffRoles),
-      supabase.from('patients').select('id', { count: 'exact', head: true }),
-      consCount().eq('status', 'waiting').not('entered_call_at', 'is', null),
-      consCount().in('status', IN_PROGRESS_STATUSES),
-      consCount().in('status', CLOSED_STATUSES),
-      consCount().eq('status', 'urgent_in_person')
-    ])
+    try {
+      const token = await getAccessToken()
+      const data = await fetchDashboardStats(token)
+      setStats(data)
+      setStatsError('')
+    } catch (e) {
+      setStatsError(e instanceof Error ? e.message : 'No se pudieron cargar las estadísticas.')
+    }
+  }
 
-    setCounts({
-      doctors: doctorsCnt.count || 0,
-      patients: patientsCnt.count || 0,
-      waiting: waitingCnt.count || 0,
-      open: openCnt.count || 0,
-      closed: closedCnt.count || 0,
-      urgent: urgentCnt.count || 0
-    })
+  // Carga una vez al montar + refresco periódico (~30s) sin useEffect crudo — ver lib/hooks.ts.
+  usePolling(loadStats, POLL_INTERVAL_MS)
+
+  // Handler de clic (no un efecto): trae el detalle solo cuando el admin abre el monitor.
+  async function openMonitor() {
+    setMonitorOpen(true)
+    setMonitorLoading(true)
+    setMonitorError('')
+    try {
+      const token = await getAccessToken()
+      const items = await fetchInProgressConsultations(token)
+      setMonitorItems(items)
+    } catch (e) {
+      setMonitorError(e instanceof Error ? e.message : 'No se pudo cargar el detalle.')
+    } finally {
+      setMonitorLoading(false)
+    }
   }
 
   if (loading) return <AdminLoading />
 
   return (
     <AdminLayout title="Dashboard administrativo" profile={profile}>
-      <div className="dash-kpis">
-        <Kpi value={counts.doctors} label="Médicos registrados" />
-        <Kpi value={onlineDoctors.length} label="Médicos online" />
-        <Kpi value={counts.patients} label="Pacientes registrados" />
-        <Kpi value={counts.waiting} label="Consultas esperando" />
-        <Kpi value={counts.open} label="Consultas en progreso" />
-        <Kpi value={counts.closed} label="Consultas cerradas" />
-      </div>
-
-      {counts.urgent > 0 && (
-        <div className="notice notice-danger">
-          <strong>{counts.urgent}</strong> consultas marcadas como urgentes/presenciales.
+      {statsError && (
+        <div className="notice notice-danger" style={{ marginBottom: 16 }}>
+          {statsError}
         </div>
       )}
+
+      <div className="dash-kpis">
+        <Kpi value={stats?.doctors_registered ?? '—'} label="Médicos registrados" />
+        <Kpi
+          value={onlineDoctors.length}
+          label="Médicos online"
+          onClick={() => setPoolOpen(true)}
+        />
+        <Kpi value={stats?.patients_registered ?? '—'} label="Pacientes registrados" />
+        <Kpi value={stats?.consultations_waiting ?? '—'} label="Consultas esperando" />
+        <Kpi
+          value={stats?.consultations_in_progress ?? '—'}
+          label="Consultas en progreso"
+          onClick={openMonitor}
+        />
+        <Kpi value={stats?.consultations_closed ?? '—'} label="Consultas cerradas" />
+      </div>
+
+      {!!stats && stats.consultations_urgent > 0 && (
+        <div className="notice notice-danger">
+          <strong>{stats.consultations_urgent}</strong> consultas marcadas como
+          urgentes/presenciales.
+        </div>
+      )}
+
+      {/* excludeSelf={false}: el admin puede ser médico y estar online; el KPI (Presence) lo
+          cuenta, así que la lista del pool debe incluirlo para que ambos cuadren. */}
+      <DoctorPoolModal open={poolOpen} onClose={() => setPoolOpen(false)} excludeSelf={false} />
+
+      <ConsultationsMonitorModal
+        open={monitorOpen}
+        onClose={() => setMonitorOpen(false)}
+        items={monitorItems}
+        loading={monitorLoading}
+        error={monitorError}
+      />
     </AdminLayout>
   )
 }

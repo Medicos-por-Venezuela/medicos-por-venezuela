@@ -3,6 +3,7 @@
 // del panel — el único acceso directo que queda es Realtime (solo para avisar que algo cambió) y
 // Auth. Los datos siempre vienen por el backend.
 import { getJson, postJson } from './apiClient'
+import { IN_PROGRESS_STATUSES } from './admin'
 
 export { ApiError } from './apiClient'
 
@@ -84,4 +85,51 @@ export async function claimConsultation(
     'No se pudo tomar la consulta',
     token
   )
+}
+
+// --- Monitor admin de consultas "en progreso" (ver components/admin/ConsultationsMonitorModal.tsx) ---
+
+// Subconjunto de ConsultationResponse (backend) que necesita el monitor: estado, nombres
+// resueltos server-side (patient_name / assigned_doctor_name), y los timestamps para calcular el
+// tiempo en progreso.
+export interface ConsultationMonitorItem {
+  id: string
+  code: string
+  status: string
+  chief_complaint: string | null
+  patient_name: string | null
+  assigned_doctor_name: string | null
+  queued_at: string
+  started_at: string | null
+  opened_at: string | null
+}
+
+// El endpoint solo acepta un `status` a la vez (ver src/routers/consultations.py::list_consultations
+// del backend — no hay filtro multi-status), así que se pide una página por cada status del set
+// amplio "en progreso" (mismo set que usa el KPI, `lib/admin.ts::IN_PROGRESS_STATUSES`) y se
+// combinan los resultados. 100 es el límite máximo permitido por el backend (`le=100`).
+const PAGE_LIMIT = 100
+
+export async function fetchInProgressConsultations(
+  token: string
+): Promise<ConsultationMonitorItem[]> {
+  // allSettled (no all): que un status puntual falle en el backend no debe tumbar todo
+  // el modal. Si TODAS fallan, propagamos el primer error para que el modal lo muestre;
+  // si al menos una responde, mostramos lo que se pudo cargar.
+  const results = await Promise.allSettled(
+    IN_PROGRESS_STATUSES.map((status) =>
+      getJson<ConsultationMonitorItem[]>(
+        `/api/v1/consultations?status=${encodeURIComponent(status)}&limit=${PAGE_LIMIT}`,
+        'No se pudieron cargar las consultas en progreso',
+        token
+      )
+    )
+  )
+  const fulfilled = results.filter(
+    (r): r is PromiseFulfilledResult<ConsultationMonitorItem[]> => r.status === 'fulfilled'
+  )
+  if (fulfilled.length === 0) {
+    throw (results[0] as PromiseRejectedResult).reason
+  }
+  return fulfilled.flatMap((r) => r.value)
 }
