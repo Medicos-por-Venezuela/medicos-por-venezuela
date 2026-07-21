@@ -315,7 +315,7 @@ export default function RegistroMedico() {
               </div>
 
               <div>
-                <label className="label">Cédula *</label>
+                <label className="label">Cédula / DNI *</label>
                 <div className="input-group">
                   <select
                     value={cedulaPrefijo}

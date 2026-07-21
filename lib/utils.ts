@@ -6,6 +6,7 @@ export function minutesSince(value?: string | null) {
 export const STATUS_LABELS: Record<string, string> = {
   waiting: 'Esperando',
   in_progress: 'Abierta',
+  scheduled: 'Agendada',
   referred_to_specialist: 'Derivada a especialista',
   urgent_in_person: 'Debe ir a atención presencial urgente',
   closed: 'Cerrada',

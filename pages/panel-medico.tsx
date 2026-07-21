@@ -18,11 +18,17 @@ import {
   minutesSince
 } from '../lib/utils'
 import { browserRoomUrl } from '../lib/jitsi'
+import {
+  fetchMyInterconsultations,
+  type InterconsultationForInvitee
+} from '../lib/interconsultations'
 import { ensureVideoRoom } from '../lib/patients'
 
 type Patient = {
   id: string
-  full_name: string
+  // Opcional: en "Pacientes que no han podido ser atendidos" (cola de espera) el backend no manda
+  // el nombre por seguridad; solo llega en "Mis consultas abiertas". El card cae a "Paciente".
+  full_name?: string
   cedula: string | null
   phone_whatsapp: string
   affected_zone: string
@@ -115,6 +121,10 @@ export default function PanelMedico() {
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [myClosed, setMyClosed] = useState(0)
+  // Interconsultas donde YO soy el médico invitado (segunda opinión en vivo; datos limitados).
+  const [myInterconsultations, setMyInterconsultations] = useState<InterconsultationForInvitee[]>(
+    []
+  )
   // Waiting case the doctor wants to attend via WhatsApp — set while the commitment modal is open.
   const [whatsappTarget, setWhatsappTarget] = useState<Consultation | null>(null)
   // Admins have no doctor profile by default. But an admin who is ALSO a doctor (has a `doctors`
@@ -215,9 +225,12 @@ export default function PanelMedico() {
     // Todo el panel en una sola llamada al backend (cola de espera + mías + cerradas). La cola trae
     // TODA consulta sin asignar en estado abierto — en tiempo real, sin el gate de 20 min de antes.
     try {
-      const panel = await fetchPanel(await getAccessToken())
+      const token = await getAccessToken()
+      const panel = await fetchPanel(token)
       setConsultations([...panel.waiting, ...panel.mine].map(toConsultationRow))
       setMyClosed(panel.my_closed_count)
+      // Interconsultas donde soy el invitado (mismo poll → aparecen al ser invitado, sin recargar).
+      setMyInterconsultations(await fetchMyInterconsultations(token))
     } catch (e) {
       console.error(e)
       setMessage('No se pudieron cargar las consultas.')
@@ -406,6 +419,12 @@ export default function PanelMedico() {
                   Panel admin
                 </button>
               )}
+              <button
+                className="btn btn-outline"
+                onClick={() => router.push('/panel-medico/agenda')}
+              >
+                Mi agenda
+              </button>
               {showProfileButton && (
                 <button
                   className="btn btn-outline"
@@ -490,6 +509,47 @@ export default function PanelMedico() {
               )}
             </section>
           </div>
+
+          {myInterconsultations.length > 0 && (
+            <section className="card" style={{ marginTop: 18 }}>
+              <h2 style={{ marginTop: 0 }}>Interconsultas asignadas a mí</h2>
+              <p style={{ color: '#64748b', fontSize: 13, marginTop: -6 }}>
+                Un colega te pidió una segunda opinión en vivo. Ves solo el motivo, las notas y la
+                edad del paciente — sin su identidad.
+              </p>
+              <div className="grid">
+                {myInterconsultations.map((ic) => (
+                  <div key={ic.id} className="card-flat">
+                    <strong>Interconsulta · edad {ic.patient_age_range || '—'}</strong>
+                    <p>
+                      <em>Motivo:</em> {ic.chief_complaint || 'Sin motivo'}
+                    </p>
+                    {(ic.internal_note || ic.clinical_notes) && (
+                      <p>
+                        <em>Notas:</em>{' '}
+                        {[ic.internal_note, ic.clinical_notes].filter(Boolean).join(' — ')}
+                      </p>
+                    )}
+                    {ic.note && (
+                      <p style={{ color: '#64748b' }}>
+                        <em>Mensaje del colega:</em> {ic.note}
+                      </p>
+                    )}
+                    {ic.video_room_url && (
+                      <a
+                        className="btn btn-primary btn-full"
+                        href={browserRoomUrl(ic.video_room_url)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Unirse a videoconsulta
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </main>
 
@@ -627,7 +687,9 @@ function ConsultationCard({
         <div>
           <strong>{c.patients?.full_name || 'Paciente'}</strong>
           <div style={{ color: '#64748b', fontSize: 13 }}>
-            {c.patients?.affected_zone} · hace {minutesSince(c.created_at)} min
+            {c.patients?.affected_zone}
+            {c.patients?.age_range ? ` · Edad ${c.patients.age_range}` : ''} · hace{' '}
+            {minutesSince(c.created_at)} min
           </div>
           <div style={{ marginTop: 4 }}>
             {isPatientPresent(c) ? (

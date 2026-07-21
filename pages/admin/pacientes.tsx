@@ -798,7 +798,7 @@ export default function AdminPacientes() {
                         {c.patients?.phone_whatsapp || '—'}
                       </div>
                       {c.patients?.cedula && (
-                        <div title="Cédula" style={{ color: '#a16207' }}>
+                        <div title="Cédula / DNI" style={{ color: '#a16207' }}>
                           {c.patients.cedula}
                         </div>
                       )}

@@ -27,7 +27,9 @@ export async function fetchMyProfile(token: string): Promise<MyProfile> {
 
 export interface PanelPatient {
   id: string
-  full_name: string
+  // Opcional a propósito: en la cola de ESPERA (waiting) el backend NO envía el nombre por
+  // seguridad; solo llega en las consultas ya tomadas por el médico (mine).
+  full_name?: string
   cedula: string | null
   phone_whatsapp: string | null
   affected_zone: string | null
@@ -132,4 +134,95 @@ export async function fetchInProgressConsultations(
     throw (results[0] as PromiseRejectedResult).reason
   }
   return fulfilled.flatMap((r) => r.value)
+}
+
+// --- Agenda / seguimiento (módulo Agenda; NO confundir con Interconsulta en vivo) ---
+
+// Cita agendada / consulta de la agenda (subset de ConsultationResponse del backend).
+export interface AgendaConsultation {
+  id: string
+  code: string
+  status: string
+  chief_complaint: string | null
+  patient_name: string | null
+  assigned_doctor_name: string | null
+  scheduled_at: string | null
+  parent_consultation_id: string | null
+  video_room_url: string | null
+  created_at: string
+}
+
+// Un eslabón de la cadena de seguimiento (historial padre→hijas).
+export interface ChainItem {
+  id: string
+  code: string
+  status: string
+  chief_complaint: string | null
+  internal_note: string | null
+  scheduled_at: string | null
+  closed_at: string | null
+  created_at: string
+  parent_consultation_id: string | null
+}
+
+// POST /consultations/{id}/close — cierra la consulta (firmada) por el BACKEND (reemplaza el UPDATE
+// directo a Supabase). outcome 'closed' | 'patient_no_show'.
+export async function closeConsultationApi(
+  id: string,
+  body: { outcome: 'closed' | 'patient_no_show'; note?: string; signature?: string },
+  token: string
+): Promise<AgendaConsultation> {
+  return postJson<AgendaConsultation>(
+    `/api/v1/consultations/${id}/close`,
+    body,
+    'No se pudo cerrar la consulta',
+    token
+  )
+}
+
+// POST /consultations/{id}/schedule-follow-up — cierra la consulta (firmada) y crea la hija agendada.
+export async function scheduleFollowUp(
+  id: string,
+  body: { scheduled_at: string; closing_note?: string; signature?: string },
+  token: string
+): Promise<AgendaConsultation> {
+  return postJson<AgendaConsultation>(
+    `/api/v1/consultations/${id}/schedule-follow-up`,
+    body,
+    'No se pudo agendar el seguimiento',
+    token
+  )
+}
+
+// POST /consultations/{id}/refer — Agendar con especialista: entrega la consulta a OTRO médico (la
+// actual queda 'referred_to_specialist') y crea la hija agendada asignada a ese médico, firmada.
+export async function scheduleReferral(
+  id: string,
+  body: { invited_doctor_id: string; scheduled_at: string; reason: string; signature?: string },
+  token: string
+): Promise<AgendaConsultation> {
+  return postJson<AgendaConsultation>(
+    `/api/v1/consultations/${id}/refer`,
+    body,
+    'No se pudo agendar con el especialista',
+    token
+  )
+}
+
+// GET /consultations/agenda — mi agenda (citas agendadas del médico autenticado).
+export async function fetchAgenda(token: string): Promise<AgendaConsultation[]> {
+  return getJson<AgendaConsultation[]>(
+    '/api/v1/consultations/agenda',
+    'No se pudo cargar la agenda',
+    token
+  )
+}
+
+// GET /consultations/{id}/chain — historial de la cadena de seguimiento (padre→hijas).
+export async function fetchChain(id: string, token: string): Promise<ChainItem[]> {
+  return getJson<ChainItem[]>(
+    `/api/v1/consultations/${id}/chain`,
+    'No se pudo cargar el historial',
+    token
+  )
 }
