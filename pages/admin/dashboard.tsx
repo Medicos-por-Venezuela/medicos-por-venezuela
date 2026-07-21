@@ -93,7 +93,9 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <DoctorPoolModal open={poolOpen} onClose={() => setPoolOpen(false)} />
+      {/* excludeSelf={false}: el admin puede ser médico y estar online; el KPI (Presence) lo
+          cuenta, así que la lista del pool debe incluirlo para que ambos cuadren. */}
+      <DoctorPoolModal open={poolOpen} onClose={() => setPoolOpen(false)} excludeSelf={false} />
 
       <ConsultationsMonitorModal
         open={monitorOpen}
