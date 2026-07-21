@@ -71,7 +71,11 @@ export default function AdminDashboard() {
 
       <div className="dash-kpis">
         <Kpi value={stats?.doctors_registered ?? '—'} label="Médicos registrados" />
-        <Kpi value={onlineDoctors.length} label="Médicos online" />
+        <Kpi
+          value={onlineDoctors.length}
+          label="Médicos online"
+          onClick={() => setPoolOpen(true)}
+        />
         <Kpi value={stats?.patients_registered ?? '—'} label="Pacientes registrados" />
         <Kpi value={stats?.consultations_waiting ?? '—'} label="Consultas esperando" />
         <Kpi
@@ -80,12 +84,6 @@ export default function AdminDashboard() {
           onClick={openMonitor}
         />
         <Kpi value={stats?.consultations_closed ?? '—'} label="Consultas cerradas" />
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <button className="btn btn-outline" onClick={() => setPoolOpen(true)}>
-          Ver médicos conectados
-        </button>
       </div>
 
       {!!stats && stats.consultations_urgent > 0 && (

@@ -5,6 +5,18 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-07-21
+
+- **Admin: guard sin acceso directo a Supabase + pool "online" por Presence** — `useAdminGuard`
+  (`lib/admin.ts`) dejó de leer la tabla `profiles` directo de Supabase y ahora pide el perfil al
+  backend (`GET /api/v1/auth/me`), manteniendo el rol efectivo RBAC (`effectiveAdminRole`). Y el
+  pool de médicos se migró a **Realtime Presence**: el KPI "Médicos online" del dashboard
+  (`pages/admin/dashboard.tsx`) ahora es clickeable y abre el `DoctorPoolModal` en la pestaña "En
+  línea", que resuelve el estado online por Presence (`online_ids` que ya mandaba el cliente), no
+  por el `last_seen_at` del backend (que quedó vestigial al migrar la presencia a WebSocket). Así
+  el conteo del KPI y la lista del pool coinciden, y de paso se arregla el "En línea" del pool en la
+  página de consulta. Requiere el cambio par en el backend (`GET /doctors/pool` acepta `online_ids`).
+
 ## 2026-07-20
 
 - **Admin: dashboard sobre el backend + monitor de consultas en progreso** — el dashboard
