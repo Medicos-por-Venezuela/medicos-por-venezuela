@@ -89,7 +89,7 @@ export default function AdminPacientes() {
     if (!doctorMenuOpen) return
     const t = setTimeout(async () => {
       let q = supabase
-        .from('profiles')
+        .from('users')
         .select('id, full_name, specialty, role')
         .in('role', ['doctor', 'specialist'])
         .eq('active', true)
@@ -112,7 +112,7 @@ export default function AdminPacientes() {
     if (!rowDocMenu) return
     const t = setTimeout(async () => {
       let q = supabase
-        .from('profiles')
+        .from('users')
         .select('id, full_name, specialty, role')
         .in('role', ['doctor', 'specialist'])
         .eq('active', true)
@@ -130,8 +130,12 @@ export default function AdminPacientes() {
   }, [rowDocQuery, rowDocMenu])
 
   async function loadAll() {
+    // Perfiles y comboboxes se leen directo de `public.users` (tabla core; ya no la vista
+    // `profiles`): GET /profiles del API pagina en arreglos planos y no cubre esta carga masiva
+    // (1000 filas para resolver nombres/superadmins) ni el filtro doctor+specialist activo de los
+    // buscadores. TODO: migrar a endpoints dedicados (búsqueda de médicos, resolución por ids).
     const [profilesRes, consultationsRes] = await Promise.all([
-      supabase.from('profiles').select('*').order('created_at', { ascending: false }).limit(1000),
+      supabase.from('users').select('*').order('created_at', { ascending: false }).limit(1000),
       supabase
         .from('consultations')
         .select(
@@ -167,7 +171,7 @@ export default function AdminPacientes() {
       )
       if (assignedIds.length > 0) {
         const { data: docs } = await supabase
-          .from('profiles')
+          .from('users')
           .select('id, full_name')
           .in('id', assignedIds)
         if (docs)

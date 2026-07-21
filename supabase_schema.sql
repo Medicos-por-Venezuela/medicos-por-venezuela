@@ -4,6 +4,13 @@
 
 create extension if not exists pgcrypto;
 
+-- NOTA (migración profiles → users, expand/contract): la tabla core de cuentas fue renombrada a
+-- `public.users` y `public.profiles` quedó como VISTA de compatibilidad sobre ella. El API y las
+-- funciones de abajo (handle_new_auth_user, set_my_role, current_user_role, mark_myself_online,
+-- admin_delete_patient) ya nombran `public.users`. El bloque de DDL/RLS que sigue aún se escribe
+-- sobre `profiles` (se sincronizará junto con la migración de rename, que vive en el repo del API);
+-- el `drop view public.profiles` se hará como paso final, solo tras desplegar el front migrado.
+
 -- 1) Staff profiles linked to Supabase Auth users
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -184,7 +191,7 @@ begin
   has_role := coalesce(meta_role in ('patient', 'doctor'), false);
   resolved_role := case when has_role then meta_role else 'patient' end;
 
-  insert into public.profiles (
+  insert into public.users (
     id, email, full_name, role,
     specialty, country, medical_license, whatsapp_number,
     verified, active, role_chosen
@@ -230,7 +237,7 @@ begin
     raise exception 'invalid role';
   end if;
 
-  update public.profiles
+  update public.users
   set
     role = p_role,
     specialty = case when p_role = 'doctor' then p_specialty else specialty end,
@@ -259,7 +266,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select role from public.profiles where id = auth.uid() and active = true and verified = true;
+  select role from public.users where id = auth.uid() and active = true and verified = true;
 $$;
 
 create or replace function public.is_admin()
@@ -290,7 +297,7 @@ security definer
 set search_path = public
 as $$
 begin
-  update public.profiles set last_seen_at = now() where id = auth.uid();
+  update public.users set last_seen_at = now() where id = auth.uid();
 end;
 $$;
 
@@ -394,7 +401,7 @@ set search_path = public
 as $$
 begin
   if not exists (
-    select 1 from public.profiles
+    select 1 from public.users
     where id = auth.uid() and role = 'super_admin' and active = true
   ) then
     raise exception 'Only an active super_admin may delete patients';

@@ -7,6 +7,25 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-07-21
 
+- **Front deja de depender de la vista `profiles` (migración profiles → users)** — se eliminaron
+  TODOS los `supabase.from('profiles')` y las RPC `set_my_role` del front, para poder dropear la
+  vista de compatibilidad `public.profiles`. Migrado al **backend API** donde hay endpoint:
+  `pages/admin/index.tsx` (login) y `pages/panel-medico/consulta/[id].tsx` (perfil propio) →
+  `GET /auth/me`; la ficha del médico asignado en esa consulta → `GET /profiles/{id}`;
+  `pages/elegir-rol.tsx` (`set_my_role` ×2) → `POST /profiles/me/finalize-role`;
+  "Revocar acceso" en `pages/admin/doctores.tsx` → `PATCH /profiles/{id}/active`. Nuevos clientes en
+  `lib/users.ts` (`fetchProfile`, `setProfileActive`, `finalizeMyRole`). Donde el API aún **no**
+  tiene endpoint equivalente, se pasó a leer la **tabla core `public.users`** directo (misma RLS/
+  grants, deja de nombrar la vista) con un `TODO`: lecturas propias que necesitan `role_chosen`
+  (`login-medico`, `mi-caso`, `auth/callback`, chequeo inicial de `elegir-rol`), autores del
+  historial por lista de ids (`consulta/[id]`), y la lista staff paginada + buscadores + carga masiva
+  del admin (`doctores.tsx`, `pacientes.tsx`) que dependen de filtros (estado, fechas, conteo exacto,
+  doctor+specialist) que `GET /profiles` todavía no expone. En `supabase_schema.sql` se sincronizaron
+  las 5 funciones (`handle_new_auth_user`, `set_my_role`, `current_user_role`, `mark_myself_online`,
+  `admin_delete_patient`) para nombrar `public.users`. El `drop view public.profiles` queda listo pero
+  aparte en `migrations/drop_profiles_view.sql` — se ejecuta **solo tras desplegar este front** y en
+  coordinación con el repo del API. `mark_myself_online` ya no la llama nadie en el front (confirmado).
+
 - **Admin: guard sin acceso directo a Supabase + pool "online" por Presence** — `useAdminGuard`
   (`lib/admin.ts`) dejó de leer la tabla `profiles` directo de Supabase y ahora pide el perfil al
   backend (`GET /api/v1/auth/me`), manteniendo el rol efectivo RBAC (`effectiveAdminRole`). Y el

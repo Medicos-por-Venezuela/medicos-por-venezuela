@@ -2,7 +2,9 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import DoctorPoolModal from '../../../components/DoctorPoolModal'
+import { fetchMyProfile } from '../../../lib/consultations'
 import { supabase } from '../../../lib/supabase'
+import { fetchProfile } from '../../../lib/users'
 import { STATUS_LABELS, minutesSince } from '../../../lib/utils'
 import { browserRoomUrl } from '../../../lib/jitsi'
 
@@ -188,13 +190,26 @@ export default function ConsultaDetalle() {
       return
     }
 
-    const { data: p, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, full_name, role, specialty, verified, active')
-      .eq('id', sessionData.session.user.id)
-      .single()
+    // Perfil propio vía GET /auth/me (backend), ya no la vista `profiles`. Trae id/full_name/role/
+    // specialty/verified/active, justo lo que necesita el guard y el "médico asignado = yo".
+    let p: Profile
+    try {
+      const me = await fetchMyProfile(sessionData.session.access_token)
+      p = {
+        id: me.id,
+        full_name: me.full_name,
+        role: me.role,
+        specialty: me.specialty,
+        verified: me.verified,
+        active: me.active
+      }
+    } catch {
+      await supabase.auth.signOut()
+      router.push('/login-medico')
+      return
+    }
 
-    if (profileError || !p || !p.active || !p.verified) {
+    if (!p.active || !p.verified) {
       await supabase.auth.signOut()
       router.push('/login-medico')
       return
@@ -259,13 +274,18 @@ export default function ConsultaDetalle() {
       return
     }
 
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, full_name, role')
-      .eq('id', row.assigned_doctor_id)
-      .single()
-
-    setAssignedDoctor((data as EventAuthor | null) || null)
+    // Nombre del médico asignado (admin viendo el caso de otro): GET /profiles/{id} (backend, staff).
+    const { data: sessionData } = await supabase.auth.getSession()
+    if (!sessionData.session) {
+      setAssignedDoctor(null)
+      return
+    }
+    try {
+      const doc = await fetchProfile(row.assigned_doctor_id, sessionData.session.access_token)
+      setAssignedDoctor({ id: doc.id, full_name: doc.full_name, role: doc.role })
+    } catch {
+      setAssignedDoctor(null)
+    }
   }
 
   async function loadEvents(consultationId: string) {
@@ -293,8 +313,11 @@ export default function ConsultaDetalle() {
       return
     }
 
+    // Autores del historial (lista de ids): sin endpoint batch en el API, se lee directo de
+    // `public.users` (tabla core; ya no la vista `profiles`). RLS is_staff permite al médico leerlos.
+    // TODO: exponer un GET /profiles?ids=… (batch) para mover esto al backend.
     const { data: authors } = await supabase
-      .from('profiles')
+      .from('users')
       .select('id, full_name, role')
       .in('id', authorIds)
 

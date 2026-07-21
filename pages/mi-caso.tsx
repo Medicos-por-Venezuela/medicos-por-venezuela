@@ -43,8 +43,10 @@ export default function MiCaso() {
       return
     }
 
+    // Lectura directa a `public.users` (tabla core; ya no a la vista `profiles`) porque `/auth/me`
+    // aún no expone `role_chosen`. TODO: mover a /auth/me cuando el backend incluya ese flag.
     const { data: profile } = await supabase
-      .from('profiles')
+      .from('users')
       .select('role, role_chosen')
       .eq('id', session.user.id)
       .single()
