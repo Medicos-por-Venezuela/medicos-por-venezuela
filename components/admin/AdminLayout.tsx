@@ -117,11 +117,30 @@ export function Line({ label, value }: { label: string; value?: string | null })
   )
 }
 
-export function Kpi({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="kpi">
+// `onClick` is optional: pass it to make the card an actionable shortcut (e.g. open a detail
+// modal) — it renders as a real <button> then, for accessibility (focusable, keyboard-operable,
+// no need for a manual role="button"/onKeyDown handler).
+export function Kpi({
+  value,
+  label,
+  onClick
+}: {
+  value: number | string
+  label: string
+  onClick?: () => void
+}) {
+  const content = (
+    <>
       <div className="kpi-value">{value}</div>
       <div className="kpi-label">{label}</div>
-    </div>
+    </>
   )
+  if (onClick) {
+    return (
+      <button type="button" className="kpi kpi-clickable" onClick={onClick}>
+        {content}
+      </button>
+    )
+  }
+  return <div className="kpi">{content}</div>
 }

@@ -308,6 +308,21 @@ input[readonly] {
   font-size: 14px;
   margin-top: 6px;
 }
+/* Clickable KPI cards (e.g. "Consultas en progreso" opening its monitor modal) render as a real
+   <button> (see components/admin/AdminLayout.tsx::Kpi) — reset button chrome and keep the same
+   look/feel as the plain (non-clickable) .kpi, plus a hover/focus cue. */
+.kpi-clickable {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.kpi-clickable:hover,
+.kpi-clickable:focus-visible {
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px var(--green-light);
+}
 /* Registro de paciente: reemplaza el acento verde por el mismo azul de la tarjeta
    "Soy paciente" del home (pages/index.tsx: --blue: #1a3a6b, hcard-icon--blue: #e8effb),
    ahora que el médico usa amarillo/dorado ahí. Shadowing de las custom properties que ya

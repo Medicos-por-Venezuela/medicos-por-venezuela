@@ -127,6 +127,7 @@ export interface DoctorPoolParams {
   search?: string
   online?: boolean // true=solo online · false=solo offline · undefined=todos
   online_ids?: string[] // user_ids que el cliente sabe online (Presence), para el filtro online
+  exclude_self?: boolean // default true (no referirte a ti mismo); false = incluirte (dashboard admin)
 }
 
 // GET /api/v1/doctors/pool — requiere Bearer (permiso doctors.read; el médico ya lo tiene).
@@ -142,6 +143,8 @@ export async function fetchDoctorPool(
   if (params.search) qs.set('search', params.search)
   if (params.online != null) qs.set('online', String(params.online))
   for (const id of params.online_ids || []) qs.append('online_ids', id)
+  // Solo se manda cuando se sobreescribe el default (true) del backend.
+  if (params.exclude_self === false) qs.set('exclude_self', 'false')
   return getJson<DoctorPoolPage>(
     `/api/v1/doctors/pool?${qs.toString()}`,
     'No se pudo cargar el pool de médicos',

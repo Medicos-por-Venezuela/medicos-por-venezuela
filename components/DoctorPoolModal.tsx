@@ -43,7 +43,17 @@ function waNumber(phone: string): string {
   return '58' + d
 }
 
-export default function DoctorPoolModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function DoctorPoolModal({
+  open,
+  onClose,
+  excludeSelf = true
+}: {
+  open: boolean
+  onClose: () => void
+  // true (default, referir): oculta al propio médico. false (dashboard admin): lo incluye, para
+  // que el conteo del KPI "Médicos online" (Presence, cuenta al admin-médico) y la lista cuadren.
+  excludeSelf?: boolean
+}) {
   // Estado online en vivo por Realtime Presence (solo lectura: el modal no anuncia presencia).
   const onlineIds = useOnlineDoctorIds()
   const [tab, setTab] = useState<Tab>('online')
@@ -123,7 +133,8 @@ export default function DoctorPoolModal({ open, onClose }: { open: boolean; onCl
             professional_type_id: typeId || undefined,
             search: debouncedSearch || undefined,
             online: tab === 'todos' ? undefined : tab === 'online',
-            online_ids: tab === 'todos' ? undefined : Array.from(onlineIds)
+            online_ids: tab === 'todos' ? undefined : Array.from(onlineIds),
+            exclude_self: excludeSelf
           },
           token
         )
