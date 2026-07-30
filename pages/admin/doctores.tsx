@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import AdminLayout, { AdminLoading, Line } from '../../components/admin/AdminLayout'
 import {
   fmtDate,
+  getAccessToken,
   Profile,
   ROLE_OPTIONS,
   STAFF_ROLES,
@@ -10,6 +11,7 @@ import {
 } from '../../lib/admin'
 import { useOnlineDoctors } from '../../lib/presence'
 import { supabase } from '../../lib/supabase'
+import { setProfileActive } from '../../lib/users'
 
 export default function AdminDoctores() {
   const { profile, loading } = useAdminGuard()
@@ -61,8 +63,11 @@ export default function AdminDoctores() {
   // Staff-only, server-side filtered + paginated list for the Médicos y administradores table.
   async function loadUsers() {
     setUsersLoading(true)
+    // Lista staff paginada server-side. Se lee directo de `public.users` (tabla core; ya no la vista
+    // `profiles`): GET /profiles del API aún no cubre este filtrado (rol múltiple staff, estado
+    // activo/revocado, rango de fechas) ni el total exacto. TODO: enriquecer /profiles y migrar.
     let q = supabase
-      .from('profiles')
+      .from('users')
       .select('*', { count: 'exact' })
       .in('role', userRole === 'all' ? STAFF_ROLES : [userRole])
       .order('created_at', { ascending: false })
@@ -85,9 +90,14 @@ export default function AdminDoctores() {
   }
 
   async function toggleDoctor(id: string, active: boolean) {
-    const { error } = await supabase.from('profiles').update({ active: !active }).eq('id', id)
-    if (error) setMessage('No se pudo actualizar el usuario.')
-    else await loadUsers()
+    // Revocar/reactivar vía PATCH /profiles/{id}/active (backend), ya no un UPDATE directo a la vista.
+    try {
+      const token = await getAccessToken()
+      await setProfileActive(id, !active, token)
+      await loadUsers()
+    } catch {
+      setMessage('No se pudo actualizar el usuario.')
+    }
   }
 
   const onlineCount = onlineBySpecialty.reduce((sum, [, n]) => sum + n, 0)

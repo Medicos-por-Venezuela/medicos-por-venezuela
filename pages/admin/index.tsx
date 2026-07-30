@@ -6,6 +6,7 @@ import AuthPanel from '../../components/auth/AuthPanel'
 import GoogleButton from '../../components/GoogleButton'
 import { effectiveAdminRole } from '../../lib/admin'
 import { signInWithGoogle } from '../../lib/auth'
+import { fetchMyProfile } from '../../lib/consultations'
 import { supabase } from '../../lib/supabase'
 
 // Private admin entrance. Not linked from anywhere public. Only admin/super_admin may pass;
@@ -28,18 +29,14 @@ export default function AdminLogin() {
       })
       if (authError) throw authError
 
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('role, active')
-        .eq('id', authData.user.id)
-        .single()
-      if (profileError) throw profileError
+      // El perfil se pide al backend (GET /auth/me), único gateway a la BD — ya no se lee la vista
+      // `profiles` directo. Auth sigue en Supabase: signIn da la sesión y el token del Bearer.
+      const token = authData.session?.access_token ?? ''
+      const me = await fetchMyProfile(token)
 
       // Multi-rol RBAC: el rol legacy es UNO solo; un doctor puede tener admin/super_admin
       // adicionales en user_roles — effectiveAdminRole consulta el backend cuando hace falta.
-      const adminRole = profile.active
-        ? await effectiveAdminRole(profile.role, authData.session?.access_token ?? '')
-        : null
+      const adminRole = me.active ? await effectiveAdminRole(me.role, token) : null
       if (!adminRole) {
         await supabase.auth.signOut()
         setError('No autorizado.')
