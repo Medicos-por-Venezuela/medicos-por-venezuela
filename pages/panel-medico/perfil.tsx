@@ -1,5 +1,4 @@
 import Head from 'next/head'
-import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
@@ -15,8 +14,17 @@ import {
   updateMyDoctorProfile
 } from '../../lib/doctors'
 import { verificarSacs, verificarPsicologo } from '../../lib/verificacion'
+import {
+  CHANNEL_LABELS,
+  EVENT_LABELS,
+  fetchNotificationPrefs,
+  saveNotificationPrefs,
+  type NotificationCatalog,
+  type NotificationPrefs
+} from '../../lib/notificationPrefs'
 
 type Notice = { kind: 'info' | 'success' | 'danger'; text: string }
+type Tab = 'perfil' | 'disponibilidad' | 'ajustes'
 
 const soloDigitos = (value: string) => value.replace(/\D/g, '')
 
@@ -29,6 +37,16 @@ function parseCedula(raw: string | null | undefined): { prefijo: 'V' | 'E'; nume
   return { prefijo: 'V', numero: soloDigitos(raw) }
 }
 
+function initials(name?: string | null): string {
+  if (!name || !name.trim()) return '·'
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() || '')
+    .join('')
+}
+
 export default function PerfilMedico() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -37,6 +55,7 @@ export default function PerfilMedico() {
   const [specialties, setSpecialties] = useState<SpecialtyResponse[]>([])
   const [professionalTypes, setProfessionalTypes] = useState<ProfessionalTypeResponse[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
+  const [tab, setTab] = useState<Tab>('perfil')
 
   // Editable fields (baseline lives in `profile`, so the diff is computed on save).
   const [fullName, setFullName] = useState('')
@@ -52,6 +71,13 @@ export default function PerfilMedico() {
   const [professionalTypeId, setProfessionalTypeId] = useState('')
   // Estado de la verificación en vivo al teclear la cédula (autocompleta nombre/licencia).
   const [verifState, setVerifState] = useState<'idle' | 'verifying' | 'found' | 'notfound'>('idle')
+
+  // --- Ajustes: preferencias de notificación (se cargan la 1ª vez que se abre la pestaña) ---
+  const [catalog, setCatalog] = useState<NotificationCatalog>({})
+  const [prefs, setPrefs] = useState<NotificationPrefs>({})
+  const [prefsLoaded, setPrefsLoaded] = useState(false)
+  const [prefsSaving, setPrefsSaving] = useState(false)
+  const [prefsNotice, setPrefsNotice] = useState<Notice | null>(null)
 
   useEffect(() => {
     init()
@@ -110,25 +136,74 @@ export default function PerfilMedico() {
     }
   }
 
+  // Carga perezosa de las preferencias al abrir Ajustes. Inicializa el estado local con TODOS los
+  // eventos/canales del catálogo (opt-out: ausente = activado).
+  async function loadPrefs() {
+    if (prefsLoaded) return
+    const { data: sess } = await supabase.auth.getSession()
+    if (!sess.session) return
+    try {
+      const { prefs: saved, catalog: cat } = await fetchNotificationPrefs(sess.session.access_token)
+      const init: NotificationPrefs = {}
+      for (const [event, channels] of Object.entries(cat)) {
+        init[event] = {}
+        for (const ch of channels) {
+          const val = saved[event]?.[ch as 'push' | 'email']
+          init[event][ch as 'push' | 'email'] = val !== false // default activado
+        }
+      }
+      setCatalog(cat)
+      setPrefs(init)
+      setPrefsLoaded(true)
+    } catch (e) {
+      setPrefsNotice({
+        kind: 'danger',
+        text: e instanceof Error ? e.message : 'No se pudieron cargar tus preferencias.'
+      })
+    }
+  }
+
+  function openTab(next: Tab) {
+    setTab(next)
+    if (next === 'ajustes') loadPrefs()
+  }
+
+  function togglePref(event: string, channel: string) {
+    setPrefs((p) => ({
+      ...p,
+      [event]: { ...p[event], [channel]: !p[event]?.[channel as 'push' | 'email'] }
+    }))
+  }
+
+  async function savePrefs() {
+    const { data: sess } = await supabase.auth.getSession()
+    if (!sess.session) return
+    setPrefsSaving(true)
+    setPrefsNotice(null)
+    try {
+      await saveNotificationPrefs(prefs, sess.session.access_token)
+      setPrefsNotice({ kind: 'success', text: 'Preferencias guardadas.' })
+    } catch (e) {
+      setPrefsNotice({
+        kind: 'danger',
+        text: e instanceof Error ? e.message : 'No se pudieron guardar tus preferencias.'
+      })
+    } finally {
+      setPrefsSaving(false)
+    }
+  }
+
   // source:'user' (cuenta de Google que eligió rol médico) todavía no tiene ficha ni cédula: elige
   // su tipo de profesional aquí y con eso completa el registro. source:'doctor' ya tiene el tipo
   // fijo en la ficha (el backend ignora professional_type_id en el PATCH).
   const isUserSource = profile?.source === 'user'
-  // Perfil incompleto = todavía sin cédula. Aplica a TODOS los médicos, no solo a los de Google
-  // (source:'user'): también una ficha (source:'doctor') puede tener la cédula vacía. Es la misma
-  // condición por la que el guard de /panel-medico redirige acá.
   const perfilIncompleto = !profile?.cedula?.trim()
-  // Nombre del tipo elegido/actual — decide a qué registro pegar la verificación en vivo.
   const tipoProfesionalNombre = isUserSource
     ? professionalTypes.find((t) => t.id === professionalTypeId)?.name || ''
     : profile?.professional_type || ''
   const requiereVerificacion =
     tipoProfesionalNombre === 'Médico' || tipoProfesionalNombre === 'Psicólogo'
-  // Para source:'user' la cédula se habilita recién cuando se elige el tipo (como en el registro).
   const cedulaDisabled = isUserSource && !professionalTypeId
-  // Cuando la verificación en vivo encontró la cédula, el nombre y la matrícula vienen del
-  // registro oficial (SACS/FPV) y no se editan a mano; cambiar la cédula (setVerifState('idle'))
-  // los libera de nuevo. Si no se encontró, quedan editables para carga manual.
   const datosBloqueados = verifState === 'found'
 
   // Busca la cédula en SACS/FPV al salir del campo y autocompleta nombre/licencia, igual que el
@@ -188,7 +263,6 @@ export default function PerfilMedico() {
       return
     }
 
-    // Espejo del 422 del backend: source:'user' no puede mandar cédula sin el tipo de profesional.
     if (payload.cedula && isUserSource && !professionalTypeId) {
       setNotice({
         kind: 'danger',
@@ -215,8 +289,6 @@ export default function PerfilMedico() {
           text: 'Perfil actualizado. Tu cédula se verificó contra SACS/FPV.'
         })
       } else if (payload.cedula && !updated.verified) {
-        // El backend crea/actualiza la ficha aunque la cédula no aparezca en SACS/FPV, dejándola
-        // sin verificar para revisión de un administrador (no bloquea el guardado).
         setNotice({
           kind: 'info',
           text: 'Guardamos tus datos, pero tu cédula no pudo verificarse automáticamente en SACS/FPV. Un administrador la revisará.'
@@ -248,182 +320,376 @@ export default function PerfilMedico() {
     )
   }
 
+  const displayName = profile?.full_name || fullName || 'Mi cuenta'
+
   return (
     <>
       <Head>
         <title>Mi perfil — Médicos por Venezuela</title>
       </Head>
       <main className="page">
-        <div className="narrow">
-          <Link href="/panel-medico" className="link-button">
-            ← Volver al panel
-          </Link>
-
-          <div className="card" style={{ marginTop: 14 }}>
-            <h1 style={{ marginTop: 0 }}>Mi perfil</h1>
-
-            {profile && (
-              <p style={{ color: '#64748b', marginTop: 0 }}>
-                {profile.verified ? (
-                  <span className="badge badge-green">Verificado</span>
-                ) : (
-                  <span className="badge" style={{ background: '#fef3c7', color: '#92400e' }}>
-                    Sin verificar
-                  </span>
-                )}
-              </p>
-            )}
-
-            {notice && (
-              <div className={`notice notice-${notice.kind}`} style={{ marginBottom: 14 }}>
-                {notice.text}
+        <div className="container">
+          <div className="perfil-layout">
+            <aside className="perfil-sidebar card">
+              <div className="perfil-id">
+                <div className="perfil-avatar" aria-hidden="true">
+                  {initials(displayName)}
+                </div>
+                <div className="perfil-name">{displayName}</div>
               </div>
-            )}
-
-            {profile && (
-              <div className="grid">
-                {perfilIncompleto && (
-                  <div className="notice notice-info">
-                    Debes completar tu perfil profesional para usar el panel:
-                    {isUserSource ? ' elige tu tipo,' : ''} ingresa tu cédula y la verificamos
-                    contra SACS/FPV.
-                  </div>
-                )}
-
-                {isUserSource && (
-                  <div>
-                    <label className="label">Tipo de profesional *</label>
-                    <select
-                      value={professionalTypeId}
-                      onChange={(e) => {
-                        setProfessionalTypeId(e.target.value)
-                        setVerifState('idle')
-                      }}
-                    >
-                      <option value="">Selecciona...</option>
-                      {professionalTypes
-                        .filter((t) => t.status === 'active')
-                        .map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                )}
-
-                <div>
-                  <label className="label">Cédula profesional {isUserSource ? '*' : ''}</label>
-                  <div className="input-group">
-                    <select
-                      value={cedulaPrefijo}
-                      onChange={(e) => {
-                        setCedulaPrefijo(e.target.value as 'V' | 'E')
-                        setVerifState('idle')
-                      }}
-                      disabled={cedulaDisabled}
-                    >
-                      <option value="V">V</option>
-                      <option value="E">E</option>
-                    </select>
-                    <input
-                      value={cedulaNumero}
-                      onChange={(e) => {
-                        setCedulaNumero(soloDigitos(e.target.value))
-                        setVerifState('idle')
-                      }}
-                      onBlur={verificarCedulaEnVivo}
-                      placeholder="Solo números"
-                      inputMode="numeric"
-                      maxLength={9}
-                      disabled={cedulaDisabled}
-                    />
-                  </div>
-                  {isUserSource && !professionalTypeId && (
-                    <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
-                      Elige primero el tipo de profesional.
-                    </p>
-                  )}
-                  {!isUserSource && profile.professional_type && (
-                    <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
-                      Tipo de profesional: {profile.professional_type}
-                    </p>
-                  )}
-                  {verifState === 'verifying' && (
-                    <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
-                      Verificando cédula...
-                    </p>
-                  )}
-                  {verifState === 'found' && (
-                    <div className="notice notice-success" style={{ marginTop: 8 }}>
-                      Cédula verificada ✓ Datos cargados automáticamente.
-                    </div>
-                  )}
-                  {verifState === 'notfound' && (
-                    <div className="notice notice-warning" style={{ marginTop: 8 }}>
-                      No encontramos esta cédula en el registro. Puedes completar tus datos
-                      manualmente.
-                    </div>
-                  )}
-                  {!isUserSource && verifState === 'idle' && (
-                    <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
-                      Cambiarla re-verifica tu registro contra SACS/FPV.
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="label">Nombre completo *</label>
-                  {/* Al verificar la cédula con éxito, el nombre viene de SACS/FPV y no se
-                      edita a mano; si no se encontró (notfound/idle), queda editable. */}
-                  <input
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    maxLength={200}
-                    readOnly={datosBloqueados}
-                  />
-                  {datosBloqueados && (
-                    <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
-                      Cargado desde SACS/FPV — no editable.
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="label">Matrícula / colegiatura</label>
-                  <input
-                    value={license}
-                    onChange={(e) => setLicense(e.target.value)}
-                    maxLength={100}
-                    readOnly={datosBloqueados}
-                  />
-                </div>
-
-                <div>
-                  <label className="label">Especialidad</label>
-                  <select value={specialtyId} onChange={(e) => setSpecialtyId(e.target.value)}>
-                    <option value="">Selecciona una especialidad</option>
-                    {specialties.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                  {profile.source === 'user' && profile.specialty && !specialtyId && (
-                    <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
-                      Actual: {profile.specialty}
-                    </p>
-                  )}
-                </div>
-
-                <button className="btn btn-primary btn-full" onClick={save} disabled={saving}>
-                  {saving ? 'Guardando...' : 'Guardar cambios'}
+              <nav className="perfil-nav">
+                <button
+                  className={tab === 'perfil' ? 'is-active' : ''}
+                  onClick={() => openTab('perfil')}
+                >
+                  Mi perfil
                 </button>
-              </div>
-            )}
+                <button disabled title="Próximamente">
+                  Disponibilidad
+                </button>
+                <button
+                  className={tab === 'ajustes' ? 'is-active' : ''}
+                  onClick={() => openTab('ajustes')}
+                >
+                  Ajustes
+                </button>
+                <button onClick={() => router.push('/panel-medico')}>Ir al panel</button>
+              </nav>
+            </aside>
+
+            <section className="perfil-content card">
+              {tab === 'perfil' && (
+                <>
+                  <h1 style={{ marginTop: 0 }}>Mi perfil</h1>
+                  {profile && (
+                    <p style={{ color: '#64748b', marginTop: 0 }}>
+                      {profile.verified ? (
+                        <span className="badge badge-green">Verificado</span>
+                      ) : (
+                        <span className="badge" style={{ background: '#fef3c7', color: '#92400e' }}>
+                          Sin verificar
+                        </span>
+                      )}
+                    </p>
+                  )}
+
+                  {notice && (
+                    <div className={`notice notice-${notice.kind}`} style={{ marginBottom: 14 }}>
+                      {notice.text}
+                    </div>
+                  )}
+
+                  {profile && (
+                    <div className="grid">
+                      {perfilIncompleto && (
+                        <div className="notice notice-info">
+                          Debes completar tu perfil profesional para usar el panel:
+                          {isUserSource ? ' elige tu tipo,' : ''} ingresa tu cédula y la verificamos
+                          contra SACS/FPV.
+                        </div>
+                      )}
+
+                      {isUserSource && (
+                        <div>
+                          <label className="label">Tipo de profesional *</label>
+                          <select
+                            value={professionalTypeId}
+                            onChange={(e) => {
+                              setProfessionalTypeId(e.target.value)
+                              setVerifState('idle')
+                            }}
+                          >
+                            <option value="">Selecciona...</option>
+                            {professionalTypes
+                              .filter((t) => t.status === 'active')
+                              .map((t) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.name}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="label">Cédula / DNI {isUserSource ? '*' : ''}</label>
+                        <div className="input-group">
+                          <select
+                            value={cedulaPrefijo}
+                            onChange={(e) => {
+                              setCedulaPrefijo(e.target.value as 'V' | 'E')
+                              setVerifState('idle')
+                            }}
+                            disabled={cedulaDisabled}
+                          >
+                            <option value="V">V</option>
+                            <option value="E">E</option>
+                          </select>
+                          <input
+                            value={cedulaNumero}
+                            onChange={(e) => {
+                              setCedulaNumero(soloDigitos(e.target.value))
+                              setVerifState('idle')
+                            }}
+                            onBlur={verificarCedulaEnVivo}
+                            placeholder="Solo números"
+                            inputMode="numeric"
+                            maxLength={9}
+                            disabled={cedulaDisabled}
+                          />
+                        </div>
+                        {isUserSource && !professionalTypeId && (
+                          <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
+                            Elige primero el tipo de profesional.
+                          </p>
+                        )}
+                        {!isUserSource && profile.professional_type && (
+                          <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
+                            Tipo de profesional: {profile.professional_type}
+                          </p>
+                        )}
+                        {verifState === 'verifying' && (
+                          <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
+                            Verificando cédula...
+                          </p>
+                        )}
+                        {verifState === 'found' && (
+                          <div className="notice notice-success" style={{ marginTop: 8 }}>
+                            Cédula verificada ✓ Datos cargados automáticamente.
+                          </div>
+                        )}
+                        {verifState === 'notfound' && (
+                          <div className="notice notice-warning" style={{ marginTop: 8 }}>
+                            No encontramos esta cédula en el registro. Puedes completar tus datos
+                            manualmente.
+                          </div>
+                        )}
+                        {!isUserSource && verifState === 'idle' && (
+                          <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
+                            Cambiarla re-verifica tu registro contra SACS/FPV.
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="label">Nombre completo *</label>
+                        <input
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                          maxLength={200}
+                          readOnly={datosBloqueados}
+                        />
+                        {datosBloqueados && (
+                          <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
+                            Cargado desde SACS/FPV — no editable.
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="label">Matrícula / colegiatura</label>
+                        <input
+                          value={license}
+                          onChange={(e) => setLicense(e.target.value)}
+                          maxLength={100}
+                          readOnly={datosBloqueados}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="label">Especialidad</label>
+                        <select
+                          value={specialtyId}
+                          onChange={(e) => setSpecialtyId(e.target.value)}
+                        >
+                          <option value="">Selecciona una especialidad</option>
+                          {specialties.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                        </select>
+                        {profile.source === 'user' && profile.specialty && !specialtyId && (
+                          <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
+                            Actual: {profile.specialty}
+                          </p>
+                        )}
+                      </div>
+
+                      <button className="btn btn-primary btn-full" onClick={save} disabled={saving}>
+                        {saving ? 'Guardando...' : 'Guardar cambios'}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {tab === 'disponibilidad' && (
+                <>
+                  <h1 style={{ marginTop: 0 }}>Disponibilidad</h1>
+                  <div className="notice notice-info">Próximamente.</div>
+                </>
+              )}
+
+              {tab === 'ajustes' && (
+                <>
+                  <h1 style={{ marginTop: 0 }}>Ajustes de notificaciones</h1>
+                  <p style={{ color: '#64748b', marginTop: -6 }}>
+                    Elige qué avisos recibir y por qué canal, para que el sistema no sea invasivo.
+                    Las notificaciones al teléfono/navegador requieren permiso del navegador y
+                    llegan con la app abierta; el correo es el canal más confiable.
+                  </p>
+
+                  {prefsNotice && (
+                    <div
+                      className={`notice notice-${prefsNotice.kind}`}
+                      style={{ marginBottom: 14 }}
+                    >
+                      {prefsNotice.text}
+                    </div>
+                  )}
+
+                  {!prefsLoaded ? (
+                    <p style={{ color: '#64748b' }}>Cargando preferencias...</p>
+                  ) : (
+                    <>
+                      {Object.entries(catalog).map(([event, channels]) => (
+                        <div key={event} className="pref-row">
+                          <div style={{ minWidth: 0 }}>
+                            <strong>{EVENT_LABELS[event]?.label || event}</strong>
+                            <div style={{ color: '#64748b', fontSize: 13 }}>
+                              {EVENT_LABELS[event]?.desc || ''}
+                            </div>
+                          </div>
+                          <div className="pref-toggles">
+                            {channels.map((ch) => (
+                              <label key={ch} className="pref-toggle">
+                                <input
+                                  type="checkbox"
+                                  checked={!!prefs[event]?.[ch as 'push' | 'email']}
+                                  onChange={() => togglePref(event, ch)}
+                                />
+                                {CHANNEL_LABELS[ch] || ch}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      <button
+                        className="btn btn-primary"
+                        onClick={savePrefs}
+                        disabled={prefsSaving}
+                        style={{ marginTop: 14 }}
+                      >
+                        {prefsSaving ? 'Guardando...' : 'Guardar preferencias'}
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
+            </section>
           </div>
         </div>
       </main>
+
+      <style jsx global>{`
+        .perfil-layout {
+          display: flex;
+          gap: 20px;
+          align-items: flex-start;
+        }
+        .perfil-sidebar {
+          width: 240px;
+          flex-shrink: 0;
+          padding: 16px;
+        }
+        .perfil-content {
+          flex: 1;
+          min-width: 0;
+        }
+        .perfil-id {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          padding-bottom: 16px;
+          border-bottom: 1px solid var(--border, #e2e8f0);
+        }
+        .perfil-avatar {
+          width: 84px;
+          height: 84px;
+          border-radius: 50%;
+          background: #0f6e56;
+          color: #fff;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 28px;
+          font-weight: 700;
+        }
+        .perfil-name {
+          font-weight: 700;
+          text-align: center;
+          word-break: break-word;
+        }
+        .perfil-nav {
+          display: flex;
+          flex-direction: column;
+          margin-top: 12px;
+        }
+        .perfil-nav button {
+          text-align: left;
+          padding: 12px 10px;
+          background: none;
+          border: none;
+          border-radius: 8px;
+          font-size: 15px;
+          cursor: pointer;
+          color: #0f172a;
+        }
+        .perfil-nav button:hover:not(:disabled) {
+          background: #f1f5f9;
+        }
+        .perfil-nav button.is-active {
+          background: #ecfdf5;
+          color: #0f6e56;
+          font-weight: 700;
+        }
+        .perfil-nav button:disabled {
+          color: #cbd5e1;
+          cursor: not-allowed;
+        }
+        .pref-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 16px;
+          padding: 14px 0;
+          border-top: 1px solid var(--border, #e2e8f0);
+          flex-wrap: wrap;
+        }
+        .pref-toggles {
+          display: flex;
+          gap: 16px;
+          flex-shrink: 0;
+        }
+        .pref-toggle {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 14px;
+          color: #334155;
+          cursor: pointer;
+        }
+        @media (max-width: 720px) {
+          .perfil-layout {
+            flex-direction: column;
+          }
+          .perfil-sidebar {
+            width: 100%;
+          }
+        }
+      `}</style>
     </>
   )
 }

@@ -430,7 +430,7 @@ export default function RegistroPaciente() {
                 <>
                   <h2 style={{ margin: 0, fontSize: 16 }}>Datos del adulto (representante)</h2>
                   <CedulaField
-                    label="Cédula del representante"
+                    label="Cédula / DNI del representante"
                     value={gCedula}
                     onChange={setGCedula}
                     required
@@ -469,7 +469,7 @@ export default function RegistroPaciente() {
 
                   <h2 style={{ margin: 0, fontSize: 16 }}>Datos del menor</h2>
                   <CedulaField
-                    label="Cédula del menor"
+                    label="Cédula / DNI del menor"
                     value={mCedula}
                     onChange={setMCedula}
                     hint="Si no tiene cédula propia, puedes dejarlo en blanco."
@@ -559,12 +559,7 @@ export default function RegistroPaciente() {
                 </>
               ) : (
                 <>
-                  <CedulaField
-                    label="Número de cédula"
-                    value={cedula}
-                    onChange={setCedula}
-                    required
-                  />
+                  <CedulaField label="Cédula / DNI" value={cedula} onChange={setCedula} required />
                   <div>
                     <label className="label">Nombre completo *</label>
                     <input
