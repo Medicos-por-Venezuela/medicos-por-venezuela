@@ -60,9 +60,11 @@ export default function AuthCallback() {
 
       window.history.replaceState({}, '', '/auth/callback')
 
-      // 3) Route by profile.
+      // 3) Route by profile. Lectura directa a `public.users` (tabla core; ya no a la vista
+      // `profiles`) porque `/auth/me` aún no expone `role_chosen`. TODO: mover a /auth/me cuando el
+      // backend incluya ese flag.
       const { data: profile, error: profileError } = await supabase
-        .from('profiles')
+        .from('users')
         .select('role, active, role_chosen')
         .eq('id', session.user.id)
         .single()

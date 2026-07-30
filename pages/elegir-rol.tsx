@@ -2,6 +2,7 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { finalizeMyRole } from '../lib/users'
 import { SPECIALTIES } from '../lib/utils'
 
 const PAISES = [
@@ -24,7 +25,8 @@ const PAISES = [
 ]
 
 // First-time role picker for accounts created via Google (OAuth can't carry a trusted role).
-// Calls the set_my_role RPC, which finalizes the profile exactly once and can never grant admin.
+// Calls POST /profiles/me/finalize-role (backend), which finalizes the profile exactly once and
+// can never grant admin.
 export default function ElegirRol() {
   const router = useRouter()
   const [checking, setChecking] = useState(true)
@@ -48,8 +50,10 @@ export default function ElegirRol() {
         return
       }
       // If the role was already chosen, don't show this screen again.
+      // Lectura directa a `public.users` (tabla core; ya no a la vista `profiles`) porque `/auth/me`
+      // aún no expone `role_chosen`. TODO: mover a /auth/me cuando el backend incluya ese flag.
       const { data: profile } = await supabase
-        .from('profiles')
+        .from('users')
         .select('role, role_chosen')
         .eq('id', session.user.id)
         .single()
@@ -87,8 +91,12 @@ export default function ElegirRol() {
     setError('')
     setLoading(true)
     try {
-      const { error: rpcError } = await supabase.rpc('set_my_role', { p_role: 'patient' })
-      if (rpcError) throw rpcError
+      const {
+        data: { session }
+      } = await supabase.auth.getSession()
+      if (!session) throw new Error('Sesión expirada')
+      // POST /profiles/me/finalize-role (backend) — reemplaza la RPC set_my_role.
+      await finalizeMyRole({ role: 'patient' }, session.access_token)
       router.replace('/registro-paciente')
     } catch (e) {
       console.error(e)
@@ -105,14 +113,21 @@ export default function ElegirRol() {
     }
     setLoading(true)
     try {
-      const { error: rpcError } = await supabase.rpc('set_my_role', {
-        p_role: 'doctor',
-        p_specialty: specialty,
-        p_country: country,
-        p_medical_license: license.trim() || null,
-        p_whatsapp_number: whatsapp.trim()
-      })
-      if (rpcError) throw rpcError
+      const {
+        data: { session }
+      } = await supabase.auth.getSession()
+      if (!session) throw new Error('Sesión expirada')
+      // POST /profiles/me/finalize-role (backend) — reemplaza la RPC set_my_role.
+      await finalizeMyRole(
+        {
+          role: 'doctor',
+          specialty,
+          country,
+          medical_license: license.trim() || null,
+          whatsapp_number: whatsapp.trim()
+        },
+        session.access_token
+      )
       router.replace('/panel-medico')
     } catch (e) {
       console.error(e)

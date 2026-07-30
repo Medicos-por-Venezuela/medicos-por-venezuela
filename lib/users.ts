@@ -1,7 +1,7 @@
 // Client for the multi-role RBAC endpoints of api-medicos-por-venezuela (user creation +
 // role assignment). Separate from lib/admin.ts's `Profile` type, which is the OLD Supabase-direct
 // single-role profile used by doctores.tsx/pacientes.tsx — do not mix the two.
-import { deleteJson, getJson, postJson } from './apiClient'
+import { deleteJson, getJson, patchJson, postJson } from './apiClient'
 
 export { ApiError } from './apiClient'
 
@@ -68,6 +68,51 @@ export async function fetchProfiles(
   return getJson<ApiUser[]>(
     `/api/v1/profiles?${qs.toString()}`,
     'No se pudieron cargar los usuarios',
+    token
+  )
+}
+
+// GET /api/v1/profiles/{id} — un perfil por id (requiere permiso profiles.read / staff). Sustituye
+// las lecturas puntuales `supabase.from('profiles').select(...).eq('id', …).single()` de otro usuario.
+export async function fetchProfile(id: string, token: string): Promise<ApiUser> {
+  return getJson<ApiUser>(`/api/v1/profiles/${id}`, 'No se pudo cargar el perfil', token)
+}
+
+// PATCH /api/v1/profiles/{id}/active — revoca (active:false) o reactiva (active:true) a un usuario.
+// Reemplaza el UPDATE directo `from('profiles').update({ active })` de "Revocar acceso".
+export async function setProfileActive(
+  id: string,
+  active: boolean,
+  token: string
+): Promise<ApiUser> {
+  return patchJson<ApiUser>(
+    `/api/v1/profiles/${id}/active`,
+    { active },
+    'No se pudo actualizar el estado del usuario',
+    token
+  )
+}
+
+// Campos que /elegir-rol envía para finalizar el rol propio. specialty/country/medical_license/
+// whatsapp_number solo aplican cuando role === 'doctor' (el backend los ignora para 'patient').
+export interface FinalizeRolePayload {
+  role: 'patient' | 'doctor'
+  specialty?: string | null
+  country?: string | null
+  medical_license?: string | null
+  whatsapp_number?: string | null
+}
+
+// POST /api/v1/profiles/me/finalize-role — finaliza el rol del titular del JWT una sola vez.
+// Reemplaza la RPC `set_my_role`; igual que ella, nunca puede otorgar admin/specialist.
+export async function finalizeMyRole(
+  payload: FinalizeRolePayload,
+  token: string
+): Promise<ApiUser> {
+  return postJson<ApiUser>(
+    '/api/v1/profiles/me/finalize-role',
+    payload,
+    'No se pudo guardar tu elección',
     token
   )
 }
