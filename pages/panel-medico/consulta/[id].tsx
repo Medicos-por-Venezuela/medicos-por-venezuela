@@ -2,11 +2,32 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import DoctorPoolModal from '../../../components/DoctorPoolModal'
-import { fetchMyProfile } from '../../../lib/consultations'
+import SignaturePad from '../../../components/SignaturePad'
+import { getAccessToken } from '../../../lib/admin'
+import { DoctorPoolItem } from '../../../lib/doctors'
+import {
+  ChainItem,
+  closeConsultationApi,
+  fetchChain,
+  fetchMyProfile,
+  scheduleFollowUp,
+  scheduleReferral
+} from '../../../lib/consultations'
+import {
+  createInterconsultation,
+  fetchInterconsultationForConsultation,
+  Interconsultation
+} from '../../../lib/interconsultations'
 import { supabase } from '../../../lib/supabase'
 import { fetchProfile } from '../../../lib/users'
 import { STATUS_LABELS, minutesSince } from '../../../lib/utils'
 import { browserRoomUrl } from '../../../lib/jitsi'
+import { notify, requestNotifyPermission } from '../../../lib/nativeNotifications'
+import {
+  fetchNotificationPrefs,
+  isPushEnabled,
+  type NotificationPrefs
+} from '../../../lib/notificationPrefs'
 
 type Patient = {
   id: string
@@ -74,7 +95,15 @@ const WHATSAPP_STATUS_OPTIONS: { value: string; label: string }[] = [
 // Estados que finalizan el caso: con uno de estos ya no se muestra el select de estado
 // ni los botones de cierre (evita re-cerrar pisando closed_at, y que el select de
 // WhatsApp "mienta" mostrando la primera opción cuando el estado real no está listado).
-const FINAL_STATUSES = ['closed', 'patient_no_show', 'closed_by_admin', 'cancelled']
+// 'referred_to_specialist' cuenta como finalizado: al derivar, el médico actual ya no la atiende
+// (queda en manos del especialista); ver el flujo "Agendar con especialista".
+const FINAL_STATUSES = [
+  'closed',
+  'patient_no_show',
+  'closed_by_admin',
+  'cancelled',
+  'referred_to_specialist'
+]
 
 function isAdminRole(role?: string | null): boolean {
   return !!role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])
@@ -123,6 +152,23 @@ export default function ConsultaDetalle() {
   // Última nota persistida (para exigir "nota guardada" antes de cerrar la consulta).
   const [savedNote, setSavedNote] = useState('')
   const [poolOpen, setPoolOpen] = useState(false)
+  // Para qué se abre el pool: 'browse' (ver médicos + asignar interconsulta) o 'referral'
+  // (elegir a quién derivar en "Agendar con especialista").
+  const [poolMode, setPoolMode] = useState<'browse' | 'referral'>('browse')
+  // Interconsulta activa de esta consulta (segunda opinión en vivo). null si aún no tiene.
+  const [interconsultation, setInterconsultation] = useState<Interconsultation | null>(null)
+  // Firma al cerrar / agendar seguimiento / referir (acto médico firmado). Módulo Agenda.
+  const [signMode, setSignMode] = useState<null | 'close' | 'followup' | 'referral'>(null)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [scheduledAt, setScheduledAt] = useState('')
+  // Agendar con especialista (referencia): médico elegido del pool + motivo + fecha.
+  const [referTarget, setReferTarget] = useState<DoctorPoolItem | null>(null)
+  const [referReason, setReferReason] = useState('')
+  const [referScheduledAt, setReferScheduledAt] = useState('')
+  // Historial de la cadena de seguimiento (padre→hijas).
+  const [chain, setChain] = useState<ChainItem[]>([])
+  // Preferencias de notificación (para respetar el aviso push de confirmación). null = opt-out.
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs | null>(null)
   const [loading, setLoading] = useState(true)
   // in-flight guard compartido por las acciones de escritura (evita dobles submits).
   const [busy, setBusy] = useState(false)
@@ -144,6 +190,19 @@ export default function ConsultaDetalle() {
     if (!consultationId) return
     init(consultationId)
   }, [consultationId])
+
+  // Preferencias de notificación del médico (para gatear el aviso push de confirmación).
+  useEffect(() => {
+    if (!profile) return
+    ;(async () => {
+      try {
+        const { prefs } = await fetchNotificationPrefs(await getAccessToken())
+        setNotifPrefs(prefs)
+      } catch {
+        // Si falla, quedan por defecto (opt-out): las notificaciones siguen activas.
+      }
+    })()
+  }, [profile])
 
   // Presencia del paciente EN VIVO (Realtime): su heartbeat (mark_patient_waiting) actualiza la
   // consulta en la BD; nos suscribimos a esos cambios y refrescamos patient_last_seen_at/status SIN
@@ -222,7 +281,39 @@ export default function ConsultaDetalle() {
 
     setProfile(p)
     await loadConsultation(id, p)
+    await loadInterconsultation(id)
     setLoading(false)
+  }
+
+  async function loadInterconsultation(id: string) {
+    try {
+      const token = await getAccessToken()
+      setInterconsultation(await fetchInterconsultationForConsultation(id, token))
+      setChain(await fetchChain(id, token))
+    } catch {
+      // Silencioso: si falla, simplemente no se muestran interconsulta/cadena.
+    }
+  }
+
+  // El médico que atiende invita a un médico del pool a una interconsulta (segunda opinión EN VIVO;
+  // la consulta sigue abierta). 1 por consulta: si ya hay, el pool no ofrece el botón.
+  async function assignInterconsultation(doctor: DoctorPoolItem) {
+    if (!consultation || !doctor.user_id) return
+    setBusy(true)
+    setMessage('')
+    try {
+      const inter = await createInterconsultation(
+        { consultation_id: consultation.id, invited_doctor_id: doctor.user_id },
+        await getAccessToken()
+      )
+      setInterconsultation(inter)
+      setPoolOpen(false)
+      setMessage(`Interconsulta asignada a ${inter.invited_doctor_name || 'el médico'}.`)
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : 'No se pudo asignar la interconsulta.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function loadConsultation(id: string, currentProfile: Profile | null = profile) {
@@ -401,46 +492,132 @@ export default function ConsultaDetalle() {
       ? '¿Confirmas que el paciente no estaba en la sala de espera? Esto finaliza el caso.'
       : '¿Seguro que deseas cerrar la consulta? Esta acción la finaliza.'
     if (!window.confirm(confirmMsg)) return
+    // No-show cierra sin firma; el cierre real (completada) pide la firma del médico.
+    if (noShow) {
+      await doClose('patient_no_show')
+    } else {
+      setSignMode('close')
+    }
+  }
 
+  // Cierre por el BACKEND (POST /consultations/{id}/close) — reemplaza el UPDATE directo a Supabase
+  // (server-side hace anti-IDOR + audit_log + evento + guarda la firma).
+  async function doClose(outcome: 'closed' | 'patient_no_show', signature?: string) {
+    if (!consultation) return
     setBusy(true)
-    // En no-show NO se persiste la nota: puede haber texto a medio escribir en el
-    // textarea que el médico nunca guardó.
-    const update: Record<string, unknown> = {
-      status: outcome,
-      closed_at: new Date().toISOString(),
-      ...(noShow ? {} : { internal_note: note })
-    }
-    // Escritura CONDICIONAL: mientras window.confirm bloqueaba, un admin pudo cerrar el
-    // caso por otro lado (y los mensajes Realtime quedaron encolados). El filtro por
-    // estados finales hace que ese cierre tardío afecte 0 filas en vez de pisar closed_at.
-    const { data: updated, error } = await supabase
-      .from('consultations')
-      .update(update)
-      .eq('id', consultation.id)
-      .not('status', 'in', `(${FINAL_STATUSES.join(',')})`)
-      .select('id')
-
-    if (error) {
+    try {
+      await closeConsultationApi(
+        consultation.id,
+        { outcome, note: outcome === 'closed' ? note : undefined, signature },
+        await getAccessToken()
+      )
+      router.push('/panel-medico?actualizado=1')
+    } catch (e) {
       setBusy(false)
-      setCloseError(noShow ? 'No se pudo marcar como ausente.' : 'No se pudo cerrar la consulta.')
+      setCloseError(e instanceof Error ? e.message : 'No se pudo cerrar la consulta.')
+    }
+  }
+
+  // Agendar seguimiento: cierra esta consulta (firmada) y crea la hija agendada para otra fecha.
+  async function doScheduleFollowUp(signature: string) {
+    if (!consultation || !scheduledAt) return
+    setBusy(true)
+    try {
+      await scheduleFollowUp(
+        consultation.id,
+        {
+          scheduled_at: new Date(scheduledAt).toISOString(),
+          closing_note: note || undefined,
+          signature
+        },
+        await getAccessToken()
+      )
+      if (isPushEnabled(notifPrefs, 'appointment_confirm')) {
+        await requestNotifyPermission()
+        notify(
+          'Seguimiento agendado',
+          `Cita para ${new Date(scheduledAt).toLocaleString('es-VE')}.`
+        )
+      }
+      router.push('/panel-medico?actualizado=1')
+    } catch (e) {
+      setBusy(false)
+      setMessage(e instanceof Error ? e.message : 'No se pudo agendar el seguimiento.')
+    }
+  }
+
+  // Agendar con especialista (referencia): entrega esta consulta a OTRO médico (queda derivada) y
+  // crea la hija agendada asignada a ese médico, con el motivo firmado.
+  async function doScheduleReferral(signature: string) {
+    if (!consultation || !referTarget?.user_id || !referReason.trim() || !referScheduledAt) return
+    setBusy(true)
+    try {
+      await scheduleReferral(
+        consultation.id,
+        {
+          invited_doctor_id: referTarget.user_id,
+          scheduled_at: new Date(referScheduledAt).toISOString(),
+          reason: referReason.trim(),
+          signature
+        },
+        await getAccessToken()
+      )
+      if (isPushEnabled(notifPrefs, 'appointment_confirm')) {
+        await requestNotifyPermission()
+        notify(
+          'Referencia agendada',
+          `${referTarget.full_name} atenderá al paciente el ${new Date(
+            referScheduledAt
+          ).toLocaleString('es-VE')}.`
+        )
+      }
+      router.push('/panel-medico?actualizado=1')
+    } catch (e) {
+      setBusy(false)
+      setMessage(e instanceof Error ? e.message : 'No se pudo agendar con el especialista.')
+    }
+  }
+
+  // El canvas de firma resuelve → dispara el cierre / el agendado / la referencia según el modo.
+  function onSign(dataUrl: string) {
+    const mode = signMode
+    setSignMode(null)
+    if (mode === 'close') doClose('closed', dataUrl)
+    else if (mode === 'followup') doScheduleFollowUp(dataUrl)
+    else if (mode === 'referral') doScheduleReferral(dataUrl)
+  }
+
+  // "Agendar con especialista": abre el pool en modo referencia para elegir a quién derivar.
+  function openReferral() {
+    setMessage('')
+    setCloseError('')
+    setPoolMode('referral')
+    setPoolOpen(true)
+  }
+
+  // Se eligió un médico del pool para derivar → pedir motivo + fecha (luego firma).
+  function startReferral(doctor: DoctorPoolItem) {
+    if (!doctor.user_id) {
+      setMessage('Ese médico no tiene cuenta activa; elige otro.')
       return
     }
-    if (!updated || updated.length === 0) {
-      // Ya estaba finalizada (otro médico/admin ganó): no registrar evento ni navegar;
-      // el estado real llega por Realtime y la UI pasa sola al modo "caso finalizado".
-      setBusy(false)
-      setCloseError('La consulta ya fue finalizada por otra persona.')
+    setReferTarget(doctor)
+    setPoolOpen(false)
+  }
+
+  // "Agendar seguimiento": exige la nota guardada (cierra el padre) y abre el selector de fecha.
+  function openScheduleFollowUp() {
+    setMessage('')
+    setCloseError('')
+    if (!note.trim()) {
+      flagMissingNote('Agrega una nota antes de agendar el seguimiento.')
       return
     }
-
-    await addEvent(
-      consultation.id,
-      noShow ? 'patient_no_show' : 'closed',
-      noShow
-        ? `Paciente no estaba en la sala de espera (${profile.full_name})`
-        : `Cerrada por ${profile.full_name}`
-    )
-    router.push('/panel-medico?actualizado=1')
+    if (note !== savedNote) {
+      flagMissingNote('Guarda la nota antes de agendar el seguimiento.')
+      return
+    }
+    setScheduleOpen(true)
   }
 
   if (loading) {
@@ -507,28 +684,80 @@ export default function ConsultaDetalle() {
             </a>
           )}
 
-          {/* Acciones de referencia, en una fila debajo del encabezado. */}
+          {/* Acciones de referencia/agenda, en una fila debajo del encabezado. */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
             <button
               className="btn btn-outline"
-              style={{ flex: '1 1 200px' }}
-              onClick={() => setPoolOpen(true)}
+              style={{ flex: '1 1 160px' }}
+              onClick={() => {
+                setPoolMode('browse')
+                setPoolOpen(true)
+              }}
             >
               Ver Pool de médicos
             </button>
             <button
               className="btn btn-outline"
-              style={{ flex: '1 1 200px' }}
-              onClick={() => setMessage('Función de agendar con especialista: próximamente.')}
+              style={{ flex: '1 1 160px' }}
+              onClick={openScheduleFollowUp}
+              disabled={isCaseClosed}
             >
-              Agendar con Especialista
+              Agendar seguimiento
+            </button>
+            <button
+              className="btn btn-outline"
+              style={{ flex: '1 1 160px' }}
+              onClick={openReferral}
+              disabled={isCaseClosed}
+            >
+              Agendar con especialista
             </button>
           </div>
+
+          {interconsultation && (
+            <div className="notice notice-info" style={{ marginBottom: 16 }}>
+              🩺 Interconsulta asignada a{' '}
+              <strong>{interconsultation.invited_doctor_name || 'un médico'}</strong>. Ve el motivo,
+              las notas y la edad del paciente, y puede unirse a esta videoconsulta.
+            </div>
+          )}
 
           {message && (
             <div className="notice notice-info" style={{ marginBottom: 16 }}>
               {message}
             </div>
+          )}
+
+          {chain.length > 1 && (
+            <section className="card" style={{ marginBottom: 16 }}>
+              <h2 style={{ marginTop: 0 }}>Historial de seguimiento</h2>
+              <p style={{ color: '#64748b', fontSize: 13, marginTop: -6 }}>
+                Cadena de consultas (de la más antigua a la más reciente).
+              </p>
+              <ol style={{ margin: 0, paddingLeft: 18 }}>
+                {chain.map((link) => (
+                  <li key={link.id} style={{ marginBottom: 6 }}>
+                    <strong>{link.code}</strong>{' '}
+                    <span className="badge" style={{ background: '#e2e8f0', color: '#475569' }}>
+                      {STATUS_LABELS[link.status] || link.status}
+                    </span>
+                    {link.scheduled_at && (
+                      <span style={{ color: '#64748b' }}>
+                        {' '}
+                        · agendada {new Date(link.scheduled_at).toLocaleString('es-VE')}
+                      </span>
+                    )}
+                    {link.id === consultation.id && (
+                      <span style={{ color: '#0d9488' }}> · (esta)</span>
+                    )}
+                    <div style={{ color: '#64748b', fontSize: 13 }}>
+                      {link.chief_complaint || 'Sin motivo'}
+                      {link.internal_note ? ` — ${link.internal_note}` : ''}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
           )}
 
           <div className="detail-grid">
@@ -540,7 +769,7 @@ export default function ConsultaDetalle() {
                 {consultation.patients?.age_range || 'Edad no indicada'}
               </p>
               <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
-                Cédula: {consultation.patients?.cedula || '—'}
+                Cédula / DNI: {consultation.patients?.cedula || '—'}
               </p>
               <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
                 Tel. (solo seguimiento): {consultation.patients?.phone_whatsapp || '—'}
@@ -716,7 +945,147 @@ export default function ConsultaDetalle() {
             </section>
           </div>
 
-          <DoctorPoolModal open={poolOpen} onClose={() => setPoolOpen(false)} />
+          <DoctorPoolModal
+            open={poolOpen}
+            onClose={() => setPoolOpen(false)}
+            onAssignInterconsultation={
+              poolMode === 'browse' && !interconsultation ? assignInterconsultation : undefined
+            }
+            onReferToDoctor={poolMode === 'referral' ? startReferral : undefined}
+          />
+
+          {signMode && (
+            <SignaturePad
+              onSign={onSign}
+              onCancel={() => setSignMode(null)}
+              busy={busy}
+              title={
+                signMode === 'followup'
+                  ? 'Firma para agendar el seguimiento'
+                  : signMode === 'referral'
+                    ? 'Firma la referencia al especialista'
+                    : 'Firma para cerrar la consulta'
+              }
+              hint={
+                signMode === 'referral'
+                  ? 'Firma para dejar constancia de la referencia (motivo y especialista).'
+                  : undefined
+              }
+            />
+          )}
+
+          {scheduleOpen && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Agendar seguimiento"
+              onClick={() => setScheduleOpen(false)}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(15, 23, 42, 0.55)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 16,
+                zIndex: 1000
+              }}
+            >
+              <div
+                className="card"
+                onClick={(e) => e.stopPropagation()}
+                style={{ maxWidth: 420, width: '100%' }}
+              >
+                <h2 style={{ marginTop: 0 }}>Agendar seguimiento</h2>
+                <p style={{ color: '#64748b', fontSize: 13, marginTop: -6 }}>
+                  Se cierra esta consulta (firmada) y se crea una nueva agendada para la fecha que
+                  elijas. Queda en tu agenda y en la del paciente.
+                </p>
+                <input
+                  type="datetime-local"
+                  value={scheduledAt}
+                  onChange={(e) => setScheduledAt(e.target.value)}
+                  style={{ width: '100%', marginBottom: 12 }}
+                />
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn btn-muted" onClick={() => setScheduleOpen(false)}>
+                    Cancelar
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    style={{ marginLeft: 'auto' }}
+                    disabled={!scheduledAt}
+                    onClick={() => {
+                      setScheduleOpen(false)
+                      setSignMode('followup')
+                    }}
+                  >
+                    Continuar a la firma
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {referTarget && !signMode && (
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Agendar con especialista"
+              onClick={() => setReferTarget(null)}
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(15, 23, 42, 0.55)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 16,
+                zIndex: 1000
+              }}
+            >
+              <div
+                className="card"
+                onClick={(e) => e.stopPropagation()}
+                style={{ maxWidth: 460, width: '100%' }}
+              >
+                <h2 style={{ marginTop: 0 }}>Agendar con especialista</h2>
+                <p style={{ color: '#64748b', fontSize: 13, marginTop: -6 }}>
+                  Derivas este caso a <strong>{referTarget.full_name}</strong>. La consulta queda a
+                  su cargo (verá las notas previas) y se agenda para la fecha que elijas. Debes
+                  firmar el motivo.
+                </p>
+                <label className="label">Motivo de la referencia</label>
+                <textarea
+                  rows={3}
+                  value={referReason}
+                  onChange={(e) => setReferReason(e.target.value)}
+                  placeholder="Por qué refieres al paciente a este especialista."
+                  style={{ width: '100%', marginBottom: 10 }}
+                />
+                <label className="label">Fecha y hora de la cita</label>
+                <input
+                  type="datetime-local"
+                  value={referScheduledAt}
+                  onChange={(e) => setReferScheduledAt(e.target.value)}
+                  style={{ width: '100%', marginBottom: 12 }}
+                />
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn btn-muted" onClick={() => setReferTarget(null)}>
+                    Cancelar
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    style={{ marginLeft: 'auto' }}
+                    disabled={!referReason.trim() || !referScheduledAt}
+                    onClick={() => setSignMode('referral')}
+                  >
+                    Continuar a la firma
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </main>
 

@@ -46,13 +46,21 @@ function waNumber(phone: string): string {
 export default function DoctorPoolModal({
   open,
   onClose,
-  excludeSelf = true
+  excludeSelf = true,
+  onAssignInterconsultation,
+  onReferToDoctor
 }: {
   open: boolean
   onClose: () => void
   // true (default, referir): oculta al propio médico. false (dashboard admin): lo incluye, para
   // que el conteo del KPI "Médicos online" (Presence, cuenta al admin-médico) y la lista cuadren.
   excludeSelf?: boolean
+  // Si se provee (solo desde la consulta que aún no tiene interconsulta), muestra un botón
+  // "Asignar interconsulta" por médico. Ver .knowledge/interconsultas.md.
+  onAssignInterconsultation?: (doctor: DoctorPoolItem) => void
+  // Si se provee (modo "Agendar con especialista"), muestra un botón "Referir aquí" por médico:
+  // entrega la consulta a ese médico con motivo + fecha + firma. Distinto de la interconsulta.
+  onReferToDoctor?: (doctor: DoctorPoolItem) => void
 }) {
   // Estado online en vivo por Realtime Presence (solo lectura: el modal no anuncia presencia).
   const onlineIds = useOnlineDoctorIds()
@@ -178,6 +186,8 @@ export default function DoctorPoolModal({
   if (!open) return null
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  // 5 columnas base + las de acción opcionales (interconsulta / especialista).
+  const colSpan = 5 + (onAssignInterconsultation ? 1 : 0) + (onReferToDoctor ? 1 : 0)
 
   return (
     <div
@@ -297,18 +307,20 @@ export default function DoctorPoolModal({
                 <th>Tipo</th>
                 <th>Estado</th>
                 <th>WhatsApp</th>
+                {onAssignInterconsultation && <th>Interconsulta</th>}
+                {onReferToDoctor && <th>Especialista</th>}
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} style={{ color: '#64748b' }}>
+                  <td colSpan={colSpan} style={{ color: '#64748b' }}>
                     Cargando...
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ color: '#64748b' }}>
+                  <td colSpan={colSpan} style={{ color: '#64748b' }}>
                     No hay médicos que coincidan con el filtro.
                   </td>
                 </tr>
@@ -354,6 +366,28 @@ export default function DoctorPoolModal({
                         </button>
                       )}
                     </td>
+                    {onAssignInterconsultation && (
+                      <td>
+                        <button
+                          className="btn btn-primary"
+                          style={{ padding: '4px 10px', fontSize: 13, whiteSpace: 'nowrap' }}
+                          onClick={() => onAssignInterconsultation(d)}
+                        >
+                          Asignar interconsulta
+                        </button>
+                      </td>
+                    )}
+                    {onReferToDoctor && (
+                      <td>
+                        <button
+                          className="btn btn-primary"
+                          style={{ padding: '4px 10px', fontSize: 13, whiteSpace: 'nowrap' }}
+                          onClick={() => onReferToDoctor(d)}
+                        >
+                          Referir aquí
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

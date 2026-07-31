@@ -6,6 +6,9 @@ import { supabase } from '../lib/supabase'
 import { signInWithGoogle } from '../lib/auth'
 import GoogleButton from '../components/GoogleButton'
 import { STATUS_LABELS } from '../lib/utils'
+import { requestNotifyPermission, scheduleLocalReminders } from '../lib/nativeNotifications'
+import CalendarSync from '../components/CalendarSync'
+import { downloadIcs } from '../lib/calendar'
 
 type Consultation = {
   id: string
@@ -15,6 +18,7 @@ type Consultation = {
   chief_complaint: string | null
   referred_specialty: string | null
   created_at: string
+  scheduled_at: string | null
 }
 
 export default function MiCaso() {
@@ -32,6 +36,23 @@ export default function MiCaso() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Recordatorio nativo ~30 min antes de las citas agendadas del paciente (solo con la pestaña
+  // abierta; el email del backend es el canal confiable). Re-programa al cambiar sus consultas.
+  useEffect(() => {
+    requestNotifyPermission()
+    return scheduleLocalReminders(
+      consultations
+        .filter((c) => c.status === 'scheduled' && c.scheduled_at)
+        .map((c) => ({
+          when: new Date(c.scheduled_at as string),
+          title: 'Tu cita médica es pronto',
+          body: `${c.category || 'Consulta'} · ${new Date(c.scheduled_at as string).toLocaleString(
+            'es-VE'
+          )}`
+        }))
+    )
+  }, [consultations])
 
   async function load() {
     const {
@@ -72,7 +93,9 @@ export default function MiCaso() {
     if (ids.length) {
       const { data: cons } = await supabase
         .from('consultations')
-        .select('id, code, status, category, chief_complaint, referred_specialty, created_at')
+        .select(
+          'id, code, status, category, chief_complaint, referred_specialty, created_at, scheduled_at'
+        )
         .in('patient_id', ids)
         .order('created_at', { ascending: false })
       setConsultations((cons || []) as Consultation[])
@@ -188,6 +211,12 @@ export default function MiCaso() {
             </button>
           </div>
 
+          {consultations.some((c) => c.status === 'scheduled') && (
+            <div className="card" style={{ marginBottom: 14 }}>
+              <CalendarSync hint="Agrega tus citas a Google Calendar, iPhone/Apple u otra app y se sincronizan solas. No compartas la URL: da acceso a tus citas." />
+            </div>
+          )}
+
           {consultations.length === 0 ? (
             <div className="card">
               <p style={{ color: '#64748b' }}>
@@ -215,6 +244,27 @@ export default function MiCaso() {
                     </div>
                     <span className="badge badge-green">{STATUS_LABELS[c.status] || c.status}</span>
                   </div>
+                  {c.status === 'scheduled' && c.scheduled_at && (
+                    <p style={{ margin: '6px 0', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <span className="badge badge-blue">
+                        🗓 Cita agendada: {new Date(c.scheduled_at).toLocaleString('es-VE')}
+                      </span>
+                      <button
+                        className="btn btn-outline"
+                        style={{ padding: '2px 10px', fontSize: 13 }}
+                        onClick={() =>
+                          downloadIcs({
+                            uid: `${c.id}@medicosporvenezuela.org`,
+                            start: new Date(c.scheduled_at as string),
+                            title: `Cita médica${c.category ? ` · ${c.category}` : ''}`,
+                            description: `Motivo: ${c.chief_complaint || 'N/D'}\nCódigo: ${c.code}`
+                          })
+                        }
+                      >
+                        Agregar a calendario
+                      </button>
+                    </p>
+                  )}
                   {c.chief_complaint && <p style={{ color: '#475569' }}>{c.chief_complaint}</p>}
                   {c.referred_specialty && (
                     <p>
