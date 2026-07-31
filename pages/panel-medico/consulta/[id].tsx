@@ -28,6 +28,7 @@ import {
   isPushEnabled,
   type NotificationPrefs
 } from '../../../lib/notificationPrefs'
+import { usePatientsInRoom } from '../../../lib/patientPresence'
 
 type Patient = {
   id: string
@@ -81,7 +82,6 @@ type EventAuthor = Pick<Profile, 'id' | 'full_name' | 'role'>
 
 const ADMIN_ROLES = ['admin', 'super_admin'] as const
 const PANEL_ALLOWED_ROLES = ['doctor', 'specialist', ...ADMIN_ROLES] as const
-const PRESENCE_WINDOW_MS = 30 * 60 * 1000 // generous; see note in panel-medico.tsx
 
 // Status options shown for WhatsApp-attended cases (the doctor handles these outside video).
 // 'closed' y 'referred_to_specialist' se quitaron a propósito: cerrar es solo vía el botón
@@ -107,11 +107,6 @@ const FINAL_STATUSES = [
 
 function isAdminRole(role?: string | null): boolean {
   return !!role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])
-}
-
-function isPatientPresent(c: Consultation): boolean {
-  if (!c.patient_last_seen_at) return false
-  return Date.now() - new Date(c.patient_last_seen_at).getTime() < PRESENCE_WINDOW_MS
 }
 
 function statusBadgeClass(status: string): string {
@@ -177,8 +172,9 @@ export default function ConsultaDetalle() {
   const [closeError, setCloseError] = useState('')
   // Titila el borde de "Notas del médico" ~3s cuando el cierre se bloquea por falta de nota.
   const [notesBlink, setNotesBlink] = useState(false)
-  // Fuerza re-render periódico para re-evaluar la presencia del paciente (ventana de tiempo).
-  const [, setPresenceTick] = useState(0)
+  // Consultas con el paciente EN SALA por Realtime Presence (reemplaza el heartbeat + la ventana de
+  // tiempo). Es un Set global; abajo se consulta por el id de esta consulta.
+  const patientsInRoom = usePatientsInRoom()
 
   function flagMissingNote(msg: string) {
     setCloseError(msg)
@@ -204,10 +200,9 @@ export default function ConsultaDetalle() {
     })()
   }, [profile])
 
-  // Presencia del paciente EN VIVO (Realtime): su heartbeat (mark_patient_waiting) actualiza la
-  // consulta en la BD; nos suscribimos a esos cambios y refrescamos patient_last_seen_at/status SIN
-  // pisar la nota que el médico está escribiendo. Así ve al paciente entrar/salir de la sala sin
-  // recargar (antes esta página cargaba una sola vez).
+  // Estado del caso EN VIVO (Realtime): si un admin lo cierra o cambia, el médico lo ve sin recargar
+  // y sin pisar la nota que está escribiendo. La presencia del paciente "en sala" ya NO va por aquí:
+  // se lee por Realtime Presence (usePatientsInRoom), sin heartbeat ni polling.
   useEffect(() => {
     if (!consultationId) return
     const channel = supabase
@@ -221,12 +216,8 @@ export default function ConsultaDetalle() {
           filter: `id=eq.${consultationId}`
         },
         (payload) => {
-          const row = payload.new as { patient_last_seen_at: string | null; status: string }
-          setConsultation((prev) =>
-            prev
-              ? { ...prev, patient_last_seen_at: row.patient_last_seen_at, status: row.status }
-              : prev
-          )
+          const row = payload.new as { status: string }
+          setConsultation((prev) => (prev ? { ...prev, status: row.status } : prev))
         }
       )
       .subscribe()
@@ -234,13 +225,6 @@ export default function ConsultaDetalle() {
       supabase.removeChannel(channel)
     }
   }, [consultationId])
-
-  // Si el paciente se va (no llegan más heartbeats), re-evaluamos cada 30s para que "En sala" pase
-  // a "Sin conexión" al vencer la ventana, aunque no haya evento Realtime.
-  useEffect(() => {
-    const t = window.setInterval(() => setPresenceTick((n) => n + 1), 30000)
-    return () => window.clearInterval(t)
-  }, [])
 
   async function init(id: string) {
     const { data: sessionData } = await supabase.auth.getSession()
@@ -778,7 +762,7 @@ export default function ConsultaDetalle() {
                 Email (opcional): {consultation.patients?.email || '—'}
               </p>
               <div style={{ marginTop: 10 }}>
-                {isPatientPresent(consultation) ? (
+                {patientsInRoom.has(consultation.id) ? (
                   <span className="badge badge-green">● En sala</span>
                 ) : (
                   <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>

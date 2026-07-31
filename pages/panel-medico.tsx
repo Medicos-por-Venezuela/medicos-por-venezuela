@@ -23,6 +23,7 @@ import {
   type InterconsultationForInvitee
 } from '../lib/interconsultations'
 import { ensureVideoRoom } from '../lib/patients'
+import { usePatientsInRoom } from '../lib/patientPresence'
 
 type Patient = {
   id: string
@@ -58,13 +59,8 @@ type Consultation = {
   patients: Patient | null
 }
 
-// El paciente cuenta como "en sala" si su heartbeat (patient_last_seen_at) es reciente. Ventana
-// generosa (30 min): el paciente hace ping cada 15s mientras tiene abierta la sala de espera.
-const PRESENCE_WINDOW_MS = 30 * 60 * 1000
-function isPatientPresent(c: Consultation): boolean {
-  if (!c.patient_last_seen_at) return false
-  return Date.now() - new Date(c.patient_last_seen_at).getTime() < PRESENCE_WINDOW_MS
-}
+// La presencia del paciente "en sala" se lee por Realtime Presence (usePatientsInRoom), no por
+// heartbeat/patient_last_seen_at: `patientsInRoom.has(c.id)`.
 
 function statusBadgeClass(status: string): string {
   if (status === 'urgent_in_person') return 'badge-red'
@@ -116,6 +112,8 @@ type Profile = {
 
 export default function PanelMedico() {
   const router = useRouter()
+  // Consultas con el paciente EN SALA por Realtime Presence (reemplaza el heartbeat).
+  const patientsInRoom = usePatientsInRoom()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [consultations, setConsultations] = useState<Consultation[]>([])
   const [loading, setLoading] = useState(true)
@@ -284,7 +282,10 @@ export default function PanelMedico() {
   // "Pacientes esperando" partido en dos (PR #27 de main, recreado con la presencia real): en la
   // sala AHORA (heartbeat vivo, misma ventana que el badge "● En sala") vs. +20 min sin atender.
   const kpis = [
-    { value: waiting.filter(isPatientPresent).length, label: 'En videollamada ahora' },
+    {
+      value: waiting.filter((c) => patientsInRoom.has(c.id)).length,
+      label: 'En videollamada ahora'
+    },
     {
       value: waiting.filter((c) => minutesSince(c.created_at) > 20).length,
       label: 'Sin atender (+20 min)'
@@ -501,6 +502,7 @@ export default function PanelMedico() {
                     <ConsultationCard
                       key={c.id}
                       c={c}
+                      inRoom={patientsInRoom.has(c.id)}
                       onOpen={() => openConsultation(c)}
                       onWhatsapp={() => setWhatsappTarget(c)}
                     />
@@ -675,11 +677,13 @@ export default function PanelMedico() {
 function ConsultationCard({
   c,
   onOpen,
-  onWhatsapp
+  onWhatsapp,
+  inRoom
 }: {
   c: Consultation
   onOpen: () => void
   onWhatsapp: () => void
+  inRoom: boolean
 }) {
   return (
     <div className="card-flat">
@@ -692,7 +696,7 @@ function ConsultationCard({
             {minutesSince(c.created_at)} min
           </div>
           <div style={{ marginTop: 4 }}>
-            {isPatientPresent(c) ? (
+            {inRoom ? (
               <span className="badge badge-green">● En sala</span>
             ) : (
               <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>
