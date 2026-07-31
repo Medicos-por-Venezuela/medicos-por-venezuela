@@ -6,12 +6,17 @@ import SignaturePad from '../../../components/SignaturePad'
 import { getAccessToken } from '../../../lib/admin'
 import { DoctorPoolItem } from '../../../lib/doctors'
 import {
+  addConsultationEvent,
   ChainItem,
   closeConsultationApi,
   fetchChain,
+  fetchConsultationDetail,
+  fetchConsultationEvents,
   fetchMyProfile,
   scheduleFollowUp,
-  scheduleReferral
+  scheduleReferral,
+  updateConsultation,
+  type ConsultationEventItem
 } from '../../../lib/consultations'
 import {
   createInterconsultation,
@@ -317,21 +322,17 @@ export default function ConsultaDetalle() {
   }
 
   async function loadConsultation(id: string, currentProfile: Profile | null = profile) {
-    const { data, error } = await supabase
-      .from('consultations')
-      .select(
-        '*, patients(id, full_name, cedula, phone_whatsapp, email, affected_zone, age_range, needs_tags, description)'
-      )
-      .eq('id', id)
-      .single()
-
-    if (error || !data) {
-      console.error(error)
+    let detail
+    try {
+      detail = await fetchConsultationDetail(id, await getAccessToken())
+    } catch (e) {
+      console.error(e)
       setMessage('No se pudo cargar la consulta.')
       return
     }
 
-    const row = data as Consultation
+    // El backend anida el paciente como `patient`; el resto del componente usa `patients`.
+    const row = { ...detail, patients: detail.patient } as unknown as Consultation
     const canView =
       isAdminRole(currentProfile?.role) || row.assigned_doctor_id === currentProfile?.id
     if (!canView) {
@@ -380,65 +381,54 @@ export default function ConsultaDetalle() {
   }
 
   async function loadEvents(consultationId: string) {
-    const { data, error } = await supabase
-      .from('consultation_events')
-      .select('id, event_type, created_by, note, created_at')
-      .eq('consultation_id', consultationId)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error(error)
+    let rows: ConsultationEventItem[]
+    try {
+      rows = await fetchConsultationEvents(consultationId, await getAccessToken())
+    } catch (e) {
+      console.error(e)
       setEvents([])
       setEventAuthorsById({})
       return
     }
 
-    const rows = (data || []) as ConsultationEvent[]
-    setEvents(rows)
+    // El backend los devuelve ascendente; el panel muestra el más reciente primero.
+    setEvents([...rows].reverse() as ConsultationEvent[])
 
-    const authorIds = Array.from(
-      new Set(rows.map((e) => e.created_by).filter((id): id is string => !!id))
-    )
-    if (authorIds.length === 0) {
-      setEventAuthorsById({})
-      return
+    // El autor viene resuelto en cada evento (author_name/role): armamos el índice para el render,
+    // sin leer `users` en el cliente.
+    const authors: Record<string, EventAuthor> = {}
+    for (const e of rows) {
+      if (e.created_by && e.author_name) {
+        authors[e.created_by] = {
+          id: e.created_by,
+          full_name: e.author_name,
+          role: e.author_role || ''
+        }
+      }
     }
-
-    // Autores del historial (lista de ids): sin endpoint batch en el API, se lee directo de
-    // `public.users` (tabla core; ya no la vista `profiles`). RLS is_staff permite al médico leerlos.
-    // TODO: exponer un GET /profiles?ids=… (batch) para mover esto al backend.
-    const { data: authors } = await supabase
-      .from('users')
-      .select('id, full_name, role')
-      .in('id', authorIds)
-
-    setEventAuthorsById(
-      Object.fromEntries(((authors || []) as EventAuthor[]).map((a) => [a.id, a]))
-    )
+    setEventAuthorsById(authors)
   }
 
   async function addEvent(consultationId: string, eventType: string, eventNote?: string) {
-    await supabase.from('consultation_events').insert({
-      consultation_id: consultationId,
-      event_type: eventType,
-      note: eventNote || null
-    })
+    await addConsultationEvent(
+      consultationId,
+      { event_type: eventType, note: eventNote },
+      await getAccessToken()
+    )
   }
 
   async function saveNote() {
     if (!consultation || busy) return
     setMessage('')
     setBusy(true)
-    const { error } = await supabase
-      .from('consultations')
-      .update({ internal_note: note })
-      .eq('id', consultation.id)
-    setBusy(false)
-    if (error) {
-      setMessage('No se pudo guardar la nota.')
-    } else {
+    try {
+      await updateConsultation(consultation.id, { internal_note: note }, await getAccessToken())
       setSavedNote(note)
       setMessage('Nota guardada.')
+    } catch {
+      setMessage('No se pudo guardar la nota.')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -448,11 +438,9 @@ export default function ConsultaDetalle() {
     if (!consultation || !profile || busy) return
     setMessage('')
     setBusy(true)
-    const { error } = await supabase
-      .from('consultations')
-      .update({ status: newStatus })
-      .eq('id', consultation.id)
-    if (error) {
+    try {
+      await updateConsultation(consultation.id, { status: newStatus }, await getAccessToken())
+    } catch {
       setBusy(false)
       setMessage('No se pudo actualizar el estado.')
       return
