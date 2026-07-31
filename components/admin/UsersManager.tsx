@@ -94,9 +94,9 @@ export default function UsersManager() {
         role: role !== 'all' ? role : undefined,
         search: searchTerm || undefined
       })
-      setUsers(data)
+      setUsers(data.items)
       setSkip(nextSkip)
-      setHasMore(data.length === PAGE_SIZE)
+      setHasMore(data.items.length === PAGE_SIZE)
     } catch (e) {
       setUsersError(errorMessage(e, 'No se pudieron cargar los usuarios.'))
     }
