@@ -1,0 +1,5 @@
+# pnpm 10 lee las overrides SOLO desde aquí (ni el `overrides` de raíz de package.json ni el
+# campo `pnpm`). Fuerzan las versiones parcheadas de dos transitivas de `next`.
+overrides:
+  sharp: '>=0.35.0'
+  postcss: '>=8.5.18'
