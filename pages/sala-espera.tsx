@@ -2,8 +2,8 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
 import { browserRoomUrl } from '../lib/jitsi'
+import { markEnteredCall } from '../lib/patients'
 import { trackPatientInRoom } from '../lib/patientPresence'
 
 export default function SalaEspera() {
@@ -19,11 +19,11 @@ export default function SalaEspera() {
   const openRoom = () => {
     setShowWarning(false)
     // Record that the patient actually entered the call (admin metrics count a case as "esperando"
-    // only from this point on). Fire-and-forget so it never delays opening the room.
+    // only from this point on). Fire-and-forget (por el backend, público) para no retrasar la sala.
     if (cid) {
-      supabase.rpc('mark_patient_entered_call', { p_consultation_id: cid }).then(({ error }) => {
-        if (error) console.error('Error marcando entrada a la videollamada:', error)
-      })
+      markEnteredCall(cid).catch((e) =>
+        console.error('Error marcando entrada a la videollamada:', e)
+      )
     }
     if (room) window.open(browserRoomUrl(room), '_blank', 'noopener,noreferrer')
   }

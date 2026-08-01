@@ -74,3 +74,13 @@ export async function ensureVideoRoom(consultationId: string): Promise<Consultat
     'No se pudo iniciar la videoconsulta'
   )
 }
+
+// POST /api/v1/consultations/{id}/entered-call — público e idempotente: marca que el paciente entró
+// a la videollamada (entered_call_at, una sola vez). Reemplaza la RPC mark_patient_entered_call.
+export async function markEnteredCall(consultationId: string): Promise<ConsultationResponse> {
+  return postJson<ConsultationResponse>(
+    `/api/v1/consultations/${consultationId}/entered-call`,
+    {},
+    'No se pudo registrar la entrada a la videollamada'
+  )
+}
