@@ -26,6 +26,27 @@ export async function fetchMyProfile(token: string): Promise<MyProfile> {
   return getJson<MyProfile>('/api/v1/auth/me', 'No se pudo cargar tu perfil', token)
 }
 
+// GET /api/v1/consultations (vista de paciente): el backend la scopea a las consultas del propio
+// paciente (Patient.user_id == caller) y devuelve la vista reducida (sin notas del staff). Para el
+// portal del paciente (mi-caso); reemplaza la lectura directa a `consultations`.
+export interface MyConsultation {
+  id: string
+  code: string
+  status: string
+  category: string | null
+  chief_complaint: string | null
+  referred_specialty: string | null
+  created_at: string
+  scheduled_at: string | null
+}
+export async function fetchMyConsultations(token: string): Promise<MyConsultation[]> {
+  return getJson<MyConsultation[]>(
+    '/api/v1/consultations',
+    'No se pudieron cargar tus consultas',
+    token
+  )
+}
+
 export interface PanelPatient {
   id: string
   // Opcional a propósito: en la cola de ESPERA (waiting) el backend NO envía el nombre por

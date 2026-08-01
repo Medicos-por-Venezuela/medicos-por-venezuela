@@ -4,6 +4,8 @@ import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { signInWithGoogle } from '../lib/auth'
+import { fetchMyConsultations, fetchMyProfile } from '../lib/consultations'
+import { fetchMyPatients } from '../lib/patients'
 import GoogleButton from '../components/GoogleButton'
 import { STATUS_LABELS } from '../lib/utils'
 import { requestNotifyPermission, scheduleLocalReminders } from '../lib/nativeNotifications'
@@ -64,43 +66,36 @@ export default function MiCaso() {
       return
     }
 
-    // Lectura directa a `public.users` (tabla core; ya no a la vista `profiles`) porque `/auth/me`
-    // aún no expone `role_chosen`. TODO: mover a /auth/me cuando el backend incluya ese flag.
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role, role_chosen')
-      .eq('id', session.user.id)
-      .single()
-    if (profile && !profile.role_chosen) {
-      router.replace('/elegir-rol')
-      return
+    // Todo por el backend (no lecturas directas a Supabase): rol/estado por /auth/me, y los datos
+    // del paciente + sus consultas por sus endpoints (el backend los scopea a la propia cuenta).
+    const token = session.access_token
+    try {
+      const profile = await fetchMyProfile(token)
+      if (!profile.role_chosen) {
+        router.replace('/elegir-rol')
+        return
+      }
+      if (['doctor', 'specialist'].includes(profile.role)) {
+        router.replace('/panel-medico')
+        return
+      }
+      if (['admin', 'super_admin'].includes(profile.role)) {
+        router.replace('/admin/dashboard')
+        return
+      }
+      setAuthed(true)
+      const [patients, cons] = await Promise.all([
+        fetchMyPatients(token),
+        fetchMyConsultations(token)
+      ])
+      if (patients.length) setPatientName(patients[0].full_name)
+      setConsultations(cons)
+    } catch (e) {
+      console.error(e)
+      setAuthed(true) // sesión válida; si el backend falla, mostramos el portal sin datos
+    } finally {
+      setLoading(false)
     }
-    if (profile && ['doctor', 'specialist'].includes(profile.role)) {
-      router.replace('/panel-medico')
-      return
-    }
-    if (profile && ['admin', 'super_admin'].includes(profile.role)) {
-      router.replace('/admin/dashboard')
-      return
-    }
-
-    setAuthed(true)
-    // Patient's own records (RLS: patients_select_own / consultations_select_own)
-    const { data: patients } = await supabase.from('patients').select('id, full_name')
-    const ids = (patients || []).map((p) => p.id)
-    if (patients && patients.length) setPatientName(patients[0].full_name)
-
-    if (ids.length) {
-      const { data: cons } = await supabase
-        .from('consultations')
-        .select(
-          'id, code, status, category, chief_complaint, referred_specialty, created_at, scheduled_at'
-        )
-        .in('patient_id', ids)
-        .order('created_at', { ascending: false })
-      setConsultations((cons || []) as Consultation[])
-    }
-    setLoading(false)
   }
 
   async function login() {
