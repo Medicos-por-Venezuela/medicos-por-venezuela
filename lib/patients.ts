@@ -1,4 +1,4 @@
-import { ApiError, deleteJson, postJson } from './apiClient'
+import { ApiError, deleteJson, getJson, postJson } from './apiClient'
 
 export { ApiError }
 
@@ -6,6 +6,16 @@ export { ApiError }
 // de las listas; NO borra la fila (trazabilidad). Reemplaza la RPC admin_delete_patient.
 export async function archivePatient(id: string, token: string): Promise<void> {
   return deleteJson(`/api/v1/patients/${id}`, 'No se pudo archivar el paciente', token)
+}
+
+// GET /api/v1/patients/me — registros de paciente ligados a la cuenta del llamante (portal del
+// paciente / mi-caso). Reemplaza la lectura directa a `patients` (RLS patients_select_own).
+export interface MyPatient {
+  id: string
+  full_name: string
+}
+export async function fetchMyPatients(token: string): Promise<MyPatient[]> {
+  return getJson<MyPatient[]>('/api/v1/patients/me', 'No se pudieron cargar tus datos', token)
 }
 
 export interface PatientCreate {
