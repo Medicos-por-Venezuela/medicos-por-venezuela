@@ -268,13 +268,15 @@ Set in `.env` for local dev and in Vercel for production. See [.env.example](.en
 | `NEXT_PUBLIC_JITSI_DOMAIN`      | Jitsi host override (empty = self-hosted `meet.medicosporvenezuela.org`) |
 | `NEXT_PUBLIC_SUPPORT_WHATSAPP`  | Optional WhatsApp number shown on `/mi-caso`                             |
 
-**Server-only — NEVER prefix with `NEXT_PUBLIC`** (used by `/api/videoconsulta`):
+**Server-only — NEVER prefix with `NEXT_PUBLIC`, and do NOT set these in Amplify.** No runtime
+code reads them: the `/api/videoconsulta` route was removed and video rooms now come from the
+backend.
 
-| Var                                            | Purpose                                                |
-| ---------------------------------------------- | ------------------------------------------------------ |
-| `SUPABASE_SERVICE_ROLE_KEY`                    | Service-role key; lets the API route write video rooms |
-| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN`     | Twilio creds (PARKED)                                  |
-| `TWILIO_WHATSAPP_NUMBER` / `TWILIO_SMS_NUMBER` | Twilio senders (PARKED)                                |
+| Var                                            | Purpose                                                                                      |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `SUPABASE_SERVICE_ROLE_KEY`                    | Local `.env` only — seeds the e2e doctors (`e2e/global-setup.ts`) against the LOCAL Supabase |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN`     | Twilio creds (PARKED)                                                                        |
+| `TWILIO_WHATSAPP_NUMBER` / `TWILIO_SMS_NUMBER` | Twilio senders (PARKED)                                                                      |
 
 ---
 

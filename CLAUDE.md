@@ -262,9 +262,11 @@ Browser-exposed (`NEXT_PUBLIC_*`, fine — RLS enforces access):
 - `NEXT_PUBLIC_API_URL` — base URL of the FastAPI backend (`/api/v1/*`); defaults to
   `http://localhost:8000` if unset
 
-Server-only (used by `pages/api/videoconsulta.ts`; **never** prefix with `NEXT_PUBLIC`):
+Server-only (**never** prefix with `NEXT_PUBLIC`, and **never** set them in Amplify — no runtime
+code reads them since `pages/api/videoconsulta.ts` was removed):
 
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` — local `.env` only; `e2e/global-setup.ts` uses it to seed the test
+  doctors against the LOCAL Supabase (never prod). Without it, `pnpm test:e2e` fails.
 - `TWILIO_*` (PARKED — see TODOs; not needed while link delivery is on-screen only)
 
 ## Video consultations (Jitsi)
