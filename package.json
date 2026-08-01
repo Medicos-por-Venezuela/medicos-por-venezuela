@@ -28,7 +28,6 @@
     "next": "16.2.12",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "twilio": "^6.0.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
