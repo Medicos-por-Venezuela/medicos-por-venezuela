@@ -14,6 +14,7 @@ export interface MyProfile {
   id: string
   full_name: string
   role: string
+  role_chosen: boolean
   specialty: string | null
   verified: boolean
   active: boolean

@@ -4,6 +4,7 @@ import { useRouter } from 'next/router'
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { signInWithGoogle } from '../lib/auth'
+import { fetchMyProfile } from '../lib/consultations'
 import GoogleButton from '../components/GoogleButton'
 
 export default function LoginMedico() {
@@ -22,15 +23,10 @@ export default function LoginMedico() {
         password
       })
       if (authError) throw authError
+      if (!authData.session) throw new Error('Sin sesión tras el login.')
 
-      // Lectura directa a `public.users` (tabla core; ya no a la vista `profiles`) porque `/auth/me`
-      // aún no expone `role_chosen`. TODO: mover a /auth/me cuando el backend incluya ese flag.
-      const { data: profile, error: profileError } = await supabase
-        .from('users')
-        .select('role, verified, active, role_chosen')
-        .eq('id', authData.user.id)
-        .single()
-      if (profileError) throw profileError
+      // El perfil (rol/estado) viene del backend (/auth/me), no de una lectura directa a `users`.
+      const profile = await fetchMyProfile(authData.session.access_token)
       if (!profile.role_chosen) {
         router.push('/elegir-rol')
         return

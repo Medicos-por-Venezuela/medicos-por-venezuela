@@ -2,6 +2,7 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchMyProfile } from '../lib/consultations'
 import { finalizeMyRole } from '../lib/users'
 import { SPECIALTIES } from '../lib/utils'
 
@@ -49,17 +50,16 @@ export default function ElegirRol() {
         router.replace('/')
         return
       }
-      // If the role was already chosen, don't show this screen again.
-      // Lectura directa a `public.users` (tabla core; ya no a la vista `profiles`) porque `/auth/me`
-      // aún no expone `role_chosen`. TODO: mover a /auth/me cuando el backend incluya ese flag.
-      const { data: profile } = await supabase
-        .from('users')
-        .select('role, role_chosen')
-        .eq('id', session.user.id)
-        .single()
-      if (profile?.role_chosen) {
-        redirectByRole(profile.role)
-        return
+      // If the role was already chosen, don't show this screen again. El perfil viene del backend
+      // (/auth/me); si la llamada falla, se muestra el formulario de elección (fallback seguro).
+      try {
+        const profile = await fetchMyProfile(session.access_token)
+        if (profile.role_chosen) {
+          redirectByRole(profile.role)
+          return
+        }
+      } catch {
+        // sin perfil del backend, seguimos y mostramos el formulario
       }
 
       // Pre-select the form when the intent is known (email redirect ?rol= or Google localStorage).
