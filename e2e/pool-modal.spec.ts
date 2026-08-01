@@ -13,7 +13,10 @@ async function createWaitingConsultation(): Promise<void> {
     }
   })
   const patientId = (await patient.json()).id
-  await ctx.post(`${API}/consultations`, { data: { patient_id: patientId } })
+  // La cola oculta el nombre; el card muestra chief_complaint → lo usamos como marcador.
+  await ctx.post(`${API}/consultations`, {
+    data: { patient_id: patientId, chief_complaint: 'E2E Paciente Pool' }
+  })
   await ctx.dispose()
 }
 

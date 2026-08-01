@@ -13,7 +13,11 @@ async function createWaitingConsultation(): Promise<void> {
     }
   })
   const patientId = (await patient.json()).id
-  await ctx.post(`${API}/consultations`, { data: { patient_id: patientId } })
+  // La cola de espera oculta el nombre del paciente (seguridad); el card muestra el chief_complaint,
+  // así que sembramos ese campo como marcador para localizar el caso en el panel.
+  await ctx.post(`${API}/consultations`, {
+    data: { patient_id: patientId, chief_complaint: 'E2E Paciente Presencia' }
+  })
   await ctx.dispose()
 }
 

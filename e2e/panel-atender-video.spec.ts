@@ -20,7 +20,10 @@ test('atender por videoconsulta crea la sala si falta y el detalle muestra Unirs
     }
   })
   const patientId = (await patient.json()).id
-  const cons = await api.post(`${API}/consultations`, { data: { patient_id: patientId } })
+  // La cola oculta el nombre; el card muestra chief_complaint → lo usamos como marcador.
+  const cons = await api.post(`${API}/consultations`, {
+    data: { patient_id: patientId, chief_complaint: 'E2E Paciente Video' }
+  })
   const cid = (await cons.json()).id
   await api.dispose()
 
