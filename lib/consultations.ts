@@ -3,7 +3,7 @@
 // del panel — el único acceso directo que queda es Realtime (solo para avisar que algo cambió) y
 // Auth. Los datos siempre vienen por el backend.
 import { getJson, patchJson, postJson } from './apiClient'
-import { IN_PROGRESS_STATUSES } from './admin'
+import { Consultation, IN_PROGRESS_STATUSES, Patient } from './admin'
 
 export { ApiError } from './apiClient'
 
@@ -275,7 +275,17 @@ export async function fetchConsultationDetail(
 // PATCH /consultations/{id}: estado y/o nota interna (reemplaza el UPDATE directo a Supabase).
 export async function updateConsultation(
   id: string,
-  body: { status?: string; internal_note?: string },
+  body: {
+    status?: string
+    internal_note?: string
+    // Campos que edita el panel admin/pacientes (además del panel médico).
+    assigned_doctor_id?: string | null
+    specialty_id?: string | null
+    admin_seguimiento?: string | null
+    nota_admin?: string | null
+    contacted?: boolean
+    closed_at?: string | null
+  },
   token: string
 ): Promise<ConsultationDetail> {
   return patchJson<ConsultationDetail>(
@@ -284,6 +294,26 @@ export async function updateConsultation(
     'No se pudo actualizar la consulta',
     token
   )
+}
+
+// GET /api/v1/consultations — lista completa para staff, con el paciente anidado y los campos de
+// gestión admin (admin_seguimiento/nota_admin) + assigned_doctor_name resuelto server-side. El panel
+// admin/pacientes la consume en vez de leer `consultations`/`patients`/`users` directo de Supabase.
+export async function fetchConsultations(
+  token: string,
+  params: { limit?: number; status?: string; patientId?: string } = {}
+): Promise<Consultation[]> {
+  const qs = new URLSearchParams()
+  qs.set('limit', String(params.limit ?? 200))
+  if (params.status) qs.set('status', params.status)
+  if (params.patientId) qs.set('patient_id', params.patientId)
+  const rows = await getJson<(Omit<Consultation, 'patients'> & { patient: Patient | null })[]>(
+    `/api/v1/consultations?${qs.toString()}`,
+    'No se pudieron cargar las consultas',
+    token
+  )
+  // El backend anida el paciente en `patient`; el panel usa `patients` (alias histórico del join).
+  return rows.map(({ patient, ...c }) => ({ ...c, patients: patient }))
 }
 
 // Evento del historial, con el AUTOR ya resuelto por el backend (sin leer `users` en el cliente).
