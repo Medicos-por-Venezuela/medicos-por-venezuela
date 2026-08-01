@@ -4,6 +4,7 @@ import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { browserRoomUrl } from '../lib/jitsi'
+import { trackPatientInRoom } from '../lib/patientPresence'
 
 export default function SalaEspera() {
   const router = useRouter()
@@ -27,37 +28,12 @@ export default function SalaEspera() {
     if (room) window.open(browserRoomUrl(room), '_blank', 'noopener,noreferrer')
   }
 
-  // Waiting-room heartbeat: while this page is open, tell the backend the patient is present every
-  // ~20s so the doctor panel can distinguish people actually waiting from those who submitted and left.
+  // Mientras esta página está abierta, el paciente se anuncia "en sala" por Realtime Presence
+  // (reemplaza el heartbeat `mark_patient_waiting` + `patient_last_seen_at`): el médico lo ve en vivo
+  // sin polling ni escritura a la BD. Al cerrar la pestaña, Presence lo da de baja solo.
   useEffect(() => {
     if (!cid) return
-
-    const ping = async () => {
-      const { error } = await supabase.rpc('mark_patient_waiting', {
-        p_consultation_id: cid
-      })
-
-      if (error) {
-        console.error('Error actualizando presencia del paciente:', error)
-      }
-    }
-
-    ping()
-
-    const timer = window.setInterval(ping, 15000)
-
-    const onVisible = () => {
-      ping()
-    }
-
-    window.addEventListener('focus', ping)
-    document.addEventListener('visibilitychange', onVisible)
-
-    return () => {
-      window.clearInterval(timer)
-      window.removeEventListener('focus', ping)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
+    return trackPatientInRoom(cid)
   }, [cid])
 
   return (
