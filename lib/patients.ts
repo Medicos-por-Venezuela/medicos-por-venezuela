@@ -1,6 +1,12 @@
-import { ApiError, postJson } from './apiClient'
+import { ApiError, deleteJson, postJson } from './apiClient'
 
 export { ApiError }
+
+// DELETE /api/v1/patients/{id} — baja lógica (soft delete): el backend marca deleted_at y lo filtra
+// de las listas; NO borra la fila (trazabilidad). Reemplaza la RPC admin_delete_patient.
+export async function archivePatient(id: string, token: string): Promise<void> {
+  return deleteJson(`/api/v1/patients/${id}`, 'No se pudo archivar el paciente', token)
+}
 
 export interface PatientCreate {
   full_name: string
