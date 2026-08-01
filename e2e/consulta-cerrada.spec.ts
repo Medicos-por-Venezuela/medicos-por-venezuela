@@ -81,9 +81,23 @@ test('caso finalizado: no-show confirma, cerrar exige nota y la UI queda solo-le
   await expect(page.getByText('Nota guardada.')).toBeVisible()
   page.once('dialog', (d) => void d.accept())
   await page.getByRole('button', { name: 'Cerrar consulta' }).click()
+
+  // El cierre real ahora exige la firma del médico (módulo Agenda): tras confirmar aparece el
+  // canvas de firma. Se dibuja un trazo (habilita "Firmar y continuar") y se confirma.
+  const canvas = page.locator('canvas')
+  await expect(canvas).toBeVisible()
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error('No se encontró el canvas de firma')
+  await page.mouse.move(box.x + 20, box.y + 20)
+  await page.mouse.down()
+  await page.mouse.move(box.x + 90, box.y + 60)
+  await page.mouse.move(box.x + 140, box.y + 30)
+  await page.mouse.up()
+  await page.getByRole('button', { name: 'Firmar y continuar' }).click()
+
   // El panel limpia el query ?actualizado=1 con router.replace enseguida: se asierta por
-  // el aviso que ese query dispara, no por la URL transitoria.
-  await expect(page).toHaveURL(/\/panel-medico/)
+  // el aviso que ese query dispara. El regex excluye /panel-medico/consulta/... (seguía abierto).
+  await expect(page).toHaveURL(/\/panel-medico(\?|$)/)
   await expect(page.getByText('Panel actualizado.')).toBeVisible()
 
   // 4. Reabrir el caso cerrado: solo-lectura (aviso, sin cierres, sin video).
