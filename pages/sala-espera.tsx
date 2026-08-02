@@ -1,7 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { browserRoomUrl } from '../lib/jitsi'
 import { markEnteredCall } from '../lib/patients'
 import { trackPatientInRoom } from '../lib/patientPresence'
@@ -13,6 +13,22 @@ export default function SalaEspera() {
   const code = typeof router.query.code === 'string' ? router.query.code : ''
   const cid = typeof router.query.cid === 'string' ? router.query.cid : ''
   const [showWarning, setShowWarning] = useState(false)
+  // El token de sala se guarda en un ref y se BORRA de la URL: una credencial en la barra de
+  // direcciones acaba en el historial, en el `Referer` y en cualquier captura que el paciente
+  // comparta. Caduca a las 24 h, pero mientras vive es la llave de su videoconsulta.
+  // Ref y no estado a propósito: solo se lee dentro de openRoom (un handler), así que guardarlo
+  // en estado provocaría un render de más sin que nada de la UI dependa de él.
+  const roomToken = useRef('')
+
+  useEffect(() => {
+    if (!router.isReady) return
+    const t = typeof router.query.t === 'string' ? router.query.t : ''
+    if (!t) return
+    roomToken.current = t
+    const url = new URL(window.location.href)
+    url.searchParams.delete('t')
+    window.history.replaceState(null, '', url.toString())
+  }, [router.isReady, router.query.t])
 
   // Open the Jitsi room. Triggered from the "Entendido" button inside the warning modal, so the
   // window.open() call still runs inside a user gesture and isn't blocked as a pop-up.
@@ -21,7 +37,7 @@ export default function SalaEspera() {
     // Record that the patient actually entered the call (admin metrics count a case as "esperando"
     // only from this point on). Fire-and-forget (por el backend, público) para no retrasar la sala.
     if (cid) {
-      markEnteredCall(cid).catch((e) =>
+      markEnteredCall(cid, roomToken.current).catch((e) =>
         console.error('Error marcando entrada a la videollamada:', e)
       )
     }
