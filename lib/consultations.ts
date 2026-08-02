@@ -58,6 +58,9 @@ export interface PanelPatient {
   age_range: string | null
   needs_tags: string[] | null
   description: string | null
+  // Presente también en la cola de espera (sin nombre): el médico las necesita para decidir si
+  // toma el caso, no después de abrirlo.
+  allergies: string | null
 }
 
 export interface PanelConsultation {

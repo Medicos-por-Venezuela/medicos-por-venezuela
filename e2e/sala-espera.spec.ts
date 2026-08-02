@@ -19,8 +19,12 @@ test('paciente con sala: botón de videoconsulta + aviso de WhatsApp', async ({ 
   })
   const patientId = (await patient.json()).id
   const cons = await api.post(`${API}/consultations`, { data: { patient_id: patientId } })
-  const cid = (await cons.json()).id
-  const withRoom = await api.post(`${API}/consultations/${cid}/video-room`)
+  // El create devuelve el token de acceso a la sala (caduca a las 24 h): sin él, video-room y
+  // entered-call responden 401. Es la única vez que el backend lo entrega.
+  const { id: cid, access_token: roomToken } = await cons.json()
+  const withRoom = await api.post(`${API}/consultations/${cid}/video-room`, {
+    headers: { 'X-Consultation-Token': roomToken }
+  })
   const room = (await withRoom.json()).video_room_url
   expect(room, 'el backend debe generar la sala').toContain('/vamed-')
   await api.dispose()
