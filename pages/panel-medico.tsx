@@ -21,6 +21,7 @@ import {
 import { browserRoomUrl } from '../lib/jitsi'
 import {
   fetchMyInterconsultations,
+  useInterconsultationAssigned,
   type InterconsultationForInvitee
 } from '../lib/interconsultations'
 import { ensureVideoRoom } from '../lib/patients'
@@ -172,6 +173,12 @@ export default function PanelMedico() {
     }
   }, [profile])
 
+  // Un colega me acaba de asignar una interconsulta: refrescar en el acto. Va por broadcast y no
+  // por postgres_changes porque `interconsultations` está deny-all a propósito (ver lib).
+  useInterconsultationAssigned(profile?.id, () => {
+    if (profile) loadConsultations(profile)
+  })
+
   // Refresh when returning to this tab/page after actions performed in the detail page.
   useEffect(() => {
     if (!profile?.id) return
@@ -226,16 +233,25 @@ export default function PanelMedico() {
   async function loadConsultations(_currentProfile: Profile | null = profile) {
     // Todo el panel en una sola llamada al backend (cola de espera + mías + cerradas). La cola trae
     // TODA consulta sin asignar en estado abierto — en tiempo real, sin el gate de 20 min de antes.
+    let token: string
     try {
-      const token = await getAccessToken()
+      token = await getAccessToken()
       const panel = await fetchPanel(token)
       setConsultations([...panel.waiting, ...panel.mine].map(toConsultationRow))
       setMyClosed(panel.my_closed_count)
-      // Interconsultas donde soy el invitado (mismo poll → aparecen al ser invitado, sin recargar).
-      setMyInterconsultations(await fetchMyInterconsultations(token))
     } catch (e) {
       console.error(e)
       setMessage('No se pudieron cargar las consultas.')
+      return
+    }
+    // En su PROPIO try: cuando compartía el de arriba, un fallo aquí se reportaba como "no se
+    // pudieron cargar las consultas" con el panel ya pintado, y las interconsultas simplemente
+    // no aparecían. Ese enmascaramiento costó un rato de diagnóstico en producción.
+    try {
+      setMyInterconsultations(await fetchMyInterconsultations(token))
+    } catch (e) {
+      console.error(e)
+      setMessage('No se pudieron cargar tus interconsultas.')
     }
   }
 

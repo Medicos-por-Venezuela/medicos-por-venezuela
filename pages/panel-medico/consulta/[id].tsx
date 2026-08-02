@@ -21,6 +21,7 @@ import {
 import {
   createInterconsultation,
   fetchInterconsultationForConsultation,
+  notifyInterconsultationAssigned,
   Interconsultation
 } from '../../../lib/interconsultations'
 import { supabase } from '../../../lib/supabase'
@@ -297,6 +298,9 @@ export default function ConsultaDetalle() {
       )
       setInterconsultation(inter)
       setPoolOpen(false)
+      // Aviso en vivo: sin esto el invitado no la ve hasta recargar (crear una interconsulta no
+      // toca `consultations`, que es la única tabla a la que su panel está suscrito).
+      notifyInterconsultationAssigned(doctor.user_id)
       setMessage(`Interconsulta asignada a ${inter.invited_doctor_name || 'el médico'}.`)
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'No se pudo asignar la interconsulta.')
