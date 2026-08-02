@@ -4,18 +4,26 @@ import {
   CLOSED_STATUSES,
   Consultation,
   fmtDateTime,
+  getAccessToken,
   inDateRange,
-  Profile,
   STATUS_OPTIONS,
   useAdminGuard
 } from '../../lib/admin'
 import { useEscapeToClose } from '../../lib/hooks'
-import { supabase } from '../../lib/supabase'
 import { eligibleSpecialties, SPECIALTIES, STATUS_LABELS } from '../../lib/utils'
+// Todo el acceso a datos pasa por el backend (no Supabase directo): consultas con paciente anidado,
+// updates/eventos, buscador de médicos (/doctors/pool) y baja lógica del paciente.
+import {
+  addConsultationEvent,
+  fetchConsultations,
+  updateConsultation
+} from '../../lib/consultations'
 // Catálogo real de especialidades ({id, name}) del backend: la consulta matchea con el médico por
 // `specialty_id` (el registro del paciente ya la setea), así que el admin re-rutea editando ESA
 // columna — el mismo catálogo que usa el registro.
-import { fetchSpecialties } from '../../lib/doctors'
+import { fetchDoctorPool, fetchSpecialties } from '../../lib/doctors'
+import { archivePatient } from '../../lib/patients'
+import { ApiUser, fetchProfiles } from '../../lib/users'
 
 // Sortable columns of the cases table, with fixed widths so the table distributes space evenly
 // (table-layout: fixed). The trailing "Acciones" column is not sortable.
@@ -31,7 +39,8 @@ const CASE_COLS: { key: string; label: string; width: string }[] = [
 
 export default function AdminPacientes() {
   const { profile, loading } = useAdminGuard()
-  const [profiles, setProfiles] = useState<Profile[]>([])
+  // super_admins (para el combobox "Admin responsable del seguimiento"); del backend, no de Supabase.
+  const [superAdmins, setSuperAdmins] = useState<ApiUser[]>([])
   const [consultations, setConsultations] = useState<Consultation[]>([])
   const [message, setMessage] = useState('')
 
@@ -66,9 +75,6 @@ export default function AdminPacientes() {
   const [rowDocOptions, setRowDocOptions] = useState<
     { id: string; full_name: string; specialty: string | null; role: string }[]
   >([])
-  // Names of doctors picked via search (may live beyond the loaded 1000 profiles) so the cell still
-  // shows the right name after assigning.
-  const [doctorNameCache, setDoctorNameCache] = useState<Record<string, string>>({})
 
   // Consultations table filters
   const [caseSearch, setCaseSearch] = useState('')
@@ -84,26 +90,34 @@ export default function AdminPacientes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile])
 
+  // Búsqueda de médicos por /doctors/pool (no leer `users` directo). El pool devuelve `user_id`
+  // (la clave que espera `assigned_doctor_id`, que referencia users.id) y `specialty_id` (el nombre
+  // se resuelve con el catálogo). Solo los que tienen cuenta (user_id) son asignables.
+  async function searchDoctors(term: string) {
+    const token = await getAccessToken()
+    // exclude_self:false -> el admin (aunque sea médico) ve TODOS los médicos asignables, como antes.
+    const page = await fetchDoctorPool(
+      { search: term.trim() || undefined, limit: 20, exclude_self: false },
+      token
+    )
+    return page.items
+      .filter((d) => d.user_id)
+      .map((d) => ({
+        id: d.user_id as string,
+        full_name: d.full_name,
+        specialty: specialtyName(d.specialty_id),
+        role: 'Médico'
+      }))
+  }
+
   // Search doctors for the "Médico asignado" combobox (debounced; only while the menu is open).
   useEffect(() => {
     if (!doctorMenuOpen) return
     const t = setTimeout(async () => {
-      let q = supabase
-        .from('users')
-        .select('id, full_name, specialty, role')
-        .in('role', ['doctor', 'specialist'])
-        .eq('active', true)
-        .order('full_name')
-        .limit(20)
-      const term = doctorQuery.trim().replace(/[(),]/g, ' ')
-      if (term)
-        q = q.or(`full_name.ilike.%${term}%,email.ilike.%${term}%,specialty.ilike.%${term}%`)
-      const { data } = await q
-      setDoctorOptions(
-        (data || []) as { id: string; full_name: string; specialty: string | null; role: string }[]
-      )
+      setDoctorOptions(await searchDoctors(doctorQuery))
     }, 250)
     return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doctorQuery, doctorMenuOpen])
 
   // Same search, for the inline "Médico" combobox in the cases table (debounced; only while a row's
@@ -111,42 +125,25 @@ export default function AdminPacientes() {
   useEffect(() => {
     if (!rowDocMenu) return
     const t = setTimeout(async () => {
-      let q = supabase
-        .from('users')
-        .select('id, full_name, specialty, role')
-        .in('role', ['doctor', 'specialist'])
-        .eq('active', true)
-        .order('full_name')
-        .limit(20)
-      const term = rowDocQuery.trim().replace(/[(),]/g, ' ')
-      if (term)
-        q = q.or(`full_name.ilike.%${term}%,email.ilike.%${term}%,specialty.ilike.%${term}%`)
-      const { data } = await q
-      setRowDocOptions(
-        (data || []) as { id: string; full_name: string; specialty: string | null; role: string }[]
-      )
+      setRowDocOptions(await searchDoctors(rowDocQuery))
     }, 250)
     return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowDocQuery, rowDocMenu])
 
   async function loadAll() {
-    // Perfiles y comboboxes se leen directo de `public.users` (tabla core; ya no la vista
-    // `profiles`): GET /profiles del API pagina en arreglos planos y no cubre esta carga masiva
-    // (1000 filas para resolver nombres/superadmins) ni el filtro doctor+specialist activo de los
-    // buscadores. TODO: migrar a endpoints dedicados (búsqueda de médicos, resolución por ids).
-    const [profilesRes, consultationsRes] = await Promise.all([
-      supabase.from('users').select('*').order('created_at', { ascending: false }).limit(1000),
-      supabase
-        .from('consultations')
-        .select(
-          '*, patients(full_name, cedula, phone_whatsapp, email, affected_zone, age_range, needs_tags, description)'
-        )
-        .order('created_at', { ascending: false })
-        .limit(200)
+    // Todo por el backend: la lista de consultas ya trae el paciente anidado y el nombre del médico
+    // asignado (assigned_doctor_name, resuelto server-side), así que no hay que cargar `users` en
+    // masa ni resolver nombres. Los super_admins (combobox de seguimiento) salen de /profiles.
+    const token = await getAccessToken()
+    const [consultationsData, superAdminsRes] = await Promise.all([
+      fetchConsultations(token, { limit: 200 }),
+      // Sin filtro active: incluye super_admins inactivos, para que un seguimiento ya asignado a uno
+      // desactivado siga mostrándose en el combobox (paridad con el listado viejo).
+      fetchProfiles(token, { roles: ['super_admin'], limit: 100 })
     ])
-
-    if (profilesRes.data) setProfiles(profilesRes.data as Profile[])
-    if (consultationsRes.data) setConsultations(consultationsRes.data as Consultation[])
+    setConsultations(consultationsData)
+    setSuperAdmins(superAdminsRes.items)
     // El catálogo de especialidades no cambia entre recargas del listado: una sola vez.
     if (specialtyCatalog.length === 0) {
       try {
@@ -158,35 +155,9 @@ export default function AdminPacientes() {
         // Sin catálogo el select queda solo con "— Sin especialidad —"; el resto del panel sigue.
       }
     }
-
-    // Resolve names of assigned doctors that may live beyond the loaded 1000 profiles, so the cases
-    // table shows the real name (not a generic "Médico") for cases claimed by older doctors.
-    if (consultationsRes.data) {
-      const assignedIds = Array.from(
-        new Set(
-          (consultationsRes.data as Consultation[])
-            .map((c) => c.assigned_doctor_id)
-            .filter((id): id is string => !!id)
-        )
-      )
-      if (assignedIds.length > 0) {
-        const { data: docs } = await supabase
-          .from('users')
-          .select('id, full_name')
-          .in('id', assignedIds)
-        if (docs)
-          setDoctorNameCache((m) => ({
-            ...m,
-            ...Object.fromEntries(
-              (docs as { id: string; full_name: string }[]).map((d) => [d.id, d.full_name])
-            )
-          }))
-      }
-    }
   }
 
   const isSuperAdmin = profile?.role === 'super_admin'
-  const doctors = profiles.filter((p) => ['doctor', 'specialist'].includes(p.role))
   // Used only for the "Derivaciones por especialidad" breakdown (over the loaded recent cases).
   const referred = consultations.filter((c) => c.status === 'referred_to_specialist')
 
@@ -199,15 +170,8 @@ export default function AdminPacientes() {
     return Object.entries(counts)
   }, [referred])
 
-  const doctorName = (id: string | null) =>
-    doctors.find((d) => d.id === id)?.full_name ||
-    (id ? doctorNameCache[id] || 'Médico' : 'Sin asignar')
-
   const specialtyName = (id: string | null) =>
     (id && specialtyCatalog.find((s) => s.id === id)?.name) || ''
-
-  // Super-admins available in the "Seguimiento" dropdown (who is following up a case).
-  const superAdmins = useMemo(() => profiles.filter((p) => p.role === 'super_admin'), [profiles])
 
   const filteredConsultations = useMemo(() => {
     const q = caseSearch.trim().toLowerCase()
@@ -241,7 +205,7 @@ export default function AdminPacientes() {
         case 'contacted':
           return c.contacted ? 1 : 0
         case 'doctor':
-          return doctorName(c.assigned_doctor_id)
+          return c.assigned_doctor_name || ''
         case 'dates':
           return new Date(c.created_at).getTime()
         default:
@@ -257,9 +221,7 @@ export default function AdminPacientes() {
           : String(av).localeCompare(String(bv), 'es')
       return sortDir === 'asc' ? cmp : -cmp
     })
-    // doctorName derives from `profiles`; include it so re-sort happens when doctors load.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredConsultations, sortKey, sortDir, profiles])
+  }, [filteredConsultations, sortKey, sortDir])
 
   function toggleSort(key: string) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -275,7 +237,7 @@ export default function AdminPacientes() {
     setCaseDoctor(c.assigned_doctor_id || '')
     setCaseNote(c.internal_note || '')
     setCaseSpecialtyId(c.specialty_id || '')
-    setCaseDoctorName(c.assigned_doctor_id ? doctorName(c.assigned_doctor_id) : '')
+    setCaseDoctorName(c.assigned_doctor_name || '')
     setDoctorQuery('')
     setDoctorMenuOpen(false)
     setMessage('')
@@ -297,57 +259,59 @@ export default function AdminPacientes() {
     }
 
     setSavingCase(true)
-    const { error } = await supabase.from('consultations').update(update).eq('id', selected.id)
-    if (error) {
-      console.error(error)
-      setSavingCase(false)
+    try {
+      const token = await getAccessToken()
+      await updateConsultation(selected.id, update, token)
+      await addConsultationEvent(
+        selected.id,
+        {
+          event_type: 'admin_update',
+          note:
+            `Estado: ${STATUS_LABELS[caseStatus] || caseStatus}; médico: ${caseDoctorName || 'Sin asignar'}` +
+            ((caseSpecialtyId || null) !== (selected.specialty_id || null)
+              ? `; especialidad: ${specialtyName(caseSpecialtyId) || '—'}`
+              : '')
+        },
+        token
+      )
+      setMessage('Caso actualizado.')
+      setSelected(null)
+      await loadAll()
+    } catch (e) {
+      console.error(e)
       setMessage('No se pudo actualizar el caso.')
-      return
+    } finally {
+      setSavingCase(false)
     }
-    await supabase.from('consultation_events').insert({
-      consultation_id: selected.id,
-      event_type: 'admin_update',
-      note:
-        `Estado: ${STATUS_LABELS[caseStatus] || caseStatus}; médico: ${doctorName(caseDoctor || null)}` +
-        ((caseSpecialtyId || null) !== (selected.specialty_id || null)
-          ? `; especialidad: ${specialtyName(caseSpecialtyId) || '—'}`
-          : '')
-    })
-    setSavingCase(false)
-    setMessage('Caso actualizado.')
-    setSelected(null)
-    await loadAll()
   }
 
   async function deletePatient() {
     if (!deleteTarget) return
     setDeleting(true)
-    const { error } = await supabase.rpc('admin_delete_patient', {
-      p_patient_id: deleteTarget.patient_id
-    })
-    setDeleting(false)
-    if (error) {
-      console.error(error)
-      setMessage('No se pudo eliminar el paciente.')
+    try {
+      // Baja lógica: el backend marca deleted_at y filtra al paciente de las listas (no hard delete).
+      await archivePatient(deleteTarget.patient_id, await getAccessToken())
+      setMessage('Paciente archivado (baja lógica); sus casos quedan para trazabilidad.')
+      if (selected?.id === deleteTarget.id) setSelected(null)
       setDeleteTarget(null)
-      return
+      await loadAll()
+    } catch (e) {
+      console.error(e)
+      setMessage('No se pudo archivar el paciente.')
+      setDeleteTarget(null)
+    } finally {
+      setDeleting(false)
     }
-    setMessage('Paciente y todos sus casos fueron eliminados.')
-    if (selected?.id === deleteTarget.id) setSelected(null)
-    setDeleteTarget(null)
-    await loadAll()
   }
 
   async function toggleContacted(c: Consultation) {
     const next = !c.contacted
     // Optimistic: flip locally, then persist; revert on error.
     setConsultations((prev) => prev.map((x) => (x.id === c.id ? { ...x, contacted: next } : x)))
-    const { error } = await supabase
-      .from('consultations')
-      .update({ contacted: next })
-      .eq('id', c.id)
-    if (error) {
-      console.error(error)
+    try {
+      await updateConsultation(c.id, { contacted: next }, await getAccessToken())
+    } catch (e) {
+      console.error(e)
       setMessage('No se pudo actualizar "Contactado".')
       setConsultations((prev) => prev.map((x) => (x.id === c.id ? { ...x, contacted: !next } : x)))
     }
@@ -357,26 +321,27 @@ export default function AdminPacientes() {
   async function updateCaseStatus(c: Consultation, newStatus: string) {
     if (newStatus === c.status) return
     const prevStatus = c.status
-    const update: Record<string, unknown> = { status: newStatus }
+    const update: { status: string; closed_at?: string } = { status: newStatus }
     if (['closed', 'patient_no_show', 'closed_by_admin'].includes(newStatus))
       update.closed_at = new Date().toISOString()
     // Optimistic: change locally, then persist; revert on error.
     setConsultations((list) => list.map((x) => (x.id === c.id ? { ...x, status: newStatus } : x)))
-    const { error } = await supabase.from('consultations').update(update).eq('id', c.id)
-    if (error) {
-      console.error(error)
+    try {
+      const token = await getAccessToken()
+      await updateConsultation(c.id, update, token)
+      await addConsultationEvent(
+        c.id,
+        { event_type: 'admin_update', note: `Estado: ${STATUS_LABELS[newStatus] || newStatus}` },
+        token
+      )
+      setMessage('Estado actualizado.')
+    } catch (e) {
+      console.error(e)
       setMessage('No se pudo cambiar el estado.')
       setConsultations((list) =>
         list.map((x) => (x.id === c.id ? { ...x, status: prevStatus } : x))
       )
-      return
     }
-    await supabase.from('consultation_events').insert({
-      consultation_id: c.id,
-      event_type: 'admin_update',
-      note: `Estado: ${STATUS_LABELS[newStatus] || newStatus}`
-    })
-    setMessage('Estado actualizado.')
   }
 
   // Inline (cases table) assignment of the follow-up super_admin.
@@ -386,12 +351,10 @@ export default function AdminPacientes() {
     setConsultations((list) =>
       list.map((x) => (x.id === c.id ? { ...x, admin_seguimiento: next } : x))
     )
-    const { error } = await supabase
-      .from('consultations')
-      .update({ admin_seguimiento: next })
-      .eq('id', c.id)
-    if (error) {
-      console.error(error)
+    try {
+      await updateConsultation(c.id, { admin_seguimiento: next }, await getAccessToken())
+    } catch (e) {
+      console.error(e)
       setMessage('No se pudo actualizar el seguimiento.')
       setConsultations((list) =>
         list.map((x) => (x.id === c.id ? { ...x, admin_seguimiento: prev } : x))
@@ -405,42 +368,47 @@ export default function AdminPacientes() {
     doctor: { id: string; full_name: string } | null
   ) {
     const doctorId = doctor?.id || null
-    const prev = c.assigned_doctor_id
-    if (doctor) setDoctorNameCache((m) => ({ ...m, [doctor.id]: doctor.full_name }))
+    const prev = { id: c.assigned_doctor_id, name: c.assigned_doctor_name }
+    // Optimista: fija id y nombre (el nombre viene del pool; el backend lo confirma en la próxima carga).
     setConsultations((list) =>
-      list.map((x) => (x.id === c.id ? { ...x, assigned_doctor_id: doctorId } : x))
+      list.map((x) =>
+        x.id === c.id
+          ? { ...x, assigned_doctor_id: doctorId, assigned_doctor_name: doctor?.full_name || null }
+          : x
+      )
     )
     setRowDocMenu(null)
     setRowDocQuery('')
-    const { error } = await supabase
-      .from('consultations')
-      .update({ assigned_doctor_id: doctorId })
-      .eq('id', c.id)
-    if (error) {
-      console.error(error)
+    try {
+      const token = await getAccessToken()
+      await updateConsultation(c.id, { assigned_doctor_id: doctorId }, token)
+      await addConsultationEvent(
+        c.id,
+        {
+          event_type: 'admin_update',
+          note: `Médico asignado: ${doctor ? doctor.full_name : 'Sin asignar'}`
+        },
+        token
+      )
+      setMessage('Médico actualizado.')
+    } catch (e) {
+      console.error(e)
       setMessage('No se pudo asignar el médico.')
       setConsultations((list) =>
-        list.map((x) => (x.id === c.id ? { ...x, assigned_doctor_id: prev } : x))
+        list.map((x) =>
+          x.id === c.id ? { ...x, assigned_doctor_id: prev.id, assigned_doctor_name: prev.name } : x
+        )
       )
-      return
     }
-    await supabase.from('consultation_events').insert({
-      consultation_id: c.id,
-      event_type: 'admin_update',
-      note: `Médico asignado: ${doctor ? doctor.full_name : 'Sin asignar'}`
-    })
-    setMessage('Médico actualizado.')
   }
 
   // Inline (cases table) save of the admin note.
   async function saveNotaAdmin(c: Consultation) {
     const draft = notaAdminDrafts[c.id] ?? ''
-    const { error } = await supabase
-      .from('consultations')
-      .update({ nota_admin: draft })
-      .eq('id', c.id)
-    if (error) {
-      console.error(error)
+    try {
+      await updateConsultation(c.id, { nota_admin: draft }, await getAccessToken())
+    } catch (e) {
+      console.error(e)
       setMessage('No se pudo guardar la nota admin.')
       return
     }
@@ -455,12 +423,10 @@ export default function AdminPacientes() {
 
   async function saveNote(c: Consultation) {
     const draft = noteDrafts[c.id] ?? ''
-    const { error } = await supabase
-      .from('consultations')
-      .update({ internal_note: draft })
-      .eq('id', c.id)
-    if (error) {
-      console.error(error)
+    try {
+      await updateConsultation(c.id, { internal_note: draft }, await getAccessToken())
+    } catch (e) {
+      console.error(e)
       setMessage('No se pudo guardar la nota.')
       return
     }
@@ -904,7 +870,9 @@ export default function AdminPacientes() {
                       <div style={{ position: 'relative', marginBottom: 6 }}>
                         <input
                           value={
-                            rowDocMenu === c.id ? rowDocQuery : doctorName(c.assigned_doctor_id)
+                            rowDocMenu === c.id
+                              ? rowDocQuery
+                              : c.assigned_doctor_name || 'Sin asignar'
                           }
                           placeholder="Buscar médico…"
                           onFocus={() => {

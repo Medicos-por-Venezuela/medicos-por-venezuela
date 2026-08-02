@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { effectiveAdminRole } from '../../lib/admin'
+import { fetchMyProfile, MyProfile } from '../../lib/consultations'
 import { supabase } from '../../lib/supabase'
 
 export default function AuthCallback() {
@@ -60,21 +61,19 @@ export default function AuthCallback() {
 
       window.history.replaceState({}, '', '/auth/callback')
 
-      // 3) Route by profile. Lectura directa a `public.users` (tabla core; ya no a la vista
-      // `profiles`) porque `/auth/me` aún no expone `role_chosen`. TODO: mover a /auth/me cuando el
-      // backend incluya ese flag.
-      const { data: profile, error: profileError } = await supabase
-        .from('users')
-        .select('role, active, role_chosen')
-        .eq('id', session.user.id)
-        .single()
-      if (cancelled) return
-
-      if (profileError || !profile) {
+      // 3) Route by profile. El perfil (rol/estado) viene del backend (/auth/me), no de una lectura
+      // directa a `users`.
+      let profile: MyProfile
+      try {
+        profile = await fetchMyProfile(session.access_token)
+      } catch (e: any) {
+        if (cancelled) return
         await supabase.auth.signOut()
-        setError(`No se pudo cargar tu perfil${profileError ? `: ${profileError.message}` : ''}.`)
+        setError(`No se pudo cargar tu perfil${e?.message ? `: ${e.message}` : ''}.`)
         return
       }
+      if (cancelled) return
+
       if (!profile.role_chosen) {
         router.replace('/elegir-rol')
         return

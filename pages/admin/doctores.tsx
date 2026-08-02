@@ -10,8 +10,7 @@ import {
   USERS_PAGE_SIZE
 } from '../../lib/admin'
 import { useOnlineDoctors } from '../../lib/presence'
-import { supabase } from '../../lib/supabase'
-import { setProfileActive } from '../../lib/users'
+import { fetchProfiles, setProfileActive } from '../../lib/users'
 
 export default function AdminDoctores() {
   const { profile, loading } = useAdminGuard()
@@ -63,28 +62,23 @@ export default function AdminDoctores() {
   // Staff-only, server-side filtered + paginated list for the Médicos y administradores table.
   async function loadUsers() {
     setUsersLoading(true)
-    // Lista staff paginada server-side. Se lee directo de `public.users` (tabla core; ya no la vista
-    // `profiles`): GET /profiles del API aún no cubre este filtrado (rol múltiple staff, estado
-    // activo/revocado, rango de fechas) ni el total exacto. TODO: enriquecer /profiles y migrar.
-    let q = supabase
-      .from('users')
-      .select('*', { count: 'exact' })
-      .in('role', userRole === 'all' ? STAFF_ROLES : [userRole])
-      .order('created_at', { ascending: false })
-    const term = debouncedUserSearch.trim().replace(/[(),]/g, ' ')
-    if (term) q = q.or(`full_name.ilike.%${term}%,email.ilike.%${term}%,specialty.ilike.%${term}%`)
-    if (userState === 'active') q = q.eq('active', true)
-    if (userState === 'revoked') q = q.eq('active', false)
-    if (userFrom) q = q.gte('created_at', `${userFrom}T00:00:00`)
-    if (userTo) q = q.lte('created_at', `${userTo}T23:59:59.999`)
-    const start = usersPage * USERS_PAGE_SIZE
-    const { data, count, error } = await q.range(start, start + USERS_PAGE_SIZE - 1)
-    if (error) {
-      console.error(error)
+    // Lista staff paginada + total, por el backend (GET /profiles enriquecido): filtra por rol(es),
+    // estado activo/revocado, rango de fechas y búsqueda (nombre/email/especialidad).
+    try {
+      const { items, total } = await fetchProfiles(await getAccessToken(), {
+        roles: userRole === 'all' ? STAFF_ROLES : [userRole],
+        search: debouncedUserSearch || undefined,
+        active: userState === 'active' ? true : userState === 'revoked' ? false : undefined,
+        createdFrom: userFrom || undefined,
+        createdTo: userTo || undefined,
+        skip: usersPage * USERS_PAGE_SIZE,
+        limit: USERS_PAGE_SIZE
+      })
+      setUsersRows(items as unknown as Profile[])
+      setUsersTotal(total)
+    } catch (e) {
+      console.error(e)
       setMessage('No se pudieron cargar los usuarios.')
-    } else {
-      setUsersRows((data || []) as Profile[])
-      setUsersTotal(count || 0)
     }
     setUsersLoading(false)
   }

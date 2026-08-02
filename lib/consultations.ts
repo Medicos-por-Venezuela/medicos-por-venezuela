@@ -2,8 +2,8 @@
 // consultas y el claim atómico de una consulta. Reemplaza los accesos directos a Supabase/PostgREST
 // del panel — el único acceso directo que queda es Realtime (solo para avisar que algo cambió) y
 // Auth. Los datos siempre vienen por el backend.
-import { getJson, postJson } from './apiClient'
-import { IN_PROGRESS_STATUSES } from './admin'
+import { getJson, patchJson, postJson } from './apiClient'
+import { Consultation, IN_PROGRESS_STATUSES, Patient } from './admin'
 
 export { ApiError } from './apiClient'
 
@@ -14,6 +14,7 @@ export interface MyProfile {
   id: string
   full_name: string
   role: string
+  role_chosen: boolean
   specialty: string | null
   verified: boolean
   active: boolean
@@ -23,6 +24,27 @@ export interface MyProfile {
 
 export async function fetchMyProfile(token: string): Promise<MyProfile> {
   return getJson<MyProfile>('/api/v1/auth/me', 'No se pudo cargar tu perfil', token)
+}
+
+// GET /api/v1/consultations (vista de paciente): el backend la scopea a las consultas del propio
+// paciente (Patient.user_id == caller) y devuelve la vista reducida (sin notas del staff). Para el
+// portal del paciente (mi-caso); reemplaza la lectura directa a `consultations`.
+export interface MyConsultation {
+  id: string
+  code: string
+  status: string
+  category: string | null
+  chief_complaint: string | null
+  referred_specialty: string | null
+  created_at: string
+  scheduled_at: string | null
+}
+export async function fetchMyConsultations(token: string): Promise<MyConsultation[]> {
+  return getJson<MyConsultation[]>(
+    '/api/v1/consultations',
+    'No se pudieron cargar tus consultas',
+    token
+  )
 }
 
 export interface PanelPatient {
@@ -223,6 +245,130 @@ export async function fetchChain(id: string, token: string): Promise<ChainItem[]
   return getJson<ChainItem[]>(
     `/api/v1/consultations/${id}/chain`,
     'No se pudo cargar el historial',
+    token
+  )
+}
+
+// --- Detalle de consulta (panel médico): reemplaza el acceso directo a Supabase ---
+export interface ConsultationDetailPatient {
+  id: string
+  full_name: string
+  cedula: string | null
+  phone_whatsapp: string | null
+  email: string | null
+  affected_zone: string | null
+  age_range: string | null
+  needs_tags: string[] | null
+  description: string | null
+}
+
+// GET /consultations/{id}: la consulta con el paciente anidado (solo staff que puede verla).
+export interface ConsultationDetail {
+  id: string
+  code: string
+  status: string
+  priority: string
+  category: string | null
+  chief_complaint: string | null
+  created_at: string
+  opened_at: string | null
+  closed_at: string | null
+  referred_specialty: string | null
+  internal_note: string | null
+  video_room_url: string | null
+  patient_last_seen_at: string | null
+  assigned_doctor_id: string | null
+  attended_via_whatsapp: boolean
+  scheduled_at: string | null
+  patient: ConsultationDetailPatient | null
+}
+
+export async function fetchConsultationDetail(
+  id: string,
+  token: string
+): Promise<ConsultationDetail> {
+  return getJson<ConsultationDetail>(
+    `/api/v1/consultations/${id}`,
+    'No se pudo cargar la consulta',
+    token
+  )
+}
+
+// PATCH /consultations/{id}: estado y/o nota interna (reemplaza el UPDATE directo a Supabase).
+export async function updateConsultation(
+  id: string,
+  body: {
+    status?: string
+    internal_note?: string
+    // Campos que edita el panel admin/pacientes (además del panel médico).
+    assigned_doctor_id?: string | null
+    specialty_id?: string | null
+    admin_seguimiento?: string | null
+    nota_admin?: string | null
+    contacted?: boolean
+    closed_at?: string | null
+  },
+  token: string
+): Promise<ConsultationDetail> {
+  return patchJson<ConsultationDetail>(
+    `/api/v1/consultations/${id}`,
+    body,
+    'No se pudo actualizar la consulta',
+    token
+  )
+}
+
+// GET /api/v1/consultations — lista completa para staff, con el paciente anidado y los campos de
+// gestión admin (admin_seguimiento/nota_admin) + assigned_doctor_name resuelto server-side. El panel
+// admin/pacientes la consume en vez de leer `consultations`/`patients`/`users` directo de Supabase.
+export async function fetchConsultations(
+  token: string,
+  params: { limit?: number; status?: string; patientId?: string } = {}
+): Promise<Consultation[]> {
+  const qs = new URLSearchParams()
+  qs.set('limit', String(params.limit ?? 200))
+  if (params.status) qs.set('status', params.status)
+  if (params.patientId) qs.set('patient_id', params.patientId)
+  const rows = await getJson<(Omit<Consultation, 'patients'> & { patient: Patient | null })[]>(
+    `/api/v1/consultations?${qs.toString()}`,
+    'No se pudieron cargar las consultas',
+    token
+  )
+  // El backend anida el paciente en `patient`; el panel usa `patients` (alias histórico del join).
+  return rows.map(({ patient, ...c }) => ({ ...c, patients: patient }))
+}
+
+// Evento del historial, con el AUTOR ya resuelto por el backend (sin leer `users` en el cliente).
+export interface ConsultationEventItem {
+  id: string
+  event_type: string
+  note: string | null
+  created_by: string | null
+  created_at: string
+  author_name: string | null
+  author_role: string | null
+}
+
+export async function fetchConsultationEvents(
+  id: string,
+  token: string
+): Promise<ConsultationEventItem[]> {
+  return getJson<ConsultationEventItem[]>(
+    `/api/v1/consultations/${id}/events`,
+    'No se pudo cargar el historial',
+    token
+  )
+}
+
+export async function addConsultationEvent(
+  id: string,
+  body: { event_type: string; note?: string },
+  token: string
+): Promise<ConsultationEventItem> {
+  return postJson<ConsultationEventItem>(
+    `/api/v1/consultations/${id}/events`,
+    { consultation_id: id, ...body },
+    'No se pudo registrar el evento',
     token
   )
 }

@@ -6,12 +6,17 @@ import SignaturePad from '../../../components/SignaturePad'
 import { getAccessToken } from '../../../lib/admin'
 import { DoctorPoolItem } from '../../../lib/doctors'
 import {
+  addConsultationEvent,
   ChainItem,
   closeConsultationApi,
   fetchChain,
+  fetchConsultationDetail,
+  fetchConsultationEvents,
   fetchMyProfile,
   scheduleFollowUp,
-  scheduleReferral
+  scheduleReferral,
+  updateConsultation,
+  type ConsultationEventItem
 } from '../../../lib/consultations'
 import {
   createInterconsultation,
@@ -28,6 +33,7 @@ import {
   isPushEnabled,
   type NotificationPrefs
 } from '../../../lib/notificationPrefs'
+import { usePatientsInRoom } from '../../../lib/patientPresence'
 
 type Patient = {
   id: string
@@ -81,7 +87,6 @@ type EventAuthor = Pick<Profile, 'id' | 'full_name' | 'role'>
 
 const ADMIN_ROLES = ['admin', 'super_admin'] as const
 const PANEL_ALLOWED_ROLES = ['doctor', 'specialist', ...ADMIN_ROLES] as const
-const PRESENCE_WINDOW_MS = 30 * 60 * 1000 // generous; see note in panel-medico.tsx
 
 // Status options shown for WhatsApp-attended cases (the doctor handles these outside video).
 // 'closed' y 'referred_to_specialist' se quitaron a propósito: cerrar es solo vía el botón
@@ -107,11 +112,6 @@ const FINAL_STATUSES = [
 
 function isAdminRole(role?: string | null): boolean {
   return !!role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])
-}
-
-function isPatientPresent(c: Consultation): boolean {
-  if (!c.patient_last_seen_at) return false
-  return Date.now() - new Date(c.patient_last_seen_at).getTime() < PRESENCE_WINDOW_MS
 }
 
 function statusBadgeClass(status: string): string {
@@ -177,8 +177,9 @@ export default function ConsultaDetalle() {
   const [closeError, setCloseError] = useState('')
   // Titila el borde de "Notas del médico" ~3s cuando el cierre se bloquea por falta de nota.
   const [notesBlink, setNotesBlink] = useState(false)
-  // Fuerza re-render periódico para re-evaluar la presencia del paciente (ventana de tiempo).
-  const [, setPresenceTick] = useState(0)
+  // Consultas con el paciente EN SALA por Realtime Presence (reemplaza el heartbeat + la ventana de
+  // tiempo). Es un Set global; abajo se consulta por el id de esta consulta.
+  const patientsInRoom = usePatientsInRoom()
 
   function flagMissingNote(msg: string) {
     setCloseError(msg)
@@ -204,10 +205,9 @@ export default function ConsultaDetalle() {
     })()
   }, [profile])
 
-  // Presencia del paciente EN VIVO (Realtime): su heartbeat (mark_patient_waiting) actualiza la
-  // consulta en la BD; nos suscribimos a esos cambios y refrescamos patient_last_seen_at/status SIN
-  // pisar la nota que el médico está escribiendo. Así ve al paciente entrar/salir de la sala sin
-  // recargar (antes esta página cargaba una sola vez).
+  // Estado del caso EN VIVO (Realtime): si un admin lo cierra o cambia, el médico lo ve sin recargar
+  // y sin pisar la nota que está escribiendo. La presencia del paciente "en sala" ya NO va por aquí:
+  // se lee por Realtime Presence (usePatientsInRoom), sin heartbeat ni polling.
   useEffect(() => {
     if (!consultationId) return
     const channel = supabase
@@ -221,12 +221,8 @@ export default function ConsultaDetalle() {
           filter: `id=eq.${consultationId}`
         },
         (payload) => {
-          const row = payload.new as { patient_last_seen_at: string | null; status: string }
-          setConsultation((prev) =>
-            prev
-              ? { ...prev, patient_last_seen_at: row.patient_last_seen_at, status: row.status }
-              : prev
-          )
+          const row = payload.new as { status: string }
+          setConsultation((prev) => (prev ? { ...prev, status: row.status } : prev))
         }
       )
       .subscribe()
@@ -234,13 +230,6 @@ export default function ConsultaDetalle() {
       supabase.removeChannel(channel)
     }
   }, [consultationId])
-
-  // Si el paciente se va (no llegan más heartbeats), re-evaluamos cada 30s para que "En sala" pase
-  // a "Sin conexión" al vencer la ventana, aunque no haya evento Realtime.
-  useEffect(() => {
-    const t = window.setInterval(() => setPresenceTick((n) => n + 1), 30000)
-    return () => window.clearInterval(t)
-  }, [])
 
   async function init(id: string) {
     const { data: sessionData } = await supabase.auth.getSession()
@@ -317,21 +306,17 @@ export default function ConsultaDetalle() {
   }
 
   async function loadConsultation(id: string, currentProfile: Profile | null = profile) {
-    const { data, error } = await supabase
-      .from('consultations')
-      .select(
-        '*, patients(id, full_name, cedula, phone_whatsapp, email, affected_zone, age_range, needs_tags, description)'
-      )
-      .eq('id', id)
-      .single()
-
-    if (error || !data) {
-      console.error(error)
+    let detail
+    try {
+      detail = await fetchConsultationDetail(id, await getAccessToken())
+    } catch (e) {
+      console.error(e)
       setMessage('No se pudo cargar la consulta.')
       return
     }
 
-    const row = data as Consultation
+    // El backend anida el paciente como `patient`; el resto del componente usa `patients`.
+    const row = { ...detail, patients: detail.patient } as unknown as Consultation
     const canView =
       isAdminRole(currentProfile?.role) || row.assigned_doctor_id === currentProfile?.id
     if (!canView) {
@@ -380,65 +365,54 @@ export default function ConsultaDetalle() {
   }
 
   async function loadEvents(consultationId: string) {
-    const { data, error } = await supabase
-      .from('consultation_events')
-      .select('id, event_type, created_by, note, created_at')
-      .eq('consultation_id', consultationId)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error(error)
+    let rows: ConsultationEventItem[]
+    try {
+      rows = await fetchConsultationEvents(consultationId, await getAccessToken())
+    } catch (e) {
+      console.error(e)
       setEvents([])
       setEventAuthorsById({})
       return
     }
 
-    const rows = (data || []) as ConsultationEvent[]
-    setEvents(rows)
+    // El backend los devuelve ascendente; el panel muestra el más reciente primero.
+    setEvents([...rows].reverse() as ConsultationEvent[])
 
-    const authorIds = Array.from(
-      new Set(rows.map((e) => e.created_by).filter((id): id is string => !!id))
-    )
-    if (authorIds.length === 0) {
-      setEventAuthorsById({})
-      return
+    // El autor viene resuelto en cada evento (author_name/role): armamos el índice para el render,
+    // sin leer `users` en el cliente.
+    const authors: Record<string, EventAuthor> = {}
+    for (const e of rows) {
+      if (e.created_by && e.author_name) {
+        authors[e.created_by] = {
+          id: e.created_by,
+          full_name: e.author_name,
+          role: e.author_role || ''
+        }
+      }
     }
-
-    // Autores del historial (lista de ids): sin endpoint batch en el API, se lee directo de
-    // `public.users` (tabla core; ya no la vista `profiles`). RLS is_staff permite al médico leerlos.
-    // TODO: exponer un GET /profiles?ids=… (batch) para mover esto al backend.
-    const { data: authors } = await supabase
-      .from('users')
-      .select('id, full_name, role')
-      .in('id', authorIds)
-
-    setEventAuthorsById(
-      Object.fromEntries(((authors || []) as EventAuthor[]).map((a) => [a.id, a]))
-    )
+    setEventAuthorsById(authors)
   }
 
   async function addEvent(consultationId: string, eventType: string, eventNote?: string) {
-    await supabase.from('consultation_events').insert({
-      consultation_id: consultationId,
-      event_type: eventType,
-      note: eventNote || null
-    })
+    await addConsultationEvent(
+      consultationId,
+      { event_type: eventType, note: eventNote },
+      await getAccessToken()
+    )
   }
 
   async function saveNote() {
     if (!consultation || busy) return
     setMessage('')
     setBusy(true)
-    const { error } = await supabase
-      .from('consultations')
-      .update({ internal_note: note })
-      .eq('id', consultation.id)
-    setBusy(false)
-    if (error) {
-      setMessage('No se pudo guardar la nota.')
-    } else {
+    try {
+      await updateConsultation(consultation.id, { internal_note: note }, await getAccessToken())
       setSavedNote(note)
       setMessage('Nota guardada.')
+    } catch {
+      setMessage('No se pudo guardar la nota.')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -448,11 +422,9 @@ export default function ConsultaDetalle() {
     if (!consultation || !profile || busy) return
     setMessage('')
     setBusy(true)
-    const { error } = await supabase
-      .from('consultations')
-      .update({ status: newStatus })
-      .eq('id', consultation.id)
-    if (error) {
+    try {
+      await updateConsultation(consultation.id, { status: newStatus }, await getAccessToken())
+    } catch {
       setBusy(false)
       setMessage('No se pudo actualizar el estado.')
       return
@@ -778,7 +750,7 @@ export default function ConsultaDetalle() {
                 Email (opcional): {consultation.patients?.email || '—'}
               </p>
               <div style={{ marginTop: 10 }}>
-                {isPatientPresent(consultation) ? (
+                {patientsInRoom.has(consultation.id) ? (
                   <span className="badge badge-green">● En sala</span>
                 ) : (
                   <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>

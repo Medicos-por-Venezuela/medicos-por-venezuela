@@ -1,6 +1,22 @@
-import { ApiError, postJson } from './apiClient'
+import { ApiError, deleteJson, getJson, postJson } from './apiClient'
 
 export { ApiError }
+
+// DELETE /api/v1/patients/{id} — baja lógica (soft delete): el backend marca deleted_at y lo filtra
+// de las listas; NO borra la fila (trazabilidad). Reemplaza la RPC admin_delete_patient.
+export async function archivePatient(id: string, token: string): Promise<void> {
+  return deleteJson(`/api/v1/patients/${id}`, 'No se pudo archivar el paciente', token)
+}
+
+// GET /api/v1/patients/me — registros de paciente ligados a la cuenta del llamante (portal del
+// paciente / mi-caso). Reemplaza la lectura directa a `patients` (RLS patients_select_own).
+export interface MyPatient {
+  id: string
+  full_name: string
+}
+export async function fetchMyPatients(token: string): Promise<MyPatient[]> {
+  return getJson<MyPatient[]>('/api/v1/patients/me', 'No se pudieron cargar tus datos', token)
+}
 
 export interface PatientCreate {
   full_name: string
@@ -66,5 +82,15 @@ export async function ensureVideoRoom(consultationId: string): Promise<Consultat
     `/api/v1/consultations/${consultationId}/video-room`,
     {},
     'No se pudo iniciar la videoconsulta'
+  )
+}
+
+// POST /api/v1/consultations/{id}/entered-call — público e idempotente: marca que el paciente entró
+// a la videollamada (entered_call_at, una sola vez). Reemplaza la RPC mark_patient_entered_call.
+export async function markEnteredCall(consultationId: string): Promise<ConsultationResponse> {
+  return postJson<ConsultationResponse>(
+    `/api/v1/consultations/${consultationId}/entered-call`,
+    {},
+    'No se pudo registrar la entrada a la videollamada'
   )
 }

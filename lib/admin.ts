@@ -46,6 +46,7 @@ export type Consultation = {
   referred_specialty: string | null
   internal_note: string | null
   assigned_doctor_id: string | null
+  assigned_doctor_name?: string | null // resuelto server-side por el backend (GET /consultations)
   created_at: string
   entered_call_at: string | null
   opened_at: string | null

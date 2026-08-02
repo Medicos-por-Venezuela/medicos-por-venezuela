@@ -10,9 +10,16 @@ export interface ApiUser {
   email: string
   full_name: string
   role: string
+  specialty: string | null
   active: boolean
   verified: boolean
   created_at: string
+}
+
+// GET /profiles devuelve la página + el total exacto (para la paginación por número de página).
+export interface ProfileListResult {
+  items: ApiUser[]
+  total: number
 }
 
 export interface RoleCatalogItem {
@@ -52,20 +59,32 @@ export async function fetchMyPermissions(token: string): Promise<PermissionsResp
   )
 }
 
-// GET /api/v1/profiles — requiere permiso profiles.read. Devuelve un arreglo plano (sin total),
-// por eso la paginación es "cargar más"/siguiente por offset, no por total de páginas.
+// GET /api/v1/profiles — requiere permiso profiles.read. Devuelve { items, total } para paginar por
+// número de página. Filtra server-side por rol(es), estado (active), rango de fechas y búsqueda
+// (nombre/email/especialidad) — con ~3000 usuarios, paginar sin filtrar es inservible.
 export async function fetchProfiles(
   token: string,
-  params: { skip?: number; limit?: number; role?: string; search?: string }
-): Promise<ApiUser[]> {
+  params: {
+    skip?: number
+    limit?: number
+    role?: string
+    roles?: string[]
+    search?: string
+    active?: boolean
+    createdFrom?: string
+    createdTo?: string
+  }
+): Promise<ProfileListResult> {
   const qs = new URLSearchParams()
   if (params.skip != null) qs.set('skip', String(params.skip))
   if (params.limit != null) qs.set('limit', String(params.limit))
   if (params.role) qs.set('role', params.role)
-  // Búsqueda server-side por nombre o email (ILIKE en el backend): con ~3000 usuarios,
-  // paginar sin buscar es inservible.
+  if (params.roles) for (const r of params.roles) qs.append('roles', r)
   if (params.search?.trim()) qs.set('search', params.search.trim())
-  return getJson<ApiUser[]>(
+  if (params.active != null) qs.set('active', String(params.active))
+  if (params.createdFrom) qs.set('created_from', params.createdFrom)
+  if (params.createdTo) qs.set('created_to', params.createdTo)
+  return getJson<ProfileListResult>(
     `/api/v1/profiles?${qs.toString()}`,
     'No se pudieron cargar los usuarios',
     token
