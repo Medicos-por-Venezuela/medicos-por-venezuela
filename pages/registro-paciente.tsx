@@ -354,7 +354,8 @@ export default function RegistroPaciente() {
       // service_role → el paciente caía SIEMPRE al fallback de WhatsApp sin videollamada.)
       let room = ''
       try {
-        room = (await ensureVideoRoom(consultation.id)).video_room_url || ''
+        room =
+          (await ensureVideoRoom(consultation.id, consultation.access_token)).video_room_url || ''
       } catch (e) {
         console.error('No se pudo iniciar la videoconsulta:', e)
       }
@@ -362,7 +363,11 @@ export default function RegistroPaciente() {
       const params = new URLSearchParams({ nombre: patientName })
       if (room) params.set('room', room)
       if (consultation.code) params.set('code', consultation.code)
-      params.set('cid', consultation.id) // lets /sala-espera send the waiting-room heartbeat
+      params.set('cid', consultation.id)
+      // Credencial de la sala, con caducidad de 24 h. Viaja en la URL porque es la única forma
+      // de llevarla a /sala-espera; esa página la saca del historial con replaceState en cuanto
+      // la lee, para no dejarla en el Referer ni en una captura compartida.
+      params.set('t', consultation.access_token)
       router.push(`/sala-espera?${params.toString()}`)
     } catch (e) {
       console.error(e)

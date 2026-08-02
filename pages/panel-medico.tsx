@@ -36,6 +36,9 @@ type Patient = {
   age_range: string | null
   needs_tags: string[] | null
   description: string | null
+  // Se piden en el registro y el backend las expone también en la cola de espera: son dato de
+  // decisión clínica ANTES de tomar el caso, no después de abrirlo.
+  allergies: string | null
 }
 
 type Consultation = {
@@ -254,33 +257,16 @@ export default function PanelMedico() {
       ),
     [consultations, profile?.id]
   )
-  // Waiting patients that align with this doctor's specialty (and that they're allowed to take).
-  // El match es por la especialidad solicitada (consultations.specialty_id, resuelta a nombre
-  // por el backend); category/needs quedan de fallback para consultas viejas sin especialidad.
-  const mySpecialtyWaiting = useMemo(
-    () =>
-      waiting.filter(
-        (c) =>
-          isCurrentUserAdmin ||
-          (canAttendConsultation(
-            profile?.specialty,
-            c.specialty,
-            c.category,
-            c.patients?.needs_tags || null
-          ) &&
-            matchesConsultation(
-              profile?.specialty,
-              c.specialty,
-              c.category,
-              c.patients?.needs_tags || null
-            ))
-      ),
-    [waiting, profile?.specialty, isCurrentUserAdmin]
-  )
+  // El filtro por especialidad se aplica AHORA EN EL BACKEND (GET /consultations/panel), así que
+  // `waiting` ya viene acotado a lo que este médico puede atender y el recorte en el cliente
+  // sobra. Se eliminó `mySpecialtyWaiting` a propósito: mientras existió, la lista se pintaba sin
+  // filtrar y el contador sí filtraba, que es como un psicólogo terminó viendo la cédula y el
+  // motivo de un caso de medicina general. Una sola fuente de verdad, y del lado del servidor.
+  //
   // Everyone — including admins/super_admins — sees /panel-medico as a doctor: the waiting queue and
   // their own open cases, no admin-only "system cases" section.
   // "Pacientes esperando" partido en dos (PR #27 de main, recreado con la presencia real): en la
-  // sala AHORA (heartbeat vivo, misma ventana que el badge "● En sala") vs. +20 min sin atender.
+  // sala AHORA (badge "● En sala", vía Realtime Presence) vs. +20 min sin atender.
   const kpis = [
     {
       value: waiting.filter((c) => patientsInRoom.has(c.id)).length,
@@ -290,7 +276,7 @@ export default function PanelMedico() {
       value: waiting.filter((c) => minutesSince(c.created_at) > 20).length,
       label: 'Sin atender (+20 min)'
     },
-    { value: mySpecialtyWaiting.length, label: 'Esperando para tu especialidad' },
+    { value: waiting.length, label: 'Esperando para tu especialidad' },
     { value: myClosed, label: 'Consultas cerradas por mí' }
   ]
 
@@ -327,7 +313,12 @@ export default function PanelMedico() {
     let room = c.video_room_url
     if (!room) {
       try {
-        room = (await ensureVideoRoom(c.id)).video_room_url || null
+        // Con la sesión del médico: la sala exige el token del paciente O una sesión de staff, y
+        // el médico obviamente no tiene el token del paciente.
+        const { data: sessionData } = await supabase.auth.getSession()
+        room =
+          (await ensureVideoRoom(c.id, undefined, sessionData.session?.access_token))
+            .video_room_url || null
       } catch {
         // 409 (ya no está en espera) u otro fallo: se sigue sin sala, como antes.
       }
@@ -710,6 +701,12 @@ function ConsultationCard({
         </span>
       </div>
       <p>{c.chief_complaint || c.patients?.description || 'Sin descripción'}</p>
+      {c.patients?.allergies && (
+        // Dato de decisión clínica: el médico lo necesita ANTES de tomar el caso, no al abrirlo.
+        <p className="badge badge-red" style={{ display: 'inline-block' }}>
+          ⚠ Alergias: {c.patients.allergies}
+        </p>
+      )}
       {c.referred_specialty && (
         <p>
           <span className="badge badge-blue">{c.referred_specialty}</span>

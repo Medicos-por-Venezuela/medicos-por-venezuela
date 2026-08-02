@@ -22,9 +22,17 @@ export class ApiError extends Error {
 // `token` (Supabase access_token) is optional: public endpoints (doctor/patient registration)
 // don't need it, admin-only endpoints (catalogs.manage) do — the backend validates the same
 // Supabase JWT it accepts for auth, no separate credential.
-function authedFetch(path: string, init: RequestInit, token?: string): Promise<Response> {
+function authedFetch(
+  path: string,
+  init: RequestInit,
+  token?: string,
+  extraHeaders?: Record<string, string>
+): Promise<Response> {
   const headers = new Headers(init.headers)
   if (token) headers.set('Authorization', `Bearer ${token}`)
+  // Para credenciales que NO son el JWT de Supabase — hoy solo X-Consultation-Token, el acceso
+  // a la sala del paciente anónimo, que no tiene sesión con la que autenticarse.
+  for (const [k, v] of Object.entries(extraHeaders || {})) headers.set(k, v)
   return fetch(`${API_URL}${path}`, { ...init, headers })
 }
 
@@ -90,12 +98,14 @@ async function sendJson<T>(
   path: string,
   payload: unknown,
   defaultErrorMessage: string,
-  token?: string
+  token?: string,
+  extraHeaders?: Record<string, string>
 ): Promise<T> {
   const res = await authedFetch(
     path,
     { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) },
-    token
+    token,
+    extraHeaders
   )
   if (!res.ok) await raiseApiError(res, defaultErrorMessage)
   return res.json()
@@ -105,8 +115,9 @@ export const postJson = <T>(
   path: string,
   payload: unknown,
   defaultErrorMessage: string,
-  token?: string
-): Promise<T> => sendJson<T>('POST', path, payload, defaultErrorMessage, token)
+  token?: string,
+  extraHeaders?: Record<string, string>
+): Promise<T> => sendJson<T>('POST', path, payload, defaultErrorMessage, token, extraHeaders)
 
 export const patchJson = <T>(
   path: string,
