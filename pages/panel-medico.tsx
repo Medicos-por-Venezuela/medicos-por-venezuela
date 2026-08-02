@@ -13,7 +13,8 @@ import {
 } from '../lib/consultations'
 import {
   STATUS_LABELS,
-  canAttendConsultation,
+  // `canAttendConsultation` ya no se importa: la elegibilidad la decide el backend (get_panel +
+  // claim). Aquí solo queda `matchesConsultation`, que es una preferencia de orden, no un permiso.
   matchesConsultation,
   minutesSince
 } from '../lib/utils'
@@ -337,43 +338,27 @@ export default function PanelMedico() {
     await router.push(`/panel-medico/consulta/${c.id}`)
   }
 
-  // Take the next waiting patient: prefer one matching the doctor's specialty (oldest first),
-  // otherwise fall back to the oldest waiting patient so nobody is left unattended.
+  // Toma el siguiente paciente en espera. `waiting` ya viene del backend acotado a lo que este
+  // médico PUEDE atender y ordenado FIFO, así que aquí no se vuelve a comprobar la elegibilidad:
+  // ese filtro duplicado es justo lo que provocó el bug del psicólogo. Lo único que queda es la
+  // PREFERENCIA por un caso que pida exactamente su especialidad — preferencia, no permiso: si no
+  // hay ninguno, se atiende al más antiguo para que nadie se quede esperando. El permiso lo
+  // revalida el backend en /claim de todas formas.
   async function attendNext() {
     setMessage('')
-
-    const eligible = waiting.filter(
-      (c) =>
-        isCurrentUserAdmin ||
-        canAttendConsultation(
-          profile?.specialty,
-          c.specialty,
-          c.category,
-          c.patients?.needs_tags || null
-        )
-    )
-
-    if (eligible.length === 0) {
-      setMessage(
-        waiting.length ? 'No hay pacientes para tu especialidad ahora.' : waitingEmptyMessage
-      )
+    if (waiting.length === 0) {
+      setMessage(waitingEmptyMessage)
       return
     }
-
-    const pool = eligible
-
-    const next = isCurrentUserAdmin
-      ? pool[0]
-      : pool.find((c) =>
-          matchesConsultation(
-            profile?.specialty,
-            c.specialty,
-            c.category,
-            c.patients?.needs_tags || null
-          )
-        ) || pool[0]
-
-    await openConsultation(next)
+    const exactMatch = waiting.find((c) =>
+      matchesConsultation(
+        profile?.specialty,
+        c.specialty,
+        c.category,
+        c.patients?.needs_tags || null
+      )
+    )
+    await openConsultation(isCurrentUserAdmin ? waiting[0] : exactMatch || waiting[0])
   }
   async function logout() {
     await supabase.auth.signOut()
