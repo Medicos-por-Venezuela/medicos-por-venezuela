@@ -23,6 +23,11 @@ jobs:
 
       - run: pnpm format:check
 
+      # next-env.d.ts está gitignored, así que en un checkout limpio no existe y con él se
+      # pierde el `/// <reference types="next" />`: sin eso desaparece la ampliación de tipos
+      # de styled-jsx y todo `<style jsx>` falla. `typegen` lo regenera sin build completo.
+      - run: pnpm exec next typegen
+
       - run: pnpm exec tsc --noEmit
 
       - run: pnpm build
