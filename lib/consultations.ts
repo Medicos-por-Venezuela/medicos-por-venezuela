@@ -22,8 +22,32 @@ export interface MyProfile {
   doctor_cedula: string | null
 }
 
+// Al cargar una página autenticada, /auth/me se pedía 3 VECES en paralelo: PresenceProvider lo
+// llama al montar Y otra vez cuando `onAuthStateChange` emite INITIAL_SESSION, y encima la página
+// (panel-medico, useAdminGuard, mi-caso…) lo pide por su cuenta. Como salen a la vez, ninguna
+// aprovecha la caché de preflight del navegador: son 3 OPTIONS + 3 GET, y cada GET cuesta 4
+// queries en el backend. Se coalescen aquí, en la función compartida, en vez de reordenar el
+// ciclo de vida de cada caller.
+//
+// La clave incluye el token: otra sesión (u otro usuario) nunca reusa este resultado. La ventana
+// es corta a propósito — coalescer la ráfaga del montaje, no cachear el perfil: un cambio de rol
+// se ve en la siguiente carga igual que antes.
+const PROFILE_COALESCE_MS = 5000
+let inflightProfile: { token: string; at: number; promise: Promise<MyProfile> } | null = null
+
 export async function fetchMyProfile(token: string): Promise<MyProfile> {
-  return getJson<MyProfile>('/api/v1/auth/me', 'No se pudo cargar tu perfil', token)
+  const now = Date.now()
+  if (inflightProfile && inflightProfile.token === token) {
+    if (now - inflightProfile.at < PROFILE_COALESCE_MS) return inflightProfile.promise
+  }
+  const promise = getJson<MyProfile>('/api/v1/auth/me', 'No se pudo cargar tu perfil', token)
+  const entry = { token, at: now, promise }
+  inflightProfile = entry
+  // Un fallo NO se cachea: si el siguiente caller reintenta, que salga de verdad a la red.
+  promise.catch(() => {
+    if (inflightProfile === entry) inflightProfile = null
+  })
+  return promise
 }
 
 // GET /api/v1/consultations (vista de paciente): el backend la scopea a las consultas del propio

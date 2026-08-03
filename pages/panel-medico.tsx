@@ -236,21 +236,36 @@ export default function PanelMedico() {
     let token: string
     try {
       token = await getAccessToken()
-      const panel = await fetchPanel(token)
-      setConsultations([...panel.waiting, ...panel.mine].map(toConsultationRow))
-      setMyClosed(panel.my_closed_count)
     } catch (e) {
       console.error(e)
       setMessage('No se pudieron cargar las consultas.')
       return
     }
-    // En su PROPIO try: cuando compartía el de arriba, un fallo aquí se reportaba como "no se
-    // pudieron cargar las consultas" con el panel ya pintado, y las interconsultas simplemente
-    // no aparecían. Ese enmascaramiento costó un rato de diagnóstico en producción.
-    try {
-      setMyInterconsultations(await fetchMyInterconsultations(token))
-    } catch (e) {
-      console.error(e)
+    // Las dos llamadas son independientes, así que van EN PARALELO: en serie el panel esperaba
+    // un round-trip completo de más antes de pintar (y esto corre también en cada refetch de
+    // Realtime y en cada `focus`, no solo al entrar). allSettled y no Promise.all para que
+    // cada una conserve su propio manejo de error — y para que un rechazo no quede sin
+    // handler mientras se espera a la otra.
+    const [panelRes, interconsultationsRes] = await Promise.allSettled([
+      fetchPanel(token),
+      fetchMyInterconsultations(token)
+    ])
+    if (panelRes.status === 'fulfilled') {
+      const panel = panelRes.value
+      setConsultations([...panel.waiting, ...panel.mine].map(toConsultationRow))
+      setMyClosed(panel.my_closed_count)
+    } else {
+      console.error(panelRes.reason)
+      setMessage('No se pudieron cargar las consultas.')
+    }
+    // Error propio y no compartido: cuando ambos colgaban del mismo try, un fallo de
+    // interconsultas se reportaba como "no se pudieron cargar las consultas" con el panel ya
+    // pintado, y las interconsultas simplemente no aparecían. Ese enmascaramiento costó un
+    // rato de diagnóstico en producción.
+    if (interconsultationsRes.status === 'fulfilled') {
+      setMyInterconsultations(interconsultationsRes.value)
+    } else {
+      console.error(interconsultationsRes.reason)
       setMessage('No se pudieron cargar tus interconsultas.')
     }
   }
