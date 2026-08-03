@@ -42,7 +42,7 @@ const adultSchema = z
     cedula: z.string().regex(CEDULA_REGEX, 'Ingresa un número de cédula válido (ej. V-12345678).'),
     fullName: z.string().trim().min(2, 'Completa tu nombre completo.'),
     phone: z.string().regex(PHONE_REGEX, 'Ingresa un número de WhatsApp válido.'),
-    zona: z.string().min(1, 'Selecciona la zona afectada.'),
+    zona: z.string().min(1, 'Selecciona la zona.'),
     edad: z.string().refine(edadEnRango(18, 120), 'La edad debe estar entre 18 y 120 años.'),
     authedPatient: z.boolean(),
     email: z.string(),
@@ -91,7 +91,7 @@ const minorSchema = z
     gPassword: z.string(),
     mCedula: z.string(),
     mFullName: z.string().trim().min(2, 'Completa el nombre completo del menor.'),
-    zona: z.string().min(1, 'Selecciona la zona afectada.'),
+    zona: z.string().min(1, 'Selecciona la zona.'),
     mEdad: z.string().refine(edadEnRango(0, 17), 'La edad del menor debe estar entre 0 y 17 años.'),
     mHasAllergy: z.boolean(),
     mAllergyDetail: z.string(),
@@ -485,7 +485,7 @@ export default function RegistroPaciente() {
                   </div>
                   <div className="grid grid-2">
                     <div>
-                      <label className="label">Zona afectada *</label>
+                      <label className="label">Zona *</label>
                       <select value={zona} onChange={(e) => setZona(e.target.value)}>
                         <option value="">Selecciona...</option>
                         {zonas.map((z) => (
@@ -598,7 +598,7 @@ export default function RegistroPaciente() {
 
                   <div className="grid grid-2">
                     <div>
-                      <label className="label">Zona afectada *</label>
+                      <label className="label">Zona *</label>
                       <select value={zona} onChange={(e) => setZona(e.target.value)}>
                         <option value="">Selecciona...</option>
                         {zonas.map((z) => (

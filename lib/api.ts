@@ -6,24 +6,32 @@ import { SPECIALTIES } from './utils'
 // (Used to gate on a separate NEXT_PUBLIC_API_BASE_URL that was never set in .env, so
 // these calls silently never reached the backend — see lib/apiClient.ts's API_URL,
 // which both this module and lib/doctors.ts/lib/patients.ts now share.)
+// Las zonas son los estados de Venezuela; espejo de db/migrations/20260802_120000_seed_zonas_estados_venezuela.sql.
 const ZONAS_FALLBACK = [
-  'La Guaira - Catia La Mar',
-  'La Guaira - Maiquetía',
-  'La Guaira - La Guaira (centro)',
-  'La Guaira - Macuto',
-  'La Guaira - Caraballeda',
-  'La Guaira - Naiguatá',
-  'La Guaira - Carayaca',
-  'La Guaira - Caruao',
-  'La Guaira - Otro sector',
-  'Caracas - Centro',
-  'Caracas - Este',
-  'Caracas - Oeste',
-  'Caracas - Sur',
-  'Miranda',
+  'Amazonas',
+  'Anzoátegui',
+  'Apure',
   'Aragua',
+  'Barinas',
+  'Bolívar',
   'Carabobo',
-  'Otro'
+  'Cojedes',
+  'Delta Amacuro',
+  'Distrito Capital',
+  'Falcón',
+  'Guárico',
+  'La Guaira',
+  'Lara',
+  'Mérida',
+  'Miranda',
+  'Monagas',
+  'Nueva Esparta',
+  'Portuguesa',
+  'Sucre',
+  'Táchira',
+  'Trujillo',
+  'Yaracuy',
+  'Zulia'
 ]
 
 export async function fetchSpecialtyCatalog(): Promise<string[]> {
@@ -44,16 +52,17 @@ export async function fetchAffectedZoneCatalog(): Promise<string[]> {
   try {
     const data = await getJson<{ name: string; state: string }[]>(
       '/api/v1/affected-zones/list',
-      'No se pudo cargar zonas afectadas'
+      'No se pudo cargar zonas'
     )
-    // Zonas de estado completo (sin desglose de sector) se sembraron con name === state
-    // (ej. "Miranda"/"Miranda"): mostrar solo el estado en vez de "Miranda - Miranda".
+    // Las zonas se siembran con name === state (ej. "Miranda"/"Miranda"): mostrar solo el
+    // estado en vez de "Miranda - Miranda". El `${state} - ${name}` cubre filas heredadas
+    // por sector que un admin pudiera volver a crear.
     const zones = data
       .map((z) => (z.state === z.name ? z.state : `${z.state} - ${z.name}`))
       .filter(Boolean)
     return zones.length ? zones : ZONAS_FALLBACK
   } catch (e) {
-    console.error('No se pudo cargar el catálogo de zonas afectadas del backend:', e)
+    console.error('No se pudo cargar el catálogo de zonas del backend:', e)
     return ZONAS_FALLBACK
   }
 }
