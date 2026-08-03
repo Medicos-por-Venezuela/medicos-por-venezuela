@@ -270,16 +270,23 @@ export default function ConsultaDetalle() {
     }
 
     setProfile(p)
-    await loadConsultation(id, p)
-    await loadInterconsultation(id)
+    // La consulta y su interconsulta/cadena son independientes: en serie el detalle esperaba
+    // dos round-trips completos de más antes de pintar. `loadConsultation` ya paraleliza lo
+    // suyo (médico asignado + eventos) y cada rama conserva su propio manejo de error.
+    await Promise.all([loadConsultation(id, p), loadInterconsultation(id)])
     setLoading(false)
   }
 
   async function loadInterconsultation(id: string) {
     try {
       const token = await getAccessToken()
-      setInterconsultation(await fetchInterconsultationForConsultation(id, token))
-      setChain(await fetchChain(id, token))
+      // Ambas cuelgan solo de (id, token), no una de la otra: van juntas.
+      const [interconsultation, chain] = await Promise.all([
+        fetchInterconsultationForConsultation(id, token),
+        fetchChain(id, token)
+      ])
+      setInterconsultation(interconsultation)
+      setChain(chain)
     } catch {
       // Silencioso: si falla, simplemente no se muestran interconsulta/cadena.
     }
