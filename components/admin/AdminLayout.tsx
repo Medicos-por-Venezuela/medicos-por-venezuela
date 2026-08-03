@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { href: '/admin/pacientes', label: 'Pacientes' },
   { href: '/admin/doctores', label: 'Doctores' },
   { href: '/admin/usuarios', label: 'Usuarios' },
-  { href: '/admin/zonas-afectadas', label: 'Zonas Afectadas' },
+  { href: '/admin/zonas-afectadas', label: 'Zonas' },
   { href: '/admin/especialidades', label: 'Especialidades' },
   { href: '/admin/tipos-profesionales', label: 'Tipos de Profesionales' }
 ]
