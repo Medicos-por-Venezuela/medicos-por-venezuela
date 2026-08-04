@@ -55,6 +55,8 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  cacheComponents: true,
+  partialPrefetching: true,
   reactStrictMode: true,
   // Quita el `X-Powered-By: Next.js` (6 alertas Low de ZAP: divulga el stack sin dar nada a cambio).
   poweredByHeader: false,
