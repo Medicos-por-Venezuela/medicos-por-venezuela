@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase'
 import { signInWithGoogle } from '../lib/auth'
 import { fetchMyProfile } from '../lib/consultations'
 import GoogleButton from '../components/GoogleButton'
+import { isAdminRole } from '../lib/utils'
 
 export default function LoginMedico() {
   const router = useRouter()
@@ -36,7 +37,7 @@ export default function LoginMedico() {
         setError('Tu cuenta está desactivada. Contacta a un administrador.')
         return
       }
-      if (['admin', 'super_admin'].includes(profile.role)) {
+      if (isAdminRole(profile.role)) {
         router.push('/admin/dashboard')
       } else if (['doctor', 'specialist'].includes(profile.role)) {
         router.push('/panel-medico')
