@@ -285,11 +285,25 @@ export default function RegistroPaciente() {
       // SOLO category/priority de la consulta (matching del panel hoy) — no se toca ese filtro.
       const needsTags = isMinor ? ['Niño / pediatría'] : ['Medicina general']
 
+      // Resolver la especialidad contra el catálogo REAL. Antes se buscaba 'Pediatría' por
+      // nombre exacto, pero el catálogo la renombró a 'Pediatría y subespecialidades': el `find`
+      // devolvía undefined y TODA consulta de un menor se creaba con specialty_id = null (15
+      // casos, el último el 2026-08-04). Se busca por prefijo y, si aun así no aparece, se cae a
+      // medicina general y luego a la primera activa: el id no puede quedar vacío, porque
+      // `specialty_id` ES la columna del matching.
+      const buscarEspecialidad = (prefijo: string) =>
+        specialties.find((s) => s.name.toLowerCase().startsWith(prefijo.toLowerCase()))?.id ?? null
+      const general = buscarEspecialidad('Medicina general') ?? specialties[0]?.id ?? null
       const specialtyId = isMinor
-        ? (specialties.find((s) => s.name === 'Pediatría')?.id ?? null)
+        ? (buscarEspecialidad('Pediatría') ?? general)
         : wantsSpecialty && specialty
           ? specialty
-          : (specialties.find((s) => s.name === 'Medicina general')?.id ?? null)
+          : general
+
+      if (!specialtyId) {
+        setError('No se pudo cargar el catálogo de especialidades. Vuelve a intentarlo.')
+        return // el `finally` de abajo ya resetea `loading`
+      }
 
       let patientId: string
       let patientName: string
