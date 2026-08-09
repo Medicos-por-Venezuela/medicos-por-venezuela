@@ -370,14 +370,7 @@ export default function PanelMedico() {
       setMessage(waitingEmptyMessage)
       return
     }
-    const exactMatch = waiting.find((c) =>
-      matchesConsultation(
-        profile?.specialty,
-        c.specialty,
-        c.category,
-        c.patients?.needs_tags || null
-      )
-    )
+    const exactMatch = waiting.find((c) => matchesConsultation(profile?.specialty, c.specialty))
     await openConsultation(isCurrentUserAdmin ? waiting[0] : exactMatch || waiting[0])
   }
   async function logout() {

@@ -10,7 +10,7 @@ import {
   useAdminGuard
 } from '../../lib/admin'
 import { useEscapeToClose } from '../../lib/hooks'
-import { eligibleSpecialties, SPECIALTIES, STATUS_LABELS } from '../../lib/utils'
+import { STATUS_LABELS } from '../../lib/utils'
 // Todo el acceso a datos pasa por el backend (no Supabase directo): consultas con paciente anidado,
 // updates/eventos, buscador de médicos (/doctors/pool) y baja lógica del paciente.
 import {
@@ -621,7 +621,7 @@ export default function AdminPacientes() {
             </table>
           )}
           <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 12 }}>
-            Especialidades disponibles para derivar: {SPECIALTIES.length}.
+            Especialidades disponibles para derivar: {specialtyCatalog.length}.
           </p>
         </section>
       </div>
@@ -772,18 +772,11 @@ export default function AdminPacientes() {
                     <td>
                       <Line label="Categoría" value={c.category} />
                       <Line label="Motivo" value={c.chief_complaint} />
-                      {/* Especialidad asignada (la columna del match); los casos viejos sin
-                          specialty_id caen a las especialidades derivadas del tipo/necesidades. */}
-                      <Line
-                        label="La pueden atender"
-                        value={
-                          specialtyName(c.specialty_id) ||
-                          eligibleSpecialties(
-                            c.category || null,
-                            c.patients?.needs_tags || null
-                          ).join(', ')
-                        }
-                      />
+                      {/* Especialidad asignada: `consultations.specialty_id` ES el match. Los
+                          casos viejos sin esa columna quedan en blanco a proposito -- antes se
+                          adivinaba con un mapa hardcodeado de necesidades que se desincronizo del
+                          catalogo real; una sugerencia inventada es peor que ninguna. */}
+                      <Line label="La pueden atender" value={specialtyName(c.specialty_id)} />
                     </td>
                     <td>
                       <select
