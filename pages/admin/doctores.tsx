@@ -10,6 +10,7 @@ import {
   USERS_PAGE_SIZE
 } from '../../lib/admin'
 import { useOnlineDoctors } from '../../lib/presence'
+import { isAdminRole } from '../../lib/utils'
 import { fetchProfiles, setProfileActive } from '../../lib/users'
 
 export default function AdminDoctores() {
@@ -226,7 +227,7 @@ export default function AdminDoctores() {
                     <td>{fmtDate(p.created_at)}</td>
                     <td>{onlineIds.has(p.id) ? 'Sí' : 'No'}</td>
                     <td>
-                      {['admin', 'super_admin'].includes(p.role) ? (
+                      {isAdminRole(p.role) ? (
                         <span style={{ color: '#94a3b8', fontSize: 13 }}>—</span>
                       ) : (
                         <button

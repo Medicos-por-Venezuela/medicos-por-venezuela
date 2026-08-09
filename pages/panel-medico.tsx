@@ -13,10 +13,13 @@ import {
 } from '../lib/consultations'
 import {
   STATUS_LABELS,
+  isAdminRole,
+  isPanelRole,
   // `canAttendConsultation` ya no se importa: la elegibilidad la decide el backend (get_panel +
   // claim). Aquí solo queda `matchesConsultation`, que es una preferencia de orden, no un permiso.
   matchesConsultation,
-  minutesSince
+  minutesSince,
+  statusBadgeClass
 } from '../lib/utils'
 import { browserRoomUrl } from '../lib/jitsi'
 import {
@@ -67,13 +70,6 @@ type Consultation = {
 // La presencia del paciente "en sala" se lee por Realtime Presence (usePatientsInRoom), no por
 // heartbeat/patient_last_seen_at: `patientsInRoom.has(c.id)`.
 
-function statusBadgeClass(status: string): string {
-  if (status === 'urgent_in_person') return 'badge-red'
-  if (status === 'referred_to_specialist') return 'badge-blue'
-  if (status === 'in_progress') return 'badge-orange'
-  return 'badge-green'
-}
-
 // El backend (fetchPanel) devuelve el paciente como `patient` y omite campos que la cola no
 // muestra (entered_call_at, internal_note). Lo adaptamos al tipo Consultation que usa el panel.
 function toConsultationRow(c: PanelConsultation): Consultation {
@@ -97,13 +93,6 @@ function toConsultationRow(c: PanelConsultation): Consultation {
     attended_via_whatsapp: c.attended_via_whatsapp,
     patients: c.patient as Patient | null
   }
-}
-
-const ADMIN_ROLES = ['admin', 'super_admin'] as const
-const PANEL_ALLOWED_ROLES = ['doctor', 'specialist', ...ADMIN_ROLES] as const
-
-function isAdminRole(role?: string | null): boolean {
-  return !!role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])
 }
 
 type Profile = {
@@ -213,7 +202,7 @@ export default function PanelMedico() {
       return
     }
 
-    if (!PANEL_ALLOWED_ROLES.includes(me.role as (typeof PANEL_ALLOWED_ROLES)[number])) {
+    if (!isPanelRole(me.role)) {
       router.push('/')
       return
     }

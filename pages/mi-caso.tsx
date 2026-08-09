@@ -7,7 +7,7 @@ import { signInWithGoogle } from '../lib/auth'
 import { fetchMyConsultations, fetchMyProfile } from '../lib/consultations'
 import { fetchMyPatients } from '../lib/patients'
 import GoogleButton from '../components/GoogleButton'
-import { STATUS_LABELS } from '../lib/utils'
+import { isAdminRole, STATUS_LABELS } from '../lib/utils'
 import { requestNotifyPermission, scheduleLocalReminders } from '../lib/nativeNotifications'
 import CalendarSync from '../components/CalendarSync'
 import { downloadIcs } from '../lib/calendar'
@@ -79,7 +79,7 @@ export default function MiCaso() {
         router.replace('/panel-medico')
         return
       }
-      if (['admin', 'super_admin'].includes(profile.role)) {
+      if (isAdminRole(profile.role)) {
         router.replace('/admin/dashboard')
         return
       }

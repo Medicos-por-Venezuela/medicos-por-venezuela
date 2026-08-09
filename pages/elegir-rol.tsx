@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchMyProfile } from '../lib/consultations'
 import { finalizeMyRole } from '../lib/users'
-import { SPECIALTIES } from '../lib/utils'
+import { isAdminRole, SPECIALTIES } from '../lib/utils'
 
 const PAISES = [
   'Venezuela',
@@ -82,7 +82,7 @@ export default function ElegirRol() {
   }, [])
 
   function redirectByRole(role: string) {
-    if (['admin', 'super_admin'].includes(role)) router.replace('/admin/dashboard')
+    if (isAdminRole(role)) router.replace('/admin/dashboard')
     else if (['doctor', 'specialist'].includes(role)) router.replace('/panel-medico')
     else router.replace('/registro-paciente')
   }
