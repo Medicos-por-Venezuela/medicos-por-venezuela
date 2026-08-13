@@ -34,9 +34,21 @@ assert.ok(!h['Content-Security-Policy'], 'la CSP no debe estar en modo bloqueant
 const csp = h['Content-Security-Policy-Report-Only']
 // Los orígenes que la app usa de verdad tienen que estar permitidos, o al desbloquear
 // la CSP se romperían los datos (backend) y el tiempo real (WebSocket de Supabase).
-assert.match(csp, /connect-src[^;]*https:\/\/proyecto\.supabase\.co/, 'falta Supabase en connect-src')
-assert.match(csp, /connect-src[^;]*wss:\/\/proyecto\.supabase\.co/, 'falta el WebSocket de Realtime')
-assert.match(csp, /connect-src[^;]*https:\/\/api\.medicosporvenezuela\.org/, 'falta la API en connect-src')
+assert.match(
+  csp,
+  /connect-src[^;]*https:\/\/proyecto\.supabase\.co/,
+  'falta Supabase en connect-src'
+)
+assert.match(
+  csp,
+  /connect-src[^;]*wss:\/\/proyecto\.supabase\.co/,
+  'falta el WebSocket de Realtime'
+)
+assert.match(
+  csp,
+  /connect-src[^;]*https:\/\/api\.medicosporvenezuela\.org/,
+  'falta la API en connect-src'
+)
 assert.match(csp, /frame-ancestors 'none'/, 'falta el anti-clickjacking moderno')
 // Next inyecta scripts inline; sin esto la CSP bloquearía el arranque de la propia app.
 assert.match(csp, /script-src[^;]*'unsafe-inline'/)
@@ -51,7 +63,11 @@ const bare = await require('../next.config.js').headers()
 const bareCsp = Object.fromEntries(
   bare.find((r) => r.source === '/:path*').headers.map((x) => [x.key, x.value])
 )['Content-Security-Policy-Report-Only']
-assert.match(bareCsp, /connect-src 'self'/, 'sin env vars, connect-src debe quedar en \'self\' limpio')
+assert.match(
+  bareCsp,
+  /connect-src 'self'/,
+  "sin env vars, connect-src debe quedar en 'self' limpio"
+)
 assert.ok(!bareCsp.includes('undefined'))
 
-console.log("OK — cabeceras: enforced correctas, CSP en Report-Only, orígenes reales permitidos.")
+console.log('OK — cabeceras: enforced correctas, CSP en Report-Only, orígenes reales permitidos.')

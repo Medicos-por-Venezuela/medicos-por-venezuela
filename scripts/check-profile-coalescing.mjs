@@ -20,11 +20,21 @@ try {
   // El binario de tsc directo con node: spawnear npx.cmd falla con EINVAL en Windows.
   execFileSync(
     process.execPath,
-    [join('node_modules', 'typescript', 'bin', 'tsc'),
-     // CommonJS: la salida ESM deja imports sin extensión (`./apiClient`) que Node no resuelve.
-     'lib/consultations.ts', '--outDir', out, '--module', 'commonjs',
-     '--moduleResolution', 'node', '--target', 'es2020',
-     '--esModuleInterop', '--skipLibCheck'],
+    [
+      join('node_modules', 'typescript', 'bin', 'tsc'),
+      // CommonJS: la salida ESM deja imports sin extensión (`./apiClient`) que Node no resuelve.
+      'lib/consultations.ts',
+      '--outDir',
+      out,
+      '--module',
+      'commonjs',
+      '--moduleResolution',
+      'node',
+      '--target',
+      'es2020',
+      '--esModuleInterop',
+      '--skipLibCheck'
+    ],
     { stdio: 'inherit' }
   )
 
