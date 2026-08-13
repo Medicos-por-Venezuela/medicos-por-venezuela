@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchMyProfile } from '../lib/consultations'
 import { finalizeMyRole } from '../lib/users'
+import { fetchSpecialtyCatalog } from '../lib/api'
 import { isAdminRole, SPECIALTIES } from '../lib/utils'
 
 const PAISES = [
@@ -35,6 +36,12 @@ export default function ElegirRol() {
   // True when the role was pre-selected from registration intent — hides the "Volver" choice toggle.
   const [locked, setLocked] = useState(false)
   const [specialty, setSpecialty] = useState('')
+  // Catálogo REAL de especialidades (GET /specialties), no la lista hardcodeada: lo que se elija
+  // aquí se guarda tal cual como texto en `users.specialty`, que es la columna con la que matchea
+  // la cola. Pintar la lista vieja hacía que un médico de Google volviera a crear nombres que ya
+  // no existen en el catálogo (p. ej. 'Ginecología', fusionada en 'Ginecología y Obstetricia').
+  // `fetchSpecialtyCatalog` ya cae a SPECIALTIES si el backend no responde.
+  const [specialtyOptions, setSpecialtyOptions] = useState<string[]>(SPECIALTIES)
   const [country, setCountry] = useState('')
   const [license, setLicense] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
@@ -78,6 +85,7 @@ export default function ElegirRol() {
       setChecking(false)
     }
     run()
+    fetchSpecialtyCatalog().then(setSpecialtyOptions)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -213,7 +221,7 @@ export default function ElegirRol() {
                     <label className="label">Especialidad *</label>
                     <select value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
                       <option value="">Selecciona...</option>
-                      {SPECIALTIES.map((s) => (
+                      {specialtyOptions.map((s) => (
                         <option key={s} value={s}>
                           {s}
                         </option>
