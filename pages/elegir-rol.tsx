@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchMyProfile } from '../lib/consultations'
 import { finalizeMyRole } from '../lib/users'
-import { fetchSpecialtyCatalog } from '../lib/api'
-import { isAdminRole, SPECIALTIES } from '../lib/utils'
+import { fetchSpecialties, type SpecialtyResponse } from '../lib/doctors'
+import { isAdminRole } from '../lib/utils'
 
 const PAISES = [
   'Venezuela',
@@ -35,13 +35,11 @@ export default function ElegirRol() {
   const [choice, setChoice] = useState<'' | 'patient' | 'doctor'>('')
   // True when the role was pre-selected from registration intent — hides the "Volver" choice toggle.
   const [locked, setLocked] = useState(false)
+  // El ID del catálogo, no el nombre: se envía como `specialty_id` y es la FK con la que el
+  // backend decide qué puede atender este médico. Ya no hay fallback a una lista hardcodeada —
+  // sin catálogo no se puede producir un id válido, así que se avisa en vez de inventar uno.
   const [specialty, setSpecialty] = useState('')
-  // Catálogo REAL de especialidades (GET /specialties), no la lista hardcodeada: lo que se elija
-  // aquí se guarda tal cual como texto en `users.specialty`, que es la columna con la que matchea
-  // la cola. Pintar la lista vieja hacía que un médico de Google volviera a crear nombres que ya
-  // no existen en el catálogo (p. ej. 'Ginecología', fusionada en 'Ginecología y Obstetricia').
-  // `fetchSpecialtyCatalog` ya cae a SPECIALTIES si el backend no responde.
-  const [specialtyOptions, setSpecialtyOptions] = useState<string[]>(SPECIALTIES)
+  const [specialtyOptions, setSpecialtyOptions] = useState<SpecialtyResponse[]>([])
   const [country, setCountry] = useState('')
   const [license, setLicense] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
@@ -85,7 +83,9 @@ export default function ElegirRol() {
       setChecking(false)
     }
     run()
-    fetchSpecialtyCatalog().then(setSpecialtyOptions)
+    fetchSpecialties()
+      .then((list) => setSpecialtyOptions(list.filter((s) => s.status === 'active')))
+      .catch(() => setError('No se pudo cargar el catálogo de especialidades.'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -129,7 +129,7 @@ export default function ElegirRol() {
       await finalizeMyRole(
         {
           role: 'doctor',
-          specialty,
+          specialty_id: specialty,
           country,
           medical_license: license.trim() || null,
           whatsapp_number: whatsapp.trim()
@@ -222,8 +222,8 @@ export default function ElegirRol() {
                     <select value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
                       <option value="">Selecciona...</option>
                       {specialtyOptions.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
+                        <option key={s.id} value={s.id}>
+                          {s.name}
                         </option>
                       ))}
                     </select>

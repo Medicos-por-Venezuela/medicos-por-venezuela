@@ -116,7 +116,9 @@ export async function setProfileActive(
 // whatsapp_number solo aplican cuando role === 'doctor' (el backend los ignora para 'patient').
 export interface FinalizeRolePayload {
   role: 'patient' | 'doctor'
-  specialty?: string | null
+  // El ID del catálogo, no el nombre: `users.specialty_id` es la FK con la que el backend decide
+  // qué puede atender el médico. El nombre lo resuelve él desde esa fila.
+  specialty_id?: string | null
   country?: string | null
   medical_license?: string | null
   whatsapp_number?: string | null
