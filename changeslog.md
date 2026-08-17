@@ -5,6 +5,35 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-08-17
+
+- **Modo mantenimiento del sitio público, tras un feature flag** — `proxy.ts` + `pages/mantenimiento.tsx`.
+  Permite dejar **producción** en mantenimiento mientras desarrollo sigue funcionando, porque
+  Amplify define las variables por rama: basta con poner `MAINTENANCE_MODE=true` en la de producción.
+  - **Qué se cierra y qué no.** Se cierra la ENTRADA (`/`, `/registro-paciente`, `/registro-medico`).
+    Siguen abiertas las rutas de personal (`/login-medico`, `/admin/*`, `/panel-medico/*`, `/auth/*`,
+    `/elegir-rol`) y —decidido a conciencia— `/sala-espera` y `/mi-caso`: son de pacientes que YA
+    enviaron su solicitud, y cerrarlas dejaría a alguien sin el enlace a su sala en mitad de una
+    videoconsulta.
+  - **En el servidor, no en el cliente.** Sin parpadeo (nadie ve medio segundo un formulario que no
+    funciona) y la variable no lleva `NEXT_PUBLIC_`, así que no viaja al navegador.
+  - **503, no 200.** La página devuelve `Service Unavailable` con `Retry-After` y `noindex`. Con un
+    200, Google indexaría el aviso como si fuera el contenido del sitio; para una organización que
+    depende de que la encuentren, unos días así cuestan posicionamiento.
+  - **`rewrite`, no `redirect`**: la URL original se queda en la barra, así que al terminar el
+    mantenimiento basta recargar.
+  - Se usa **`proxy.ts`** y no `middleware.ts`: Next 16 renombró Middleware a Proxy y avisa de que
+    el nombre viejo está deprecado.
+  - La página incluye el aviso de urgencias (si alguien llega buscando ayuda y el sitio está caído,
+    lo mínimo es no dejarlo sin indicación) y un enlace discreto al panel médico. El acceso de
+    administración NO se enlaza, como en el resto del sitio.
+  - **Verificado sobre un build de producción**, con el flag y sin él: las 9 rutas que deben seguir
+    abiertas responden con su página real, las 3 públicas dan 503 con la página de mantenimiento, y
+    sin el flag las 12 se comportan como siempre.
+  - No es un control de acceso: quien conozca una URL abierta entra igual, que es justo lo que se
+    busca para médicos y administradores. La autenticación sigue siendo Supabase + RLS.
+  - Archivos: `proxy.ts`, `pages/mantenimiento.tsx`, `.env.example`, `CLAUDE.md`, `AGENTS.md`.
+
 ## 2026-07-21
 
 - **Front deja de depender de la vista `profiles` (migración profiles → users)** — se eliminaron

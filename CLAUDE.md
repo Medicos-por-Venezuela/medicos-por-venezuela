@@ -189,6 +189,9 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `/panel-medico/perfil` — doctor self-service profile (view/edit; FastAPI `GET`/`PATCH /doctors/me`);
   also where a `source:"user"` (Google) doctor completes their cédula + professional type to be verified
 - `/auth/callback` — OAuth redirect handler (routes by role / role_chosen)
+- `/mantenimiento` — maintenance notice. Not linked from anywhere: `proxy.ts` rewrites the
+  public site here when `MAINTENANCE_MODE=true`. Returns **503 + Retry-After**, not 200, so a
+  temporary outage does not get indexed as the site's content.
 - `/admin` (+ `/admin/login` alias) — private admin login
 - `/admin/dashboard` — admin dashboard (metrics, doctor revoke, case oversight)
 
@@ -261,6 +264,17 @@ Browser-exposed (`NEXT_PUBLIC_*`, fine — RLS enforces access):
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `NEXT_PUBLIC_API_URL` — base URL of the FastAPI backend (`/api/v1/*`); defaults to
   `http://localhost:8000` if unset
+
+Server-side but **meant to be set in Amplify** (the only one in this group — do not confuse it
+with the secrets below):
+
+- `MAINTENANCE_MODE` — feature flag for maintenance mode. Set to `"true"` **only** in the
+  environment you want frozen (e.g. the production branch); development stays untouched because
+  Amplify scopes variables per branch. Deliberately without `NEXT_PUBLIC_` so it never reaches the
+  browser, and read at build time by `proxy.ts` — flipping it needs a redeploy. Public pages get
+  the maintenance notice; `/login-medico`, `/admin/*`, `/panel-medico/*`, `/auth/*` and
+  `/elegir-rol` stay open for staff, and so do `/sala-espera` and `/mi-caso` so a patient already
+  in the queue is not cut off mid video consultation. It is a notice, **not** an access control.
 
 Server-only (**never** prefix with `NEXT_PUBLIC`, and **never** set them in Amplify — no runtime
 code reads them since `pages/api/videoconsulta.ts` was removed):

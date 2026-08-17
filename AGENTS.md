@@ -129,3 +129,12 @@ To recover any artifact: `mem_search(query: "{topic_key}", project: "medicos-por
   pnpm exec tsc --noEmit
   pnpm lint
   ```
+
+## Maintenance mode
+
+`proxy.ts` (Next 16 renamed Middleware to Proxy) puts the **public** site behind a
+maintenance notice when `MAINTENANCE_MODE=true`. Staff routes (`/login-medico`, `/admin/*`,
+`/panel-medico/*`, `/auth/*`, `/elegir-rol`) and in-flight patient routes (`/sala-espera`,
+`/mi-caso`) stay open — cutting those would strand a patient mid consultation. The flag is
+server-only and read at build time, so toggling it is a redeploy. See CLAUDE.md for the
+full description.
