@@ -50,6 +50,14 @@ async function ensureAuthUser(email: string): Promise<string> {
   if (created.data?.user) return created.data.user.id
   // Ya existía: lo buscamos y le fijamos la contraseña conocida.
   const list = await admin.auth.admin.listUsers()
+  // Sin comprobar `error` primero, TypeScript ve el tipo de `data` como la unión de la respuesta
+  // correcta y la de fallo, y `users` se reduce a `never[]`: el `.find()` de abajo no compilaba
+  // (`TS2339: Property 'email' does not exist on type 'never'`). Como `next build` verifica tipos
+  // de todo el proyecto —`ignoreBuildErrors: false`—, ESTE fichero de test rompía el build de
+  // producción y, con él, el despliegue. Comprobar el error además cubre un caso que faltaba.
+  if (list.error) {
+    throw new Error(`No pude listar los usuarios de auth: ${list.error.message}`)
+  }
   const user = list.data.users.find((u) => u.email === email)
   if (!user) throw new Error(`No pude crear ni encontrar ${email}: ${created.error?.message}`)
   await admin.auth.admin.updateUserById(user.id, { password: PASSWORD })

@@ -3,6 +3,7 @@
 // el BACKEND — POST /consultations/{id}/video-room — desde el registro; el viejo /api/videoconsulta
 // de Next moría en Amplify y dejaba a TODOS los pacientes sin videollamada.)
 import { test, expect, request } from '@playwright/test'
+import { idEspecialidadGeneral } from './helpers'
 
 const API = 'http://localhost:8000/api/v1'
 
@@ -18,7 +19,9 @@ test('paciente con sala: botón de videoconsulta + aviso de WhatsApp', async ({ 
     }
   })
   const patientId = (await patient.json()).id
-  const cons = await api.post(`${API}/consultations`, { data: { patient_id: patientId } })
+  const cons = await api.post(`${API}/consultations`, {
+    data: { patient_id: patientId, specialty_id: await idEspecialidadGeneral() }
+  })
   // El create devuelve el token de acceso a la sala (caduca a las 24 h): sin él, video-room y
   // entered-call responden 401. Es la única vez que el backend lo entrega.
   const { id: cid, access_token: roomToken } = await cons.json()

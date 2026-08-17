@@ -1,10 +1,27 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 // Wrapper for true mount-time effects (e.g. fetching a catalog once on load).
 // Keeps `useEffect` itself out of components — see the project's no-use-effect rule.
 export function useMountEffect(effect: () => void | (() => void)) {
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(effect, [])
+}
+
+// ¿El usuario pidió menos movimiento? Fuente ÚNICA para el JS que anima (hoy, el contador de
+// métricas del home). Lo puramente visual —reveal al hacer scroll, hover, el gesto del hero— se
+// desactiva además por CSS con `@media (prefers-reduced-motion: reduce)`: el CSS aplica desde el
+// primer frame, mientras que este hook solo puede saberlo tras hidratar. Las dos capas juntas
+// evitan el destello de movimiento que vería justo quien pidió no verlo.
+export function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(false)
+  useMountEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    setReduced(mq.matches)
+    const onChange = (e: MediaQueryListEvent) => setReduced(e.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  })
+  return reduced
 }
 
 // Accesibilidad mínima de modales: cierra con Escape mientras `open` sea true.

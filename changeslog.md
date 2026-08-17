@@ -5,6 +5,174 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-08-13
+
+- **Refrescamiento del home — completo (T1 a T11)** — primera mitad del
+  rediseño del home según `.knowledge/spec-home-refresh.md` y `tasks/todo.md`. **Solo el home**: el resto del
+  sitio no cambia.
+  - **T1 assets:** `nueva/oriana.jpg` (5,0 MB, 3117 × 4675) → `public/img/hero-interconsulta.webp`
+    de **32 KB** a 960 × 1120 con recorte `north`, reproducible con
+    `scripts/optimize-hero-image.mjs`. Se midieron 6 variantes antes de elegir WebP q70 (AVIF q45
+    pesaba menos pero WebP lo soporta todo navegador vigente). Los 5 logos SVG y la fuente a
+    `public/brand/`. El original NO se versiona en `public/`.
+  - **T2 tokens:** 8 tokens `--h-*` y la `@font-face` bajo `.home-theme`, siguiendo el patrón
+    `.patient-theme` que ya existía. El cambio en `styles/globals.css` es **puramente aditivo**
+    (0 líneas eliminadas) y `:root` queda intacto: comprobado que `--h-navy` sale vacío en `:root`
+    en `/`, `/login-medico`, `/panel-medico` y `/admin`.
+  - **T3 movimiento:** `usePrefersReducedMotion()` en `lib/hooks.ts` y `useReveal`/`useCountUp` en
+    `components/home/motion.ts`, sin dependencias nuevas. Doble capa a propósito: el CSS apaga el
+    movimiento desde el primer frame y el hook solo puede saberlo tras hidratar.
+  - **T4 navbar y footer:** `components/home/{Navbar,Footer,copy}.tsx`. `pages/index.tsx` pasa de
+    1313 líneas a composición (el home viejo sigue en `git show origin/dev_aws:pages/index.tsx`).
+    **Ningún `href="#"`**: lo que aún no existe (Especialistas, Blog) se pinta como
+    `<span aria-disabled>`, no como enlace muerto.
+  - **Fallo encontrado en verificación y corregido:** styled-jsx añade su clase de scope a los
+    elementos nativos del JSX pero **no a los componentes** (`Link`, `Image`). `.marca`, `Únete`,
+    `Ingresar` y los tres enlaces de "Plataforma" del footer quedaban sin estilo — navy sobre navy,
+    invisibles en pantalla. Resuelto con `:global()` acotado siempre por un ancestro sí scopeado.
+    El home anterior no lo sufría porque navegaba con `<button onClick={router.push}>` en lugar de
+    enlaces reales.
+  - **T5 hero:** `components/home/Hero.tsx`. Split a dos columnas con el gesto mayor acordado —
+    seis bloques de texto entrando a 0/60/120/180/240/300 ms y la foto con `scale(1.06) → 1` de
+    0,9 s. Con `prefers-reduced-motion: reduce` no se mueve nada (medido: 1e-05s y `transform`
+    identidad). La foto va por `next/image` con `priority` y `sizes`: en móvil descarga **10 KB**
+    (w=384) y en escritorio 22 KB (w=750), una sola variante por viewport. El `alt` del prototipo
+    ("Dos médicos venezolanos") se reescribió porque la foto es de **una** médica sola.
+  - **Defecto corregido en T5:** los separadores de las métricas eran `<span>` y al envolverse la
+    fila dejaban una rayita colgando — a 360, 480 **y 1100 px**, este último con pantalla ancha y
+    columna estrecha. Ahora son `border-left` bajo una **container query** sobre el ancho de la
+    columna: un breakpoint de viewport no podía cubrir ese caso. Comprobado en 13 anchos de 320 a
+    1920 px sin scroll horizontal.
+  - **Tipografía, bloqueo resuelto:** el equipo aportó Nunito Sans como **fuente variable**
+    (`wght 200..1000`). Antes solo existía la estática Bold y, al ser la única cara de la familia,
+    el emparejador CSS la usaba para todos los pesos: medido, 300 a 900 renderizaban el mismo
+    ancho exacto (606,44 px) y el home no tenía jerarquía tipográfica. Ahora miden 450,13 / 457,92
+    / 465,83 / 475,11 / 485,55 / 496,23. `scripts/build-fonts.mjs` fija los ejes que no usamos
+    (wdth, opsz, YTLC) y recorta a latin + flechas: **28 KB** la redonda y 30 KB la itálica real,
+    frente a los ~160 KB que habrían costado cuatro estáticas. `OFL.txt` viaja con los ficheros,
+    como exige la licencia. La declaración usa `font-weight: 200 1000`: con un peso suelto el
+    navegador vuelve a tratar la familia como de una sola cara.
+  - **T6 puertas de entrada y cierre:** `components/home/Puertas.tsx` y `CtaFinal.tsx`. Las 6
+    tarjetas se visitaron una a una en la verificación: las 6 devuelven HTTP 200 y ninguna cae en
+    la 404. El hover pinta el filete azul en 0,15 s, y también con `:focus-visible`. La de "Soy
+    médico en Venezuela" apunta al registro porque hoy **no existe** flujo público de
+    interconsulta; anotado en el código y pendiente con las owners. El cierre va sobre navy: el
+    prototipo lo monta sobre una foto que no está entre los assets entregados.
+  - **Tres defectos corregidos en T6:**
+    1. Sin JavaScript, las secciones con `useReveal` se quedaban en `opacity: 0` **para siempre**
+       — el texto estaba en el HTML pero era invisible para una persona. Un `<noscript>` neutraliza
+       `.reveal`; es el único caso que no puede resolverse desde JS.
+    2. Con la navbar fija de 76 px, saltar a un ancla dejaba la cabecera de la sección tapada. Se
+       añadió `scroll-margin-top: var(--h-navbar)` a todo `[id]` del home. El 76 estaba duplicado
+       en JS dentro de `Navbar.tsx`: ahora es un token con una sola fuente.
+    3. El cierre usaba `auto-fit` y a 768 px seguían entrando 3 columnas mientras la media query
+       aplicaba los bordes del apilado. Mismo error que con las métricas del hero: mezclar layout
+       intrínseco con breakpoint de viewport. Ahora el número de columnas es explícito.
+  - **T7 Quiénes Somos + Valores:** `components/home/QuienesSomos.tsx` y `Valores.tsx`. El ancla
+    del navbar deja la sección justo bajo la barra, ambas revelan al entrar en pantalla, y "Conoce
+    nuestra historia →" va como `<span aria-disabled>` porque esa página está fuera de alcance.
+    Faltan dos assets del prototipo (la foto de 460 px de Quiénes Somos y las cuatro fotos
+    circulares de los valores): la sección va a una columna con el ancho de lectura limitado y los
+    valores solo en texto.
+  - **T8 Cómo Funciona:** `components/home/ComoFunciona.tsx`, la única sección con estado. Tres
+    pestañas con cuatro pasos cada una, arrancando en paciente. Es un `tablist` de verdad, no tres
+    botones que cambian un div: roles y `aria-*` enlazados por id, **roving tabindex** (se llega en
+    un salto de tabulador y desde la pestaña activa otro Tab lleva al panel), flechas con vuelta
+    circular, Home/End y Enter/Espacio. Fundido de entrada de 200 ms, a ~0 con `reduce` y con el
+    panel visible. No es un cross-fade literal: superponer paneles de distinta altura daría saltos
+    de maquetación.
+  - **Auditoría de accesibilidad con axe-core (WCAG 2.1 AA).** Se auditaron 7 estados: el home a
+    1440/768/360, con el menú móvil abierto, con la tercera pestaña de Cómo Funciona activa, y las
+    dos pantallas de registro. Partía de **18 violaciones**; el home quedó en **0** en los cinco
+    estados (43 reglas pasadas cada uno). Lo corregido:
+    - **Contraste: 45 nodos por debajo del 4,5:1.** El prototipo pone texto de 10-11 px en blanco
+      al 25-45 % sobre fondos oscuros; el peor daba **2,28:1**. Se calcularon los mínimos reales
+      (blanco al 46 % sobre `--h-navy`, al 55 % sobre `--h-blue-deep`) y se crearon dos tokens,
+      `--h-sobre-oscuro-medio` (80 %) y `--h-sobre-oscuro-tenue` (62 %), para no aplanar la
+      jerarquía. El azul de marca como texto pequeño da 3,38:1 sobre navy: se añadió
+      `--h-blue-claro` (#3d8bff, 4,95:1) para ese caso, y sobre fondo claro se usa `--h-blue-dark`
+      (6,20:1 frente al 4,41:1 del azul base). **Es una desviación visible del prototipo** — las
+      secciones oscuras quedan más claras — pero 2,28:1 en una web para pacientes no es defendible.
+    - **`<html lang="es">`**: no existía `pages/_document.tsx`, así que el sitio **entero** servía
+      `<html>` sin idioma. Un lector de pantalla leía el español con fonética inglesa. Es un fallo
+      de nivel A (WCAG 3.1.1) y afectaba a las siete páginas auditadas, no solo al home.
+    - **Menú móvil fuera de landmark**: pasó de `<div>` a `<nav aria-label>`.
+    - **`.hint` a 3,54:1**: corregido con el gris de marca, acotado a las dos pantallas de registro
+      para no tocar el panel ni el admin.
+  - **Hallazgo crítico NO corregido (fuera de alcance):** en `/registro-paciente` y
+    `/registro-medico`, **21 de 25 campos no tienen nombre accesible**. Las etiquetas visibles
+    existen pero no están asociadas (sin `id`/`htmlFor` ni `<label>` envolvente), así que un lector
+    de pantalla anuncia "cuadro de edición" sin decir qué se pide — en el formulario por el que un
+    paciente pide atención médica. Arreglarlo exige tocar el marcado de esas páginas, y el encargo
+    era "solo colores y tipografía". **Merece su propia rama.**
+  - **T10 re-tematizado de las pantallas de registro:** `/registro-paciente` y `/registro-medico`
+    adoptan la paleta y la tipografía nuevas **sin que cambie una sola línea de esas dos páginas**
+    — `git diff` de ambas está vacío. Se hizo redefiniendo tokens dentro de sus clases de tema, que
+    es el patrón que ya usaba `.patient-theme`. Incluso el enlace con
+    `style={{ color: 'var(--home-blue)' }}` de `registro-medico` se resolvió redefiniendo ese token.
+    Se quitaron las cuatro reglas propias que usaban el azul y el dorado del home **antiguo**: con
+    `--green` apuntando al azul de marca, el `.btn-primary` por defecto ya da el botón correcto.
+    Comprobado que `/panel-medico`, `/admin`, `/mi-caso` y `/login-medico` siguen exactamente igual
+    (fuente de sistema, `--green: #0f6e56`) y que `:root` es byte a byte el de HEAD.
+  - **T11 verificación final — los 10 criterios del spec, medidos:** (1) las 12 secciones en el
+    orden del prototipo; (2) las tres puertas a `/registro-paciente`, `/registro-medico`,
+    `/registro-medico`; (3) 23 enlaces, **0 muertos y 0 anclas rotas**; (4) foto del hero de
+    **32 KB** a 960 × 1120 (2× del hueco de 480 × 560); (5) métricas del hero en **+2.000**;
+    (6) `:root` sin cambios; (7) panel y admin idénticos; (8) con `prefers-reduced-motion: reduce`,
+    **0 elementos con animación viva y 0 ocultos**; (9) `tsc`, `lint`, `format:check` y `build` en
+    verde sin warnings nuevos; (10) **E2E 11/11**.
+  - **E2E: 8 specs estaban en rojo y no por este trabajo.** `POST /consultations` empezó a exigir
+    `specialty_id` (cambio de backend de esta misma sesión) y los specs creaban las consultas solo
+    con `patient_id`: 422 → el `id` llegaba `undefined` → fallo en cascada en todo lo que dependía
+    de esa consulta. Se añadió `e2e/helpers.ts` con `idEspecialidadGeneral()`, que lee una
+    especialidad real del catálogo (el UUID cambia por entorno, no se puede fijar en el código), y
+    los 8 puntos de creación la pasan. Suite completa en verde.
+  - **T9 Especialistas + Testimonios + Impacto + Blog:** las cuatro rejillas que cierran el cuerpo
+    del home. Con esto **las doce secciones del prototipo están montadas**. Verificado sobre el
+    home completo: **23 enlaces, ninguno muerto** (0 con `href` vacío o `#`), las 7 anclas
+    resuelven, y los 5 CTA sin destino son texto con `aria-disabled`, no enlaces.
+  - **Placeholders sin inventar datos.** Los 6 perfiles de Especialistas y las 3 tarjetas de Blog
+    son placeholder declarados como tales en el copy. No llevan nombres de médicos ni titulares de
+    artículos inventados: una tarjeta con un nombre y una especialidad plausibles junto a un
+    "✓ Verificado" es una credencial falsa aunque sea de mentira para maquetar, y esta organización
+    se define por verificar a sus médicos. Dicen "Perfil por publicar / Especialidad / País".
+    **⚠️ No pueden publicarse así.** Los testimonios, en cambio, son las 6 citas reales del copy, y
+    van sin la foto circular del prototipo porque son pacientes anónimos.
+  - **Fallo corregido en la primitiva de movimiento (T3):** `useCountUp` arrancaba en 0, así que el
+    servidor pintaba "+0" y sin JavaScript las cifras de impacto se quedaban en cero — números
+    falsos en la sección que argumenta el impacto. Ahora arranca en el valor final y la animación
+    baja a 0 solo cuando el observer dispara. Es el mismo tipo de fallo que el `.reveal` invisible
+    sin JS: una animación que decide el contenido en vez de solo su entrada.
+  - **Auditoría de copy (respuesta a "¿todo lo escrito está en el copy?"):** de las 78 cadenas
+    visibles del home, **67 salen del `.docx` y 11 no**. Del prototipo y no del copy:
+    "Interconsulta en curso", "24/7", "Disponible · Confidencial", la numeración "01/02/03" de las
+    puertas, y "Plataforma", "Organización", "Contacto", "Ser voluntario", "Interconsulta médica"
+    del pie — "Contacto" e "Interconsulta médica" no aparecen en el `.docx` en absoluto. Aparte:
+    "+2.000" (decisión del equipo, el copy dice +3.000) y el `alt` de la foto más los `aria-label`,
+    que un documento de copy no cubre pero un lector de pantalla sí lee. Todas viven en `copy.ts`,
+    con la lista anotada en su cabecera.
+  - **Copy: el prototipo va por detrás del `.docx`.** Los valores del prototipo son Calidad /
+    Credibilidad / Autonomía / Gratuidad; los del copy aprobado son Verificados / Autónomos /
+    Gratuitos / **Confidenciales** — no es solo un cambio de nombre, uno de los cuatro conceptos es
+    distinto. Lo mismo pasa con las descripciones de las tres puertas. Queda escrita la regla en
+    `copy.ts`: **el texto sale del `.docx`, la maqueta sale del prototipo**. El copy quedó
+    confirmado como aprobado el 2026-08-13.
+  - **Colisión de nombres de clase (encontrada al revisar el hero):** `globals.css` ya tenía
+    `.hero` y `.badge` del sitio anterior. Una regla scopeada de styled-jsx solo gana en las
+    propiedades que declara, así que el hero heredaba en silencio `padding: 40px 24px`,
+    `border-radius: 24px` y `color: white` de una, y `border-radius: 999px` de la otra. Renombradas
+    a `.portada` y `.rotulo`: las demás clases del home no chocaron por estar en español. Regla
+    anotada en `Hero.tsx` para las secciones que faltan.
+  - **`nueva/` al `.gitignore`:** es material de referencia (prototipo de 10 MB, copy, foto de
+    5 MB, fuentes TTF) y no se versiona. Lo que el sitio necesita ya está derivado en `public/`.
+  - **Nota ajena a este trabajo:** `pnpm build` **ya venía rojo desde la base** por
+    `e2e/global-setup.ts(53,46) TS2339` (`list.data.users` se infiere `never[]`, tipos de
+    `@supabase/supabase-js`). Excluyendo `e2e` del typecheck el build compila y genera las 23 rutas.
+    No se toca aquí: merece su propia rama.
+  - Archivos: `components/home/` (nuevo), `pages/index.tsx`, `styles/globals.css`, `lib/hooks.ts`,
+    `scripts/optimize-hero-image.mjs`, `public/brand/`, `public/img/`, `tasks/`,
+    `.knowledge/spec-home-refresh.md`.
+
 ## 2026-07-21
 
 - **Front deja de depender de la vista `profiles` (migración profiles → users)** — se eliminaron

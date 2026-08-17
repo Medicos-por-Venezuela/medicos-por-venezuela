@@ -6,6 +6,7 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { test, expect, request } from '@playwright/test'
+import { idEspecialidadGeneral } from './helpers'
 
 const API = 'http://localhost:8000/api/v1'
 
@@ -34,7 +35,9 @@ async function seedClaimedConsultation(token: string): Promise<string> {
     }
   })
   const patientId = (await patient.json()).id
-  const cons = await ctx.post(`${API}/consultations`, { data: { patient_id: patientId } })
+  const cons = await ctx.post(`${API}/consultations`, {
+    data: { patient_id: patientId, specialty_id: await idEspecialidadGeneral() }
+  })
   const cid = (await cons.json()).id
   const claim = await ctx.post(`${API}/consultations/${cid}/claim`, { data: {}, headers: auth })
   if (!claim.ok()) throw new Error(`claim devolvió ${claim.status()}`)
