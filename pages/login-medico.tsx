@@ -1,113 +1,25 @@
 import Head from 'next/head'
-import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { useState } from 'react'
-import { supabase } from '../lib/supabase'
-import { signInWithGoogle } from '../lib/auth'
-import { fetchMyProfile } from '../lib/consultations'
-import GoogleButton from '../components/GoogleButton'
-import { isAdminRole } from '../lib/utils'
+import { useEffect } from 'react'
 
-export default function LoginMedico() {
+// Ruta histórica del acceso médico. El login del sitio es único (/login) y decide el destino por
+// rol, así que aquí ya no hay formulario. No se borra el archivo: hay enlaces externos y desde
+// /registro-medico, y un 404 es peor que un salto.
+export default function LoginMedicoRedirect() {
   const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
 
-  const login = async () => {
-    setError('')
-    setLoading(true)
-    try {
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password
-      })
-      if (authError) throw authError
-      if (!authData.session) throw new Error('Sin sesión tras el login.')
-
-      // El perfil (rol/estado) viene del backend (/auth/me), no de una lectura directa a `users`.
-      const profile = await fetchMyProfile(authData.session.access_token)
-      if (!profile.role_chosen) {
-        router.push('/elegir-rol')
-        return
-      }
-      if (!profile.active) {
-        await supabase.auth.signOut()
-        setError('Tu cuenta está desactivada. Contacta a un administrador.')
-        return
-      }
-      if (isAdminRole(profile.role)) {
-        router.push('/admin/dashboard')
-      } else if (['doctor', 'specialist'].includes(profile.role)) {
-        router.push('/panel-medico')
-      } else {
-        router.push('/mi-caso')
-      }
-    } catch (e) {
-      console.error(e)
-      setError('Email o contraseña incorrectos.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loginWithGoogle = async () => {
-    setError('')
-    setLoading(true)
-    try {
-      await signInWithGoogle()
-      // On success the browser is redirected to Google, then back to /auth/callback.
-    } catch (e) {
-      console.error(e)
-      setError('No se pudo iniciar sesión con Google. Intenta de nuevo.')
-      setLoading(false)
-    }
-  }
+  useEffect(() => {
+    router.replace('/login')
+  }, [router])
 
   return (
     <>
       <Head>
-        <title>Acceso médico — Médicos por Venezuela</title>
+        <title>Iniciar sesión — Médicos por Venezuela</title>
       </Head>
       <main className="page">
         <div className="narrow">
-          <Link href="/" className="link-button">
-            ← Volver
-          </Link>
-          <div className="card" style={{ marginTop: 14 }}>
-            <h1 style={{ marginTop: 0 }}>Acceso médico</h1>
-            <p style={{ color: '#64748b' }}>Entra con tu email y contraseña, o con Google.</p>
-            <div className="grid">
-              <div>
-                <label className="label">Email</label>
-                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-              </div>
-              <div>
-                <label className="label">Contraseña</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') login()
-                  }}
-                />
-              </div>
-              {error && <div className="notice notice-danger">{error}</div>}
-              <button className="btn btn-primary btn-full" onClick={login} disabled={loading}>
-                {loading ? 'Entrando...' : 'Entrar'}
-              </button>
-              <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>
-              <GoogleButton onClick={loginWithGoogle} disabled={loading} />
-              <p style={{ textAlign: 'center', color: '#64748b', margin: 0 }}>
-                ¿No tienes cuenta?{' '}
-                <Link href="/registro-medico" className="link-button">
-                  Crear cuenta
-                </Link>
-              </p>
-            </div>
-          </div>
+          <div className="card">Llevándote al inicio de sesión...</div>
         </div>
       </main>
     </>
