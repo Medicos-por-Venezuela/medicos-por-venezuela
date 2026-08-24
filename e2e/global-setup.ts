@@ -60,7 +60,7 @@ function seedDoctorRow(uid: string, name: string, cedula: string): void {
   const sql = [
     // Idempotencia entre corridas: libera esta cédula de cualquier otro doctor de prueba previo.
     `update public.doctors set cedula=null where cedula='${cedula}' and user_id<>'${uid}';`,
-    `update public.users set role='doctor', verified=true, active=true, full_name='${name}' where id='${uid}';`,
+    `update public.users set role='doctor', verified=true, active=true, role_chosen=true, full_name='${name}' where id='${uid}';`,
     `insert into public.doctors (user_id, full_name, cedula) select '${uid}','${name}','${cedula}' where not exists (select 1 from public.doctors where user_id='${uid}');`,
     `update public.doctors set cedula='${cedula}' where user_id='${uid}';`
   ].join(' ')
@@ -112,7 +112,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   const adminUid = await ensureAuthUser('e2e-admin@example.com')
   execSync(
     `docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c ` +
-      `"update public.users set role='admin', verified=true, active=true, full_name='E2E Admin' where id='${adminUid}';"`,
+      `"update public.users set role='admin', verified=true, active=true, role_chosen=true, full_name='E2E Admin' where id='${adminUid}';"`,
     { stdio: 'pipe' }
   )
   await saveSession('e2e-admin@example.com', baseURL, 'e2e/.auth/admin.json')
@@ -122,7 +122,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   // del multi-rol del backend, no del único profiles.role.
   const dualUid = await ensureAuthUser('e2e-dual@example.com')
   const dualSql = [
-    `update public.users set role='doctor', verified=true, active=true, full_name='E2E Dual DoctorAdmin' where id='${dualUid}';`,
+    `update public.users set role='doctor', verified=true, active=true, role_chosen=true, full_name='E2E Dual DoctorAdmin' where id='${dualUid}';`,
     // idempotente: agrega super_admin activo solo si no lo tiene ya
     `insert into public.user_roles (user_id, role_id) select '${dualUid}', r.id from public.roles r where r.code='super_admin' and not exists (select 1 from public.user_roles ur where ur.user_id='${dualUid}' and ur.role_id=r.id and ur.revoked_at is null);`
   ].join(' ')
@@ -130,4 +130,13 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
     stdio: 'pipe'
   })
   await saveSession('e2e-dual@example.com', baseURL, 'e2e/.auth/dual.json')
+
+  // Paciente de prueba: el cuarto destino del fan-out de /login (login-fanout.spec.ts). No guarda
+  // storageState — ese spec entra por el formulario de verdad, no con la sesión ya puesta.
+  const patientUid = await ensureAuthUser('e2e-patient@example.com')
+  execSync(
+    `docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c ` +
+      `"update public.users set role='patient', active=true, role_chosen=true, full_name='E2E Paciente Login' where id='${patientUid}';"`,
+    { stdio: 'pipe' }
+  )
 }
