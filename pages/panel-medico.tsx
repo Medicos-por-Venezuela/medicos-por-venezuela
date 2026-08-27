@@ -196,7 +196,11 @@ export default function PanelMedico() {
       return
     }
 
-    if (!me.active || !me.verified) {
+    // Solo `active`: es el gate real, el que mueve el botón "Revocar acceso" del admin.
+    // `verified` (users.verified) se quitó de aquí porque nace true y ningún camino del backend
+    // la baja — comprobarla era evaluar una constante. El dato de credencial (SACS/FPV) vive en
+    // `doctors.verified` y no gatea el acceso: lo supervisa un admin desde su lista.
+    if (!me.active) {
       await supabase.auth.signOut()
       router.push('/login-medico')
       return
