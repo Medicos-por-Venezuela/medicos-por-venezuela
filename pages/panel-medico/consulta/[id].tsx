@@ -239,7 +239,7 @@ export default function ConsultaDetalle() {
   async function init(id: string) {
     const { data: sessionData } = await supabase.auth.getSession()
     if (!sessionData.session) {
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
 
@@ -257,7 +257,7 @@ export default function ConsultaDetalle() {
       }
     } catch {
       await supabase.auth.signOut()
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
 
@@ -267,7 +267,7 @@ export default function ConsultaDetalle() {
     // `doctors.verified` y no gatea el acceso: lo supervisa un admin desde su lista.
     if (!p.active) {
       await supabase.auth.signOut()
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
 

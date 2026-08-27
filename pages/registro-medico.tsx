@@ -466,7 +466,7 @@ export default function RegistroMedico() {
 
             <p style={{ marginTop: 18, color: '#64748b' }}>
               ¿Ya tienes cuenta?{' '}
-              <Link href="/login-medico" style={{ color: 'var(--home-blue)', fontWeight: 800 }}>
+              <Link href="/login" style={{ color: 'var(--home-blue)', fontWeight: 800 }}>
                 Entrar al panel médico
               </Link>
             </p>

@@ -99,7 +99,7 @@ export default function PerfilMedico() {
   async function init() {
     const { data: sessionData } = await supabase.auth.getSession()
     if (!sessionData.session) {
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
     const accessToken = sessionData.session.access_token
@@ -117,7 +117,7 @@ export default function PerfilMedico() {
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         await supabase.auth.signOut()
-        router.push('/login-medico')
+        router.push('/login')
         return
       }
       if (e instanceof ApiError && e.status === 404) {
@@ -287,7 +287,7 @@ export default function PerfilMedico() {
     // by Supabase auto-refresh (or expired), which would 401 the PATCH for no real reason.
     const { data: sessionData } = await supabase.auth.getSession()
     if (!sessionData.session) {
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
 

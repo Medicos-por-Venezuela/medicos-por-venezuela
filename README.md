@@ -97,21 +97,22 @@ CLAUDE.md              assistant/codebase conventions
 
 ## Routes
 
-| Route                         | Purpose                                                                     |
-| ----------------------------- | --------------------------------------------------------------------------- |
-| `/`                           | Home — two cards: paciente / médico (no admin link)                         |
-| `/registro-paciente`          | Patient request form (public; optional account + Google)                    |
-| `/sala-espera`                | Patient confirmation; shows the video room link on screen                   |
-| `/registro-medico`            | Doctor self-registration (email+password or Google)                         |
-| `/elegir-rol`                 | First-time Google role picker (patient vs doctor)                           |
-| `/mi-caso`                    | Patient login + read-only case status                                       |
-| `/login-medico`               | Doctor login                                                                |
-| `/panel-medico`               | Doctor/admin panel — queue, claim case, active case visibility, counters    |
-| `/panel-medico/consulta/[id]` | Case detail page — patient details, video link, note, close/no-show actions |
-| `/auth/callback`              | OAuth redirect handler (routes by role / `role_chosen`)                     |
-| `/admin` (+ `/admin/login`)   | Private admin login (unlinked, `noindex`)                                   |
-| `/admin/dashboard`            | Admin dashboard — metrics, doctor revoke, case oversight                    |
-| `/api/videoconsulta`          | **Server** — creates/returns the Jitsi room for a consultation              |
+| Route                         | Purpose                                                                       |
+| ----------------------------- | ----------------------------------------------------------------------------- |
+| `/`                           | Home — two cards: paciente / médico (no admin link)                           |
+| `/registro-paciente`          | Patient request form (public; optional account + Google)                      |
+| `/sala-espera`                | Patient confirmation; shows the video room link on screen                     |
+| `/registro-medico`            | Doctor self-registration (email+password or Google)                           |
+| `/elegir-rol`                 | First-time Google role picker (patient vs doctor)                             |
+| `/login`                      | **Single sign-in for everyone** — routes by effective role after auth         |
+| `/mi-caso`                    | Patient portal — read-only case status (no login form; redirects to `/login`) |
+| `/login-medico`               | Legacy doctor login — redirects to `/login`                                   |
+| `/panel-medico`               | Doctor/admin panel — queue, claim case, active case visibility, counters      |
+| `/panel-medico/consulta/[id]` | Case detail page — patient details, video link, note, close/no-show actions   |
+| `/auth/callback`              | OAuth redirect handler (routes by role / `role_chosen`)                       |
+| `/admin` (+ `/admin/login`)   | Legacy admin entrance — redirects to `/login` (`noindex`)                     |
+| `/admin/dashboard`            | Admin dashboard — metrics, doctor revoke, case oversight                      |
+| `/api/videoconsulta`          | **Server** — creates/returns the Jitsi room for a consultation                |
 
 ---
 
@@ -123,7 +124,7 @@ CLAUDE.md              assistant/codebase conventions
 - **Doctors** self-register (email+password or Google) with **instant access** (`verified` + `active` set on
   signup). Admins can **revoke** a doctor anytime by setting `active = false` (instant cutoff via
   `current_user_role()`).
-- **Admins** are promoted manually via SQL. Private login at `/admin`.
+- **Admins** are promoted manually via SQL. They sign in at `/login` like everyone else.
 - **Google sign-in:** OAuth can't carry a role, so a first-time Google user gets a placeholder profile
   (`role_chosen = false`) and is routed to `/elegir-rol`. The choice is finalized by the `set_my_role` RPC,
   which can **never** grant admin/specialist.
@@ -240,7 +241,7 @@ The "backend" is provisioned entirely in Supabase — there is no local server t
        full_name = 'Administrador principal'
    where email = 'YOUR_EMAIL@example.com';
    ```
-   Then log in at `/admin`.
+   Then log in at `/login` — the single sign-in routes an admin to `/admin/dashboard`.
 5. **Get API keys:** Supabase → Project Settings → API → copy the Project URL and anon key.
 
 ### Run the frontend locally
