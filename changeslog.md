@@ -5,6 +5,38 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-08-27
+
+- **El badge "Verificado" del admin decía la verdad a nadie** — la lista de médicos leía
+  `users.verified`, que nace `true` en `handle_new_auth_user` y **ninguna ruta del backend baja**.
+  Resultado: badge verde para todo el mundo. El dato real de credencial (contrastar la cédula con
+  SACS o FPV) vive en `doctors.verified`, repartido **795 sin validar / 2160 validadas**: el 27% de
+  los médicos aparecía como verificado sin estarlo, y **no había ninguna otra pantalla** donde el
+  admin pudiera comprobarlo (`/doctors/pool` no devuelve el campo).
+  - Backend: `GET /profiles` expone `doctor_verified` con un LEFT JOIN a `doctors` en la misma
+    consulta paginada. `null` = esa persona no tiene ficha, así que no hay cédula que validar;
+    colapsarlo a `false` acusaría a un paciente de no estar verificado.
+  - `deleted_at IS NULL` va en el `ON` del join, no en el `WHERE`: el índice único de
+    `doctors.user_id` es **parcial**, y sin ese filtro una ficha borrada duplicaría la fila del
+    usuario y descuadraría la página contra el total. En el `WHERE` habría convertido el LEFT JOIN
+    en INNER, haciendo desaparecer de la lista a todo el que no sea médico.
+  - Anti-N+1 con test que cuenta las consultas: con ~3500 usuarios, un SELECT por fila hundiría la
+    pantalla que más usa el admin.
+  - Frontend: los dos badges (`admin/doctores`, `UsersManager`) leen el campo nuevo y dicen
+    **"Cédula verificada" / "Cédula sin verificar"** — nombrar _qué_ se verificó es lo que evita
+    repetir la ambigüedad. Quien no es médico ya no lleva badge.
+  - Se quitan los `!me.verified` de los guards de `panel-medico` y `consulta/[id]`: comprobaban una
+    constante. `active` se queda, que es el gate real (botón "Revocar acceso").
+  - **`users.verified` NO se borra.** `current_user_role()` sigue filtrando por ella, así que el
+    gancho de aprobación previa que documenta `CLAUDE.md` funcionaría poniéndola en `false` sin
+    tocar ninguna de las 5 políticas RLS que protegen la PII de pacientes. Cambio **aditivo**: cero
+    migraciones, cero RLS.
+  - Tests: 4 en el backend (los tres estados, ficha borrada, anti-N+1) y
+    `e2e/admin-cedula-verificada.spec.ts`. Los dos juegos verificados poniéndose **rojos** al volver
+    a leer `users.verified`; `global-setup` siembra ahora un médico sin validar.
+  - Docs: `CLAUDE.md` y `AGENTS.md` estrenan "Las dos columnas `verified`". Artefactos en
+    `tasks/users-verified/`.
+
 ## 2026-07-21
 
 - **Front deja de depender de la vista `profiles` (migración profiles → users)** — se eliminaron

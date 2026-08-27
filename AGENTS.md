@@ -129,3 +129,34 @@ To recover any artifact: `mem_search(query: "{topic_key}", project: "medicos-por
   pnpm exec tsc --noEmit
   pnpm lint
   ```
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
+
+## Las dos columnas `verified`
+
+Hay dos, se llaman igual y significan cosas distintas. Confundirlas ya causó un bug: la lista de
+médicos del admin mostraba a **todos** como "Verificado", incluidos los 795 (de 2955) cuya cédula
+no validó.
+
+| Columna            | Qué significa                                                                                                             | Quién la escribe                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `users.verified`   | **Gancho reservado, hoy inerte.** Nace `true` en `handle_new_auth_user` y **ninguna ruta del backend la pone en `false`** | Solo `finalize_role`, y solo a `true`                      |
+| `doctors.verified` | El dato real: la cédula validó contra **SACS** (médico) o **FPV** (psicólogo)                                             | `_verify_credential()` al registrar y al cambiar la cédula |
+
+**Regla:** cualquier UI o lógica que hable de "verificado" en el sentido de credencial profesional
+lee `doctors.verified`. `users.verified` no debe decidir ni mostrarse; comprobarla es evaluar una
+constante.
+
+El admin lo ve vía `doctor_verified` en `GET /profiles` (LEFT JOIN a `doctors`, `null` = esa
+persona no tiene ficha). Fijado por `e2e/admin-cedula-verificada.spec.ts`.
+
+`users.verified` **no se borra**: `current_user_role()` sigue filtrando por ella, así que el gancho
+de aprobación previa (ver Security notes) funcionaría poniéndola en `false` sin tocar RLS.
