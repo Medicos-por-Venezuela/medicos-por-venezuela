@@ -10,8 +10,8 @@
 ### T1: Extraer el fan-out post-login a `lib/postLogin.ts`
 
 **Descripción:** Crear el único resolvedor de "¿a dónde va este usuario tras autenticar?",
-copiando la lógica que `pages/auth/callback.tsx:76-91` ya tiene bien (usa `effectiveAdminRole`,
-no `isAdminRole`), y hacer que el callback pase a consumirlo. Sin cambio de comportamiento
+copiando la lógica de `pages/auth/callback.tsx:76-91` y haciendo que el callback pase a consumirlo.
+(El helper acabó usando `isAdminRole`, no `effectiveAdminRole` — ver "Resultado" al final.) Sin cambio de comportamiento
 observable: es un refactor puro que prepara el terreno.
 
 **Acceptance criteria:**
@@ -60,7 +60,8 @@ observable: es un refactor puro que prepara el terreno.
 ### ✅ Checkpoint A — la puerta nueva funciona
 
 - [x] `pnpm build` · `pnpm exec tsc --noEmit` · `pnpm lint` en verde
-- [x] `e2e-dual@example.com` llega a `/admin/dashboard` por `/login` — **el bug, arreglado**
+- [x] `e2e-dual@example.com` llega a `/admin/dashboard` por `/login` (ya funcionaba antes; el spec
+      E2E lo fija — ver "Resultado")
 - [x] Las puertas viejas siguen operativas: revertir aquí no deja a nadie fuera
 - [x] Revisar con el usuario antes de seguir
 
@@ -167,7 +168,7 @@ UI nuevo nace con su spec E2E". `global-setup.ts` **ya siembra** `e2e-doc1@`, `e
 - [x] `global-setup.ts` siembra `e2e-patient@example.com` con `role='patient'`, `role_chosen=true`, `active=true` (mismo patrón idempotente que las demás)
 - [x] El spec usa contexto **sin** `storageState` (pasa por el formulario de verdad, a diferencia de los 11 specs actuales)
 - [x] Cubre: doctor → `/panel-medico`; admin → `/admin/dashboard`; **dual → `/admin/dashboard`**; paciente → `/mi-caso`
-- [x] El caso dual lleva un comentario explicando que ese es el bug que este cambio arregla
+- [x] El caso dual lleva un comentario explicando la dependencia silenciosa con `/auth/me`
 
 **Verification:**
 

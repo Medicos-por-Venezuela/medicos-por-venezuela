@@ -7,15 +7,17 @@
 Una sola ruta `/login` para paciente, médico y admin. El trabajo real no es escribir un
 login nuevo: es **extraer el fan-out por rol que ya existe y es correcto** en
 `pages/auth/callback.tsx:76-91` a un helper compartido, y luego apuntar todas las puertas a
-`/login`. El bug del médico-admin desaparece como efecto secundario de deduplicar.
+`/login`. **Nota posterior:** se creía además que esto arreglaba un bug de enrutado del
+médico-admin; no era cierto. Ver "Corrección al diagnóstico inicial" en `tasks/spec.md`.
 
 ## Architecture Decisions
 
 **1. Un solo helper `lib/postLogin.ts`, no tres copias.**
 Hoy la lógica de "¿a dónde mando a este usuario?" está triplicada y las copias divergieron:
 `login-medico.tsx` y `mi-caso.tsx` usan `isAdminRole()` (rol legacy, uno solo), `callback.tsx`
-usa `effectiveAdminRole()` (RBAC real). Esa divergencia _es_ el bug. Un helper compartido lo
-cierra y evita que vuelva.
+usa `effectiveAdminRole()`. Se creyó que esa divergencia era un bug; el sanity check de T6 demostró
+que no lo era (`GET /auth/me` ya devuelve el rol efectivo). El helper compartido sigue valiendo la
+pena: cuatro copias a mano de la misma decisión son cuatro sitios donde puede divergir de verdad.
 
 **2. El helper devuelve una decisión, no ejecuta el redirect.**
 `{ kind: 'redirect' } | { kind: 'blocked' }`. `/login` muestra el mensaje de cuenta desactivada
@@ -65,7 +67,8 @@ T1  lib/postLogin.ts  (+ callback.tsx pasa a usarlo)
 
 - [ ] `pnpm build`, `pnpm exec tsc --noEmit`, `pnpm lint` en verde
 - [ ] Manual: los 4 roles entran por `/login` y aterrizan donde toca
-- [ ] Manual: `e2e-dual@example.com` llega a `/admin/dashboard` — **el bug, ya arreglado**
+- [ ] Manual: `e2e-dual@example.com` llega a `/admin/dashboard` (comportamiento que ya era correcto
+      antes del cambio; el spec E2E lo fija para que no se rompa)
 - [ ] Google sigue funcionando por `/auth/callback` (no hubo cambio de comportamiento)
 - [ ] Las puertas viejas siguen vivas: nadie quedó fuera si hay que revertir aquí
 
@@ -100,7 +103,7 @@ T1  lib/postLogin.ts  (+ callback.tsx pasa a usarlo)
 | Riesgo                                                                                                | Impacto                               | Mitigación                                                                                                                                                                                                                  |
 | ----------------------------------------------------------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Bucle de redirect**: `/login` manda a `/mi-caso`, `/mi-caso` rebota a `/login`                      | **Alto** — deja a los pacientes fuera | `/mi-caso` solo redirige cuando `getSession()` devuelve `null`. Si hay sesión pero `/auth/me` falla, mantiene el comportamiento actual (portal sin datos), nunca redirige. Cubierto por el criterio 6 y por el checkpoint B |
-| `effectiveAdminRole` añade un `GET /auth/me/permissions` a cada login de no-admin                     | Bajo                                  | Es exactamente el coste que `/auth/callback` ya paga hoy en cada login con Google. No es una regresión, es igualar hacia arriba. `fetchMyProfile` ya coalesce a 5s                                                          |
+| `effectiveAdminRole` añade un `GET /auth/me/permissions` a cada login de no-admin                     | **Materializado**                     | Se descartó `effectiveAdminRole` por esto mismo: su veredicto ya está contenido en `profile.role`. El helper usa `isAdminRole(profile.role)` y no cuesta ninguna petición extra                                             |
 | El E2E necesita Docker + Supabase local; puede no estar disponible                                    | Medio                                 | T6 es la última tarea y no bloquea a T1-T5. Si el entorno no está, se marca explícitamente como no ejecutado en vez de darlo por verde                                                                                      |
 | `AuthPanel` (usado hoy solo por `admin/index.tsx`) queda huérfano al convertirlo en redirect          | Bajo                                  | `/login` pasa a ser su consumidor. Si al final no lo usa, el componente sí se borra                                                                                                                                         |
 | El markup inline de `login-medico.tsx` desaparece y con él detalles sutiles (el `onKeyDown` de Enter) | Bajo                                  | `/login` replica Enter-para-enviar explícitamente. Está en los criterios de aceptación de T2                                                                                                                                |
