@@ -17,7 +17,12 @@ export type Profile = {
   medical_license: string | null
   country: string | null
   whatsapp_number: string | null
+  // `users.verified`: nace true y ningún camino la baja — no significa nada. El dato real de
+  // credencial es `doctor_verified`.
   verified: boolean
+  // `doctors.verified`: resultado de contrastar la cédula con SACS/FPV. null = no tiene ficha de
+  // médico, así que no hay credencial que verificar.
+  doctor_verified: boolean | null
   active: boolean
   last_seen_at: string | null
   created_at: string

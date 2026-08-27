@@ -211,18 +211,18 @@ export default function AdminDoctores() {
                       ) : (
                         <span className="badge badge-red">Revocado</span>
                       )}
-                      <div style={{ marginTop: 4 }}>
-                        {p.verified ? (
-                          <span className="badge badge-green">Verificado</span>
-                        ) : (
-                          <span
-                            className="badge"
-                            style={{ background: '#e2e8f0', color: '#64748b' }}
-                          >
-                            No verificado
-                          </span>
-                        )}
-                      </div>
+                      {/* Credencial real (SACS/FPV), no `users.verified`: esa columna es
+                          constante true y hacía que TODO el mundo saliera "Verificado", incluidos
+                          los 795 médicos cuya cédula no validó. null = no es médico. */}
+                      {p.doctor_verified !== null && (
+                        <div style={{ marginTop: 4 }}>
+                          {p.doctor_verified ? (
+                            <span className="badge badge-green">Cédula verificada</span>
+                          ) : (
+                            <span className="badge badge-red">Cédula sin verificar</span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td>{fmtDate(p.created_at)}</td>
                     <td>{onlineIds.has(p.id) ? 'Sí' : 'No'}</td>
