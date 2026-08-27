@@ -119,6 +119,27 @@ Recover via `mem_search(query: "{topic_key}", project: "medicos-por-venezuela")`
   patient insert), the Google provider enabled, and `/auth/callback` in the redirect allow-list.
 - The legacy `doctor_applications` table has been **retired/dropped**.
 
+### Las dos columnas `verified` (no las confundas)
+
+Hay dos, se llaman igual y significan cosas distintas. Confundirlas ya causó un bug: la lista de
+médicos del admin mostraba a **todos** como "Verificado", incluidos los 795 (de 2955) cuya cédula
+no validó.
+
+| Columna            | Qué significa                                                                                                             | Quién la escribe                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `users.verified`   | **Gancho reservado, hoy inerte.** Nace `true` en `handle_new_auth_user` y **ninguna ruta del backend la pone en `false`** | Solo `finalize_role`, y solo a `true`                      |
+| `doctors.verified` | El dato real: la cédula validó contra **SACS** (médico) o **FPV** (psicólogo)                                             | `_verify_credential()` al registrar y al cambiar la cédula |
+
+**Regla:** cualquier UI o lógica que hable de "verificado" en el sentido de credencial profesional
+lee `doctors.verified`. `users.verified` no debe decidir ni mostrarse; comprobarla es evaluar una
+constante.
+
+El admin lo ve vía `doctor_verified` en `GET /profiles` (LEFT JOIN a `doctors`, `null` = esa
+persona no tiene ficha). Fijado por `e2e/admin-cedula-verificada.spec.ts`.
+
+`users.verified` **no se borra**: `current_user_role()` sigue filtrando por ella, así que el gancho
+de aprobación previa (ver Security notes) funcionaría poniéndola en `false` sin tocar RLS.
+
 ## Architecture (important)
 
 This used to be a **Next.js frontend + Supabase BaaS only** app. That's now **partially true** —
@@ -309,8 +330,11 @@ the same button.
 
 - **Instant doctor access is a known trade-off:** anyone who self-registers as a doctor immediately
   reads all patient PII via the `is_staff` RLS read. Mitigation is admin revocation, not pre-approval.
-  To switch to an approval gate later, have signup/`set_my_role` set doctors `verified = false` and
-  gate `current_user_role()` on it.
+  To switch to an approval gate later, have signup/`finalize_role` set doctors
+  `users.verified = false`: `current_user_role()` **already** filters on it, so the gate would work
+  without touching RLS. Today that filter is a no-op because the column is `true` for every row —
+  el gancho está cableado pero nunca se ha usado (ver "Las dos columnas `verified`").
+  Para revocar hace falta ver a quién: esa visibilidad es `doctor_verified` en `GET /profiles`.
 - No service-role key is used client-side. Role escalation is prevented: profile updates are
   admin-only via RLS, and `set_my_role` only finalizes the caller's own profile once (patient/doctor,
   never admin/specialist).

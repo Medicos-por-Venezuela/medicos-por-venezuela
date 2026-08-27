@@ -384,15 +384,19 @@ export default function UsersManager() {
                             ) : (
                               <span className="badge badge-red">Revocado</span>
                             )}
-                            {u.verified ? (
-                              <span className="badge badge-green" style={{ marginLeft: 4 }}>
-                                Verificado
-                              </span>
-                            ) : (
-                              <span className="badge" style={{ marginLeft: 4 }}>
-                                No verificado
-                              </span>
-                            )}
+                            {/* Credencial real (SACS/FPV). Antes leía `users.verified`, que es
+                                constante true: el badge salía verde para todos. Un usuario sin
+                                ficha de médico (null) no lleva badge: no hay cédula que validar. */}
+                            {u.doctor_verified !== null &&
+                              (u.doctor_verified ? (
+                                <span className="badge badge-green" style={{ marginLeft: 4 }}>
+                                  Cédula verificada
+                                </span>
+                              ) : (
+                                <span className="badge badge-red" style={{ marginLeft: 4 }}>
+                                  Cédula sin verificar
+                                </span>
+                              ))}
                           </td>
                           <td>{fmtDate(u.created_at)}</td>
                           <td style={{ whiteSpace: 'nowrap' }}>

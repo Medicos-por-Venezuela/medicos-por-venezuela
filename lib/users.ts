@@ -12,7 +12,13 @@ export interface ApiUser {
   role: string
   specialty: string | null
   active: boolean
+  // OJO: este es `users.verified`, que nace true y ningún camino la baja — no significa nada. El
+  // dato real de credencial es `doctor_verified`. Se conserva porque el backend lo sigue
+  // devolviendo, pero no debe decidir ni mostrarse.
   verified: boolean
+  // `doctors.verified`: resultado de contrastar la cédula con SACS (médico) o FPV (psicólogo).
+  // null = esta persona no tiene ficha de médico, así que no hay credencial que verificar.
+  doctor_verified: boolean | null
   created_at: string
 }
 

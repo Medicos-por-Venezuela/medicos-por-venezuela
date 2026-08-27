@@ -33,7 +33,9 @@ const DOCTORS = [
     email: 'e2e-doc2@example.com',
     name: 'E2E Doctor Dos',
     cedula: 'V-88880002',
-    file: 'e2e/.auth/doc2.json'
+    file: 'e2e/.auth/doc2.json',
+    // Cédula NO validada: el otro estado del badge de la lista del admin.
+    verified: false
   }
 ]
 const PASSWORD = 'e2e-Test-123456'
@@ -56,13 +58,16 @@ async function ensureAuthUser(email: string): Promise<string> {
   return user.id
 }
 
-function seedDoctorRow(uid: string, name: string, cedula: string): void {
+// `verified` = doctors.verified, el resultado de contrastar la cédula con SACS/FPV. Se fija a
+// propósito (doc2 va sin validar) para que admin-cedula-verificada.spec.ts tenga los dos estados.
+// No confundir con users.verified, que nace true y no gatea nada.
+function seedDoctorRow(uid: string, name: string, cedula: string, verified = true): void {
   const sql = [
     // Idempotencia entre corridas: libera esta cédula de cualquier otro doctor de prueba previo.
     `update public.doctors set cedula=null where cedula='${cedula}' and user_id<>'${uid}';`,
     `update public.users set role='doctor', verified=true, active=true, role_chosen=true, full_name='${name}' where id='${uid}';`,
     `insert into public.doctors (user_id, full_name, cedula) select '${uid}','${name}','${cedula}' where not exists (select 1 from public.doctors where user_id='${uid}');`,
-    `update public.doctors set cedula='${cedula}' where user_id='${uid}';`
+    `update public.doctors set cedula='${cedula}', verified=${verified} where user_id='${uid}';`
   ].join(' ')
   execSync(`docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c "${sql}"`, {
     stdio: 'pipe'
@@ -104,7 +109,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   cleanupTestData()
   for (const doc of DOCTORS) {
     const uid = await ensureAuthUser(doc.email)
-    seedDoctorRow(uid, doc.name, doc.cedula)
+    seedDoctorRow(uid, doc.name, doc.cedula, doc.verified ?? true)
     await saveSession(doc.email, baseURL, doc.file)
   }
 
