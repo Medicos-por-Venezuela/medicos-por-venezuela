@@ -181,7 +181,7 @@ export default function PanelMedico() {
   async function init() {
     const { data: sessionData } = await supabase.auth.getSession()
     if (!sessionData.session) {
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
 
@@ -192,13 +192,13 @@ export default function PanelMedico() {
       me = await fetchMyProfile(sessionData.session.access_token)
     } catch {
       await supabase.auth.signOut()
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
 
     if (!me.active || !me.verified) {
       await supabase.auth.signOut()
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
 

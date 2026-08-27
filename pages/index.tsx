@@ -352,9 +352,10 @@ export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false)
 
   const goPaciente = () => router.push('/registro-paciente')
-  const goPacienteLogin = () => router.push('/mi-caso')
   const goMedico = () => router.push('/registro-medico')
-  const goMedicoLogin = () => router.push('/login-medico')
+  // Una sola puerta para todos: /login resuelve el destino por rol. Las tarjetas siguen separando
+  // paciente y médico porque el REGISTRO sí es distinto; el login ya no.
+  const goLogin = () => router.push('/login')
 
   const stepsReveal = useReveal<HTMLDivElement>()
   const whyReveal = useReveal<HTMLDivElement>()
@@ -411,7 +412,7 @@ export default function Home() {
               <a href="#por-que">¿Por qué usarlo?</a>
               <a href="#aliadas">Páginas aliadas</a>
               <a href="#contacto">Contacto</a>
-              <button className="nav-login" onClick={goPacienteLogin}>
+              <button className="nav-login" onClick={goLogin}>
                 Seguir mi caso
               </button>
               <div className="nav-cta">
@@ -448,7 +449,7 @@ export default function Home() {
                 <button className="btn-pill btn-blue btn-block" onClick={goPaciente}>
                   Solicitar consulta →
                 </button>
-                <button className="hcard-login" onClick={goPacienteLogin}>
+                <button className="hcard-login" onClick={goLogin}>
                   ¿Ya solicitaste? <strong>Inicia sesión</strong>
                 </button>
               </div>
@@ -462,7 +463,7 @@ export default function Home() {
                 <button className="btn-pill btn-gold-outline btn-block" onClick={goMedico}>
                   Registrarme →
                 </button>
-                <button className="hcard-login" onClick={goMedicoLogin}>
+                <button className="hcard-login" onClick={goLogin}>
                   ¿Ya eres voluntario? <strong>Inicia sesión</strong>
                 </button>
               </div>

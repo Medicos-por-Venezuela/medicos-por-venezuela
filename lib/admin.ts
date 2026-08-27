@@ -130,9 +130,10 @@ export async function effectiveAdminRole(
   return null
 }
 
-// Session + role guard shared by every /admin/* page (except the login page itself): redirects to
-// /admin unless there's a session AND the user is an active admin/super_admin — by legacy role OR
-// by RBAC multi-role (e.g. primary doctor + super_admin in user_roles).
+// Session + role guard shared by every /admin/* page: redirects to /login (la puerta única del
+// sitio) unless there's a session AND the user is an active admin/super_admin — by legacy role OR
+// by RBAC multi-role (e.g. primary doctor + super_admin in user_roles). Antes mandaba a /admin,
+// que ahora es solo un redirect: ir directo a /login ahorra el salto intermedio.
 export function useAdminGuard() {
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -142,7 +143,7 @@ export function useAdminGuard() {
     ;(async () => {
       const { data: sessionData } = await supabase.auth.getSession()
       if (!sessionData.session) {
-        router.push('/admin')
+        router.push('/login')
         return
       }
       // El perfil se pide al backend (único gateway a la BD), NO a la tabla profiles de Supabase.
@@ -157,7 +158,7 @@ export function useAdminGuard() {
         )
       } catch {
         await supabase.auth.signOut()
-        router.push('/admin')
+        router.push('/login')
         return
       }
       const adminRole = me.active
@@ -165,7 +166,7 @@ export function useAdminGuard() {
         : null
       if (!adminRole) {
         await supabase.auth.signOut()
-        router.push('/admin')
+        router.push('/login')
         return
       }
       // El perfil expone el rol admin EFECTIVO: así toda la UI admin (p. ej. isSuperAdmin en
