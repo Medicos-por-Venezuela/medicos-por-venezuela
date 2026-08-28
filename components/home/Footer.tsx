@@ -7,7 +7,7 @@
 //
 // El aviso legal se acortó el 2026-08-28 por decisión del copy aprobado; con él desapareció la
 // frase de "esto no reemplaza la atención de urgencia". Queda anotado en copy.ts y en
-// tasks/todo.md: era una salvaguarda clínica, no un texto de relleno.
+// tasks/home-refresh/todo.md: era una salvaguarda clínica, no un texto de relleno.
 
 import Image from 'next/image'
 import Link from 'next/link'

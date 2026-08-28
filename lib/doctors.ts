@@ -171,6 +171,120 @@ export async function revealDoctorContact(
   )
 }
 
+// --- Credenciales de médicos (panel admin) ---
+
+// Por qué un médico NO puede atender. `null` = sí puede. Solo 'no_verificado' se arregla con el
+// botón de aprobar: los demás necesitan que el médico complete su ficha (o que se reactive).
+export type DoctorBlockedReason =
+  'sin_ficha' | 'de_baja' | 'sin_cedula' | 'sin_licencia' | 'no_verificado'
+
+// Fila de GET /api/v1/doctors. Incluye cuentas con rol de médico que aún no tienen ficha en
+// `doctors` (`id: null`): esas no se pueden aprobar, hay que pedirles la cédula.
+export interface DoctorAdminItem {
+  id: string | null
+  user_id: string | null
+  full_name: string
+  cedula: string | null
+  license: string | null
+  email: string | null
+  specialty_id: string | null
+  professional_type_id: string | null
+  status: number | null
+  // `doctors.verified`: la credencial está aprobada (por SACS/FPV o por un admin). NO implica que
+  // pueda atender — para eso está `can_practice`, que exige además ficha activa, cédula y licencia.
+  verified: boolean
+  created_at: string
+  can_practice: boolean
+  blocked_reason: DoctorBlockedReason | null
+}
+
+export interface DoctorAdminPage {
+  items: DoctorAdminItem[]
+  total: number
+}
+
+export interface DoctorAdminParams {
+  skip?: number
+  limit?: number
+  status?: number
+  verified?: boolean // true=aprobados · false=no aprobados · undefined=todos
+  can_practice?: boolean // true=habilitados para atender · false=bloqueados · undefined=todos
+  // Motivo exacto. Es el filtro operativo: 'no_verificado' son los que se pueden aprobar YA, y
+  // sin acotar por ahí quedan diluidos entre miles de fichas sin cédula (no salen ni en la 1ª página).
+  blocked_reason?: DoctorBlockedReason
+  search?: string // nombre, cédula o email
+}
+
+// Contadores por estado de credencial (GET /doctors/credential-summary). Las claves coinciden con
+// los valores de `blocked_reason`, así que cada contador es un atajo al filtro del listado.
+export interface DoctorCredentialSummary {
+  can_practice: number
+  sin_ficha: number
+  de_baja: number
+  sin_cedula: number
+  sin_licencia: number
+  no_verificado: number
+  total: number
+}
+
+// GET /api/v1/doctors — requiere permiso doctors.read. Devuelve { items, total } para paginar.
+export async function fetchAdminDoctors(
+  params: DoctorAdminParams,
+  token: string
+): Promise<DoctorAdminPage> {
+  const qs = new URLSearchParams()
+  if (params.skip != null) qs.set('skip', String(params.skip))
+  if (params.limit != null) qs.set('limit', String(params.limit))
+  if (params.status != null) qs.set('status', String(params.status))
+  if (params.verified != null) qs.set('verified', String(params.verified))
+  if (params.can_practice != null) qs.set('can_practice', String(params.can_practice))
+  if (params.blocked_reason) qs.set('blocked_reason', params.blocked_reason)
+  if (params.search?.trim()) qs.set('search', params.search.trim())
+  return getJson<DoctorAdminPage>(
+    `/api/v1/doctors?${qs.toString()}`,
+    'No se pudieron cargar los médicos',
+    token
+  )
+}
+
+// GET /api/v1/doctors/credential-summary — requiere permiso doctors.read. Cuántos médicos hay en
+// cada estado, en una sola consulta. Es lo que hace visible la cola de aprobación del admin.
+export async function fetchDoctorCredentialSummary(
+  token: string
+): Promise<DoctorCredentialSummary> {
+  return getJson<DoctorCredentialSummary>(
+    '/api/v1/doctors/credential-summary',
+    'No se pudo cargar el resumen de credenciales',
+    token
+  )
+}
+
+// POST /api/v1/doctors/{id}/approve — requiere permiso doctors.verify. Habilita para atender al
+// médico que el SACS/FPV no validó y queda en audit_log como `doctor.approved`.
+// 422 (ApiError.status) si a la ficha le falta cédula/licencia o no está activa: aprobarla no
+// habilitaría a nadie. El `message` del error dice qué falta y se muestra tal cual.
+export async function approveDoctor(doctorId: string, token: string): Promise<DoctorResponse> {
+  return postJson<DoctorResponse>(
+    `/api/v1/doctors/${doctorId}/approve`,
+    {},
+    'No se pudo aprobar al médico',
+    token
+  )
+}
+
+// POST /api/v1/doctors/{id}/revoke-approval — deshace la aprobación (el médico deja de atender).
+export async function revokeDoctorApproval(
+  doctorId: string,
+  token: string
+): Promise<DoctorResponse> {
+  return postJson<DoctorResponse>(
+    `/api/v1/doctors/${doctorId}/revoke-approval`,
+    {},
+    'No se pudo revocar la aprobación',
+    token
+  )
+}
+
 // GET /api/v1/doctors/me — requiere Bearer (el recurso sale del user_id del token, IDOR-safe).
 export async function fetchMyDoctorProfile(token: string): Promise<DoctorMeResponse> {
   return getJson<DoctorMeResponse>('/api/v1/doctors/me', 'No se pudo cargar tu perfil', token)

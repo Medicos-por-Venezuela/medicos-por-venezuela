@@ -11,26 +11,31 @@ case oversight.
 
 ## Testing capabilities (strict_tdd: false)
 
-**There is still no automated test harness (unit/integration/E2E) in this repo.** Lint and format
-ARE now enforced (ESLint + Prettier) — only `test` tooling is missing:
+**E2E exists; unit/integration still don't.** Lint and format are enforced (ESLint + Prettier):
 
-- `package.json` scripts: `dev`, `build`, `start`, `lint`, `format`, `format:check` — no `test` script
-- Zero matches for `**/*.test.*` or `**/*.spec.*`
+- `package.json` scripts: `dev`, `build`, `start`, `lint`, `format`, `format:check`, `test:e2e`
+- E2E: Playwright (`playwright.config.ts`, specs in `e2e/`) against the local stack —
+  needs Docker + local Supabase + the FastAPI backend; `e2e/global-setup.ts` seeds the test accounts
+- No unit/integration specs (`**/*.test.*`) yet
 - CI runs lint + build on PRs (`.github/workflows/ci.yml`) but has no test step
 
 | Layer        | Available | Tool / Command                                 |
 | ------------ | --------- | ---------------------------------------------- |
 | Unit         | ❌        | —                                              |
 | Integration  | ❌        | —                                              |
-| E2E          | ❌        | —                                              |
+| E2E          | ✅        | `pnpm test:e2e` (Playwright, `e2e/`)           |
 | Linter       | ✅        | `pnpm lint` (ESLint, `eslint-config-next`)     |
 | Type checker | ✅ manual | `pnpm exec tsc --noEmit` (no dedicated script) |
 | Formatter    | ✅        | `pnpm format` / `pnpm format:check` (Prettier) |
 | Coverage     | ❌        | —                                              |
 
-Verification after a change means `pnpm build`, `pnpm exec tsc --noEmit`, `pnpm lint`, and manual
-QA in the browser — there is no automated test suite to run or extend. Recommendation (not yet
-actioned): add Vitest + React Testing Library and a `test` script before enabling Strict TDD mode.
+Verification after a change means `pnpm build`, `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test:e2e`,
+and manual QA in the browser. Recommendation (not yet actioned): add Vitest + React Testing Library
+and a unit `test` script before enabling Strict TDD mode.
+
+> **Ojo:** no lances `pnpm build` con un `next dev` corriendo sobre el mismo directorio — se pisan
+> el `.next` y el dev server empieza a servir chunks rotos (React no hidrata). Los E2E ya lo
+> evitan con `NEXT_DIST_DIR=.next-e2e`; para un build manual, usa esa misma variable o para el dev.
 
 ## Contribution standards
 
@@ -99,7 +104,7 @@ Recover via `mem_search(query: "{topic_key}", project: "medicos-por-venezuela")`
   credential check now lives in the dedicated backend (see Architecture below) as a `doctors` row —
   that row has no relationship to the `profiles`/auth account created here; they're linked only by
   matching email.
-- **Admins:** promoted manually via SQL. Private login at `/admin` (not linked from the landing page);
+- **Admins:** promoted manually via SQL. Sign in at `/login` like everyone else (`/admin` is now just a redirect);
   manage cases (reassign doctor, change status, edit note) from `/admin/dashboard`.
 - **Google sign-in:** OAuth can't carry a role, so a first-time Google user gets a placeholder profile
   (`role_chosen = false`) and is routed to `/elegir-rol` to pick patient vs doctor. The choice is
@@ -113,6 +118,27 @@ Recover via `mem_search(query: "{topic_key}", project: "medicos-por-venezuela")`
 - **Prereq:** Supabase → Auth → Email "Confirm email" must be **OFF** (instant access + same-session
   patient insert), the Google provider enabled, and `/auth/callback` in the redirect allow-list.
 - The legacy `doctor_applications` table has been **retired/dropped**.
+
+### Las dos columnas `verified` (no las confundas)
+
+Hay dos, se llaman igual y significan cosas distintas. Confundirlas ya causó un bug: la lista de
+médicos del admin mostraba a **todos** como "Verificado", incluidos los 795 (de 2955) cuya cédula
+no validó.
+
+| Columna            | Qué significa                                                                                                             | Quién la escribe                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `users.verified`   | **Gancho reservado, hoy inerte.** Nace `true` en `handle_new_auth_user` y **ninguna ruta del backend la pone en `false`** | Solo `finalize_role`, y solo a `true`                      |
+| `doctors.verified` | El dato real: la cédula validó contra **SACS** (médico) o **FPV** (psicólogo)                                             | `_verify_credential()` al registrar y al cambiar la cédula |
+
+**Regla:** cualquier UI o lógica que hable de "verificado" en el sentido de credencial profesional
+lee `doctors.verified`. `users.verified` no debe decidir ni mostrarse; comprobarla es evaluar una
+constante.
+
+El admin lo ve vía `doctor_verified` en `GET /profiles` (LEFT JOIN a `doctors`, `null` = esa
+persona no tiene ficha). Fijado por `e2e/admin-cedula-verificada.spec.ts`.
+
+`users.verified` **no se borra**: `current_user_role()` sigue filtrando por ella, así que el gancho
+de aprobación previa (ver Security notes) funcionaría poniéndola en `false` sin tocar RLS.
 
 ## Architecture (important)
 
@@ -183,14 +209,16 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `/sala-espera` — patient confirmation (anonymous submissions)
 - `/registro-medico` — doctor self-registration (email+password or Google)
 - `/elegir-rol` — first-time Google role picker (patient vs doctor)
-- `/mi-caso` — patient login + read-only case status
-- `/login-medico` — doctor login
+- `/login` — **single sign-in for patients, doctors and admins**; routes by effective role
+  (`lib/postLogin.ts`, shared with `/auth/callback` and `/mi-caso`)
+- `/mi-caso` — patient portal, read-only case status (no login form; sends you to `/login`)
+- `/login-medico` — legacy doctor login, redirects to `/login`
 - `/panel-medico` — doctor/admin panel (queue, active system cases for admin, counters)
 - `/panel-medico/consulta/[id]` — case detail page (patient details, video, note, close/no-show)
 - `/panel-medico/perfil` — doctor self-service profile (view/edit; FastAPI `GET`/`PATCH /doctors/me`);
   also where a `source:"user"` (Google) doctor completes their cédula + professional type to be verified
 - `/auth/callback` — OAuth redirect handler (routes by role / role_chosen)
-- `/admin` (+ `/admin/login` alias) — private admin login
+- `/admin` (+ `/admin/login` alias) — legacy admin entrance, redirects to `/login` (still `noindex`)
 - `/admin/dashboard` — admin dashboard (metrics, doctor revoke, case oversight)
 
 ## Database (Supabase Postgres)
@@ -235,7 +263,7 @@ The "backend" is provisioned entirely in Supabase — there is no local server t
        full_name = 'Administrador principal'
    where email = 'YOUR_EMAIL@example.com';
    ```
-   Then log in at `/admin`.
+   Then log in at `/login` — the single sign-in routes an admin to `/admin/dashboard`.
 5. **Get API keys**: Supabase → Project Settings → API → copy the Project URL and anon key.
 
 ### Run the frontend locally
@@ -303,8 +331,11 @@ the same button.
 
 - **Instant doctor access is a known trade-off:** anyone who self-registers as a doctor immediately
   reads all patient PII via the `is_staff` RLS read. Mitigation is admin revocation, not pre-approval.
-  To switch to an approval gate later, have signup/`set_my_role` set doctors `verified = false` and
-  gate `current_user_role()` on it.
+  To switch to an approval gate later, have signup/`finalize_role` set doctors
+  `users.verified = false`: `current_user_role()` **already** filters on it, so the gate would work
+  without touching RLS. Today that filter is a no-op because the column is `true` for every row —
+  el gancho está cableado pero nunca se ha usado (ver "Las dos columnas `verified`").
+  Para revocar hace falta ver a quién: esa visibilidad es `doctor_verified` en `GET /profiles`.
 - No service-role key is used client-side. Role escalation is prevented: profile updates are
   admin-only via RLS, and `set_my_role` only finalizes the caller's own profile once (patient/doctor,
   never admin/specialist).

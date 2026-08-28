@@ -11,7 +11,7 @@
 // —`Gratis.png` son cinco estrellas y `Autonomía.png` es un médico—. El mapa de abajo es el único
 // que respeta los tres nombres de archivo que sí coinciden; el cuarto sale por descarte.
 // ⚠️ `Credibilidad.png` (un pulgar arriba) queda en "Confidenciales", que es lo que peor encaja:
-// la confidencialidad se dibuja normalmente con un candado. Anotado en tasks/todo.md.
+// la confidencialidad se dibuja normalmente con un candado. Anotado en tasks/home-refresh/todo.md.
 //
 // Uso:  node scripts/optimize-value-icons.mjs
 

@@ -12,7 +12,18 @@ export interface ApiUser {
   role: string
   specialty: string | null
   active: boolean
+  // OJO: este es `users.verified`, que nace true y ningún camino la baja — no significa nada. El
+  // dato real de credencial es `doctor_verified`. Se conserva porque el backend lo sigue
+  // devolviendo, pero no debe decidir ni mostrarse.
   verified: boolean
+  // `doctors.verified`: resultado de contrastar la cédula con SACS (médico) o FPV (psicólogo).
+  // `null` = esta persona no tiene ficha, así que no hay credencial que verificar.
+  //
+  // Opcional a propósito: `ApiUser` tipa TODO lo que sale de /profiles, y solo el LISTADO trae
+  // este campo — `GET /profiles/{id}` y `PATCH /{id}/active` no. Marcarlo obligatorio hacía que el
+  // tipo prometiera algo que esas dos respuestas no cumplen. Por eso los consumidores comprueban
+  // `!= null` (laxo), que cubre ausente y null a la vez.
+  doctor_verified?: boolean | null
   created_at: string
 }
 
@@ -40,6 +51,11 @@ export interface UserRoleAssignment {
 export interface PermissionsResponse {
   roles: string[]
   permissions: string[]
+  // Gate de credencial: false = es médico y su ficha aún no está habilitada (sin verificar por
+  // SACS/FPV, o sin cédula/licencia). Llega con `permissions: []`, así que sin mirar este campo la
+  // UI no distingue "aún no aprobado" de "no tiene nada que hacer aquí" y muestra una pantalla
+  // vacía. Para pacientes y admins es siempre true (no aplica).
+  credential_verified: boolean
 }
 
 export interface UserCreate {

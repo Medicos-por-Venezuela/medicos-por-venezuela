@@ -2,8 +2,8 @@ import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
-import { effectiveAdminRole } from '../../lib/admin'
 import { fetchMyProfile, MyProfile } from '../../lib/consultations'
+import { resolvePostLoginRoute } from '../../lib/postLogin'
 import { supabase } from '../../lib/supabase'
 
 export default function AuthCallback() {
@@ -74,21 +74,16 @@ export default function AuthCallback() {
       }
       if (cancelled) return
 
-      if (!profile.role_chosen) {
-        router.replace('/elegir-rol')
-        return
-      }
-      if (!profile.active) {
+      // El fan-out por rol vive en lib/postLogin.ts, compartido con /login: una sola copia de
+      // "¿a dónde va este usuario?" para que las dos puertas no vuelvan a divergir.
+      const route = resolvePostLoginRoute(profile)
+      if (cancelled) return
+      if (route.kind === 'blocked') {
         await supabase.auth.signOut()
-        setError('Tu cuenta está desactivada. Contacta a un administrador.')
+        setError(route.message)
         return
       }
-      // Multi-rol RBAC: un dual (p. ej. doctor de rol principal + super_admin en user_roles)
-      // aterriza en el dashboard admin, igual que un admin puro — desde ahí puede ir al panel.
-      const adminRole = await effectiveAdminRole(profile.role, session.access_token)
-      if (adminRole) router.replace('/admin/dashboard')
-      else if (['doctor', 'specialist'].includes(profile.role)) router.replace('/panel-medico')
-      else router.replace('/mi-caso')
+      router.replace(route.href)
     }
 
     run()
@@ -116,7 +111,7 @@ export default function AuthCallback() {
                   </p>
                 )}
                 <Link
-                  href="/login-medico"
+                  href="/login"
                   className="link-button"
                   style={{ marginTop: 12, display: 'inline-block' }}
                 >

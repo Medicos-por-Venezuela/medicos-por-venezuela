@@ -3,11 +3,10 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { signInWithGoogle } from '../lib/auth'
 import { fetchMyConsultations, fetchMyProfile } from '../lib/consultations'
 import { fetchMyPatients } from '../lib/patients'
-import GoogleButton from '../components/GoogleButton'
-import { isAdminRole, STATUS_LABELS } from '../lib/utils'
+import { resolvePostLoginRoute } from '../lib/postLogin'
+import { STATUS_LABELS } from '../lib/utils'
 import { requestNotifyPermission, scheduleLocalReminders } from '../lib/nativeNotifications'
 import CalendarSync from '../components/CalendarSync'
 import { downloadIcs } from '../lib/calendar'
@@ -29,10 +28,6 @@ export default function MiCaso() {
   const [authed, setAuthed] = useState(false)
   const [patientName, setPatientName] = useState('')
   const [consultations, setConsultations] = useState<Consultation[]>([])
-  // Login form state (shown when there is no session)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
 
   useEffect(() => {
     load()
@@ -61,8 +56,7 @@ export default function MiCaso() {
       data: { session }
     } = await supabase.auth.getSession()
     if (!session) {
-      setAuthed(false)
-      setLoading(false)
+      router.replace('/login')
       return
     }
 
@@ -71,16 +65,17 @@ export default function MiCaso() {
     const token = session.access_token
     try {
       const profile = await fetchMyProfile(token)
-      if (!profile.role_chosen) {
-        router.replace('/elegir-rol')
+      // Mismo resolvedor que /login y /auth/callback: si a este usuario le toca otro sitio, se va
+      // allí. Antes esta página tenía su propia copia con isAdminRole() (rol legacy, uno solo), que
+      // mandaba al panel a un médico que además es admin en user_roles.
+      const route = resolvePostLoginRoute(profile)
+      if (route.kind === 'blocked') {
+        await supabase.auth.signOut()
+        router.replace('/login')
         return
       }
-      if (['doctor', 'specialist'].includes(profile.role)) {
-        router.replace('/panel-medico')
-        return
-      }
-      if (isAdminRole(profile.role)) {
-        router.replace('/admin/dashboard')
+      if (route.href !== '/mi-caso') {
+        router.replace(route.href)
         return
       }
       setAuthed(true)
@@ -98,27 +93,9 @@ export default function MiCaso() {
     }
   }
 
-  async function login() {
-    setError('')
-    setLoading(true)
-    try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password
-      })
-      if (authError) throw authError
-      await load()
-    } catch (e) {
-      console.error(e)
-      setError('Email o contraseña incorrectos.')
-      setLoading(false)
-    }
-  }
-
   async function logout() {
     await supabase.auth.signOut()
-    setAuthed(false)
-    setConsultations([])
+    router.replace('/login')
   }
 
   if (loading)
@@ -130,64 +107,9 @@ export default function MiCaso() {
       </main>
     )
 
-  if (!authed) {
-    return (
-      <>
-        <Head>
-          <title>Seguir mi caso — Médicos por Venezuela</title>
-        </Head>
-        <main className="page">
-          <div className="narrow">
-            <Link href="/" className="link-button">
-              ← Volver
-            </Link>
-            <div className="card" style={{ marginTop: 14 }}>
-              <h1 style={{ marginTop: 0 }}>Seguir mi caso</h1>
-              <p style={{ color: '#64748b' }}>Inicia sesión para ver el estado de tu solicitud.</p>
-              <div className="grid">
-                <div>
-                  <label className="label">Email</label>
-                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-                </div>
-                <div>
-                  <label className="label">Contraseña</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') login()
-                    }}
-                  />
-                </div>
-                {error && <div className="notice notice-danger">{error}</div>}
-                <button className="btn btn-primary btn-full" onClick={login}>
-                  Entrar
-                </button>
-                <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>
-                <GoogleButton
-                  onClick={async () => {
-                    setError('')
-                    try {
-                      await signInWithGoogle()
-                    } catch {
-                      setError('No se pudo iniciar sesión con Google.')
-                    }
-                  }}
-                />
-                <p style={{ textAlign: 'center', color: '#64748b', fontSize: 13, margin: 0 }}>
-                  ¿No tienes cuenta?{' '}
-                  <Link href="/registro-paciente" style={{ color: '#0f6e56', fontWeight: 700 }}>
-                    Solicitar consulta
-                  </Link>
-                </p>
-              </div>
-            </div>
-          </div>
-        </main>
-      </>
-    )
-  }
+  // Sin sesión, load() ya disparó el redirect a /login (la puerta única del sitio).
+  // Esta página es solo el portal del paciente; ya no aloja un formulario propio.
+  if (!authed) return null
 
   return (
     <>

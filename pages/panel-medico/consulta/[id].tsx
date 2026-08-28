@@ -78,7 +78,6 @@ type Profile = {
   full_name: string
   role: string
   specialty: string | null
-  verified: boolean
   active: boolean
 }
 
@@ -240,12 +239,12 @@ export default function ConsultaDetalle() {
   async function init(id: string) {
     const { data: sessionData } = await supabase.auth.getSession()
     if (!sessionData.session) {
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
 
     // Perfil propio vía GET /auth/me (backend), ya no la vista `profiles`. Trae id/full_name/role/
-    // specialty/verified/active, justo lo que necesita el guard y el "médico asignado = yo".
+    // specialty/active, justo lo que necesita el guard y el "médico asignado = yo".
     let p: Profile
     try {
       const me = await fetchMyProfile(sessionData.session.access_token)
@@ -254,18 +253,21 @@ export default function ConsultaDetalle() {
         full_name: me.full_name,
         role: me.role,
         specialty: me.specialty,
-        verified: me.verified,
         active: me.active
       }
     } catch {
       await supabase.auth.signOut()
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
 
-    if (!p.active || !p.verified) {
+    // Solo `active`: es el gate real, el que mueve el botón "Revocar acceso" del admin.
+    // `verified` (users.verified) se quitó de aquí porque nace true y ningún camino del backend
+    // la baja — comprobarla era evaluar una constante. El dato de credencial (SACS/FPV) vive en
+    // `doctors.verified` y no gatea el acceso: lo supervisa un admin desde su lista.
+    if (!p.active) {
       await supabase.auth.signOut()
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
 

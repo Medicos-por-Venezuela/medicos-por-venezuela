@@ -196,6 +196,18 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   - **Archivos:** `lib/analytics.ts`, `pages/{_document.tsx,_app.tsx}`, `next.config.js`,
     `CLAUDE.md`, `AGENTS.md`.
 
+- **Nota de la fusión con `dev_aws` (2026-08-28).** La rama se puso al día con `dev_aws`, que había
+  avanzado cuatro PR. Tres conflictos eran de documentación y uno no:
+  - `pages/index.tsx`: `dev_aws` editaba el home VIEJO, que esta rama sustituyó entero. Se conserva
+    la composición nueva — pero **el cambio que hacía allí sí importaba**: el login se unificó en
+    `/login`, que resuelve el destino por rol. `RUTAS.ingresar` pasa de `/login-medico` (que ahora
+    solo redirige) a `/login`, para no hacer pasar a todo el mundo por un salto de más.
+  - `tasks/{plan,todo}.md`: son artefactos SDD que cada rama sobrescribe con SU cambio. Los de
+    `dev_aws` son del login unificado y los de esta rama del refrescamiento del home; no hay un lado
+    que descartar. `dev_aws` ya había introducido `tasks/users-verified/` como subcarpeta por cambio,
+    así que se sigue esa convención: los de esta rama pasan a `tasks/home-refresh/`.
+  - `changeslog.md` y `AGENTS.md`: se conservan las dos partes.
+
 - **SEO: plan estratégico y datos estructurados** — `.knowledge/seo/` (cinco documentos) y
   `lib/schema.ts`.
   - **Auditoría del estado real, medida sobre el build de producción**, no estimada. El sitio NO
@@ -235,6 +247,124 @@ Each entry: date, a short summary of what changed and why, and the key files/are
     `IMPLEMENTATION-ROADMAP,SCHEMA-REPORT}.md`, `generated-schema.json`, `lib/schema.ts`,
     `pages/{index,quienes-somos}.tsx`, `scripts/build-logo-raster.mjs`,
     `public/img/logo-medicos-por-venezuela.png`.
+
+- **El admin no tenía forma de aprobar a un médico, y el médico bloqueado no sabía por qué** — el
+  backend ya gatea el acceso por credencial (ficha en `doctors` verificada, activa y con cédula +
+  licencia), pero eso dejaba a 2909 de 2979 médicos fuera **sin ninguna pantalla** que lo explicara
+  ni ningún botón que lo resolviera. La única aprobación posible era un `PATCH` a mano.
+  - **Panel admin — "Credenciales para atender"** (`components/admin/DoctorCredentials.tsx`, en
+    `/admin/doctores`): tabla paginada con filtros _aprobado / no aprobado_ y _habilitado /
+    bloqueado_, búsqueda por nombre/cédula/email, y el **motivo de bloqueo** de cada uno. Consume
+    `GET /doctors` (ahora `{items, total}` con `can_practice`/`blocked_reason`) y los endpoints
+    nuevos `POST /doctors/{id}/approve` · `/revoke-approval`.
+  - **Aprobado != habilitado.** Una ficha puede estar `verified` y aun así no atender por faltarle
+    la cédula — es el caso de 2847 médicos. Por eso el botón de aprobar solo aparece cuando aprobar
+    de verdad desbloquea (`blocked_reason === 'no_verificado'`); en el resto la fila dice qué hay
+    que pedirle al médico. Si aun así se intenta, el 422 del backend se muestra tal cual.
+  - **Pantalla de "verificación pendiente"** en `/panel-medico`: el médico bloqueado llega con
+    `permissions: []`, así que antes veía un panel vacío y un error genérico. Ahora se comprueba
+    `credential_verified` (de `GET /auth/me/permissions`) antes de pedir la cola y se le explica qué
+    falta, con salida a `/panel-medico/perfil` — la única ruta que el gate deja abierta a propósito.
+  - E2E: `e2e/credencial-medica.spec.ts` cubre las dos puntas (el médico bloqueado y el admin que
+    aprueba/revoca). `global-setup` siembra ahora **licencia** en los médicos de prueba —sin ella
+    ninguno pasa el gate— y un tercer médico (`E2E Doctor Tres`) sin validar, que absorbe el caso
+    "sin verificar" para que doc1/doc2 puedan seguir atendiendo en los specs de cola.
+    `admin-cedula-verificada` pasa a anclar su selector a `.users-table`: la página tiene dos tablas.
+  - Archivos: `lib/doctors.ts`, `lib/users.ts`, `components/admin/DoctorCredentials.tsx`,
+    `pages/admin/doctores.tsx`, `pages/panel-medico.tsx`, `e2e/`.
+- **La cola de aprobación era invisible: parecía que el botón no existía.** Con los datos reales
+  (2979 médicos) solo **26** son aprobables de un clic, frente a **2847** a los que les falta la
+  cédula. Ordenando por fecha, la primera página de 25 filas no traía ni un aprobable —el primero
+  cae en la fila 29—, así que el admin veía un montón de filas sin botón y concluía, con razón,
+  que aprobar no estaba implementado.
+  - Filtro **por motivo de bloqueo** (`GET /doctors?blocked_reason=…`, enum cerrado) y selector en
+    el panel: "Listos para aprobar", "Les falta la cédula", etc. Es el filtro que convierte la
+    tabla en una cola de trabajo; los de aprobación y habilitación por sí solos no acotan nada
+    (las ~820 "no aprobadas" son casi todas irresolubles desde el panel).
+  - **Fila de contadores** por estado (`GET /doctors/credential-summary`, una sola consulta),
+    clicable: cada número aplica su filtro. Sin ella el filtro nuevo tampoco se descubre.
+  - **Nota del rebase:** este PR también llevaba el cambio de `!== null` a `!= null` en los badges
+    de cédula (contra un backend que aún no expone el campo, el estricto pintaba "Cédula sin
+    verificar" a todos, admins incluidos). Al rebasar sobre `dev_aws` resultó que la base ya lo
+    traía, del PR #90 y con la misma justificación, así que el diff ya **no** lo contiene y no
+    debe atribuírsele. Lo que sí queda es haberlo detectado corriendo los E2E contra un backend
+    sin ese campo.
+  - `credencial-medica.spec.ts` fija el texto exacto: `getByText` busca subcadena e ignora
+    mayúsculas, así que el badge "Sin aprobar" colisionaba con el motivo "Credencial sin aprobar"
+    de su propia fila (strict mode violation). El motivo pasa a tener su propio `<span>`.
+
+## 2026-08-27
+
+- **El badge "Verificado" del admin decía la verdad a nadie** — la lista de médicos leía
+  `users.verified`, que nace `true` en `handle_new_auth_user` y **ninguna ruta del backend baja**.
+  Resultado: badge verde para todo el mundo. El dato real de credencial (contrastar la cédula con
+  SACS o FPV) vive en `doctors.verified`, repartido **795 sin validar / 2160 validadas**: el 27% de
+  los médicos aparecía como verificado sin estarlo, y **no había ninguna otra pantalla** donde el
+  admin pudiera comprobarlo (`/doctors/pool` no devuelve el campo).
+  - Backend: `GET /profiles` expone `doctor_verified` con un LEFT JOIN a `doctors` en la misma
+    consulta paginada. `null` = esa persona no tiene ficha, así que no hay cédula que validar;
+    colapsarlo a `false` acusaría a un paciente de no estar verificado.
+  - `deleted_at IS NULL` va en el `ON` del join, no en el `WHERE`: el índice único de
+    `doctors.user_id` es **parcial**, y sin ese filtro una ficha borrada duplicaría la fila del
+    usuario y descuadraría la página contra el total. En el `WHERE` habría convertido el LEFT JOIN
+    en INNER, haciendo desaparecer de la lista a todo el que no sea médico.
+  - Anti-N+1 con test que cuenta las consultas: con ~3500 usuarios, un SELECT por fila hundiría la
+    pantalla que más usa el admin.
+  - Frontend: los dos badges (`admin/doctores`, `UsersManager`) leen el campo nuevo y dicen
+    **"Cédula verificada" / "Cédula sin verificar"** — nombrar _qué_ se verificó es lo que evita
+    repetir la ambigüedad. Quien no es médico ya no lleva badge.
+  - Se quitan los `!me.verified` de los guards de `panel-medico` y `consulta/[id]`: comprobaban una
+    constante. `active` se queda, que es el gate real (botón "Revocar acceso").
+  - **`users.verified` NO se borra.** `current_user_role()` sigue filtrando por ella, así que el
+    gancho de aprobación previa que documenta `CLAUDE.md` funcionaría poniéndola en `false` sin
+    tocar ninguna de las 5 políticas RLS que protegen la PII de pacientes. Cambio **aditivo**: cero
+    migraciones, cero RLS.
+  - Tests: 4 en el backend (los tres estados, ficha borrada, anti-N+1) y
+    `e2e/admin-cedula-verificada.spec.ts`. Los dos juegos verificados poniéndose **rojos** al volver
+    a leer `users.verified`; `global-setup` siembra ahora un médico sin validar.
+  - Docs: `CLAUDE.md` y `AGENTS.md` estrenan "Las dos columnas `verified`". Artefactos en
+    `tasks/users-verified/`.
+
+## 2026-08-23
+
+- **Login unificado en `/login`** — paciente, médico y admin entran por una sola puerta, que decide
+  el destino tras autenticar: admin efectivo → `/admin/dashboard`, `doctor`/`specialist` →
+  `/panel-medico`, resto → `/mi-caso`; `role_chosen=false` → `/elegir-rol`, y una cuenta con
+  `active=false` se desloguea y ve el aviso **en `/login`** en vez de rebotar sin explicación.
+  El fan-out estaba **triplicado** (`login-medico`, `mi-caso`, `auth/callback`) y ahora vive una
+  sola vez en `lib/postLogin.ts`, que consumen los tres.
+  - `/mi-caso` deja de ser mitad formulario y mitad portal: **solo portal**; sin sesión va a `/login`.
+  - `/login-medico`, `/admin` y `/admin/login` quedan como redirects a `/login` (no se borran: hay
+    enlaces externos). `/admin` conserva su `noindex`. `useAdminGuard` apunta a `/login` directo,
+    ahorrando el salto intermedio.
+  - La home no cambia visualmente: sus tres botones de acceso solo cambian de destino.
+  - **Nota de diagnóstico:** se creía que `/login-medico` enrutaba mal a un médico con `admin` en
+    `user_roles` (usa `isAdminRole`, rol legado). Es **falso** — `GET /auth/me` ya devuelve el rol
+    EFECTIVO del RBAC (`effective_role`, con `super_admin`/`admin` primero en `_ROLE_PRIORITY`), así
+    que ese caso siempre funcionó. Lo destapó el sanity check del spec E2E. Por eso el helper usa
+    `isAdminRole(profile.role)` y **no** `effectiveAdminRole()`: este último costaría un
+    `GET /auth/me/permissions` extra en cada login de paciente y médico para recalcular lo que
+    `profile.role` ya trae. El valor del cambio es la consolidación, no un arreglo de enrutado.
+  - **A11y:** `components/auth/AuthField.tsx` pintaba `<label>` e `<input>` sin asociar — ningún
+    lector de pantalla anunciaba los campos. Ahora usa `useId()` + `htmlFor`/`id`. Lo destapó el
+    spec E2E al no encontrar los campos por su etiqueta.
+  - **Hallazgos del code review, ya aplicados:** (a) `/login` no reenviaba a un usuario que ya
+    tenía sesión — regresión real, porque `/mi-caso` sí lo hacía cuando era login Y portal; un
+    paciente logueado que pulsaba "Iniciar sesión" veía un formulario en vez de su portal. Añadido
+    el redirect y su test (verificado: el test se pone rojo si se quita el fix). (b)
+    `resolvePostLoginRoute` quedó `async` sin ningún `await` al dejar de usar `effectiveAdminRole`;
+    ahora es síncrona.
+  - **E2E:** nuevo `e2e/login-fanout.spec.ts` (7 tests) — el único spec que pasa por el formulario
+    de verdad; el resto entra con `storageState`. `e2e/global-setup.ts` ahora siembra `role_chosen`
+    (faltaba: sin él las cuentas de prueba acababan en `/elegir-rol`) y una cuenta de paciente.
+  - Archivos: `lib/postLogin.ts` (nuevo), `pages/login.tsx` (nuevo), `e2e/login-fanout.spec.ts`
+    (nuevo), `pages/mi-caso.tsx`, `pages/login-medico.tsx`, `pages/admin/index.tsx`,
+    `pages/auth/callback.tsx`, `pages/index.tsx`, `pages/panel-medico*`, `pages/registro-medico.tsx`,
+    `lib/admin.ts`, `components/auth/AuthField.tsx`, `e2e/global-setup.ts`, docs.
+  - Artefactos SDD del cambio en `tasks/` (`spec.md`, `plan.md`, `todo.md`).
+- **Docs:** `CLAUDE.md`/`AGENTS.md` afirmaban que no había harness E2E — falso desde que existe
+  `playwright.config.ts` + 11 specs. Corregido, y documentado que `pnpm build` con un `next dev`
+  vivo sobre el mismo `.next` corrompe el dev server.
 
 ## 2026-08-13
 

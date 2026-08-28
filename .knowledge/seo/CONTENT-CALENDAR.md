@@ -48,7 +48,7 @@ es lo único que ningún competidor puede copiar sin construir la misma integrac
 
 **"Cuándo una consulta en línea NO basta"** cumple además una función que no es de marketing: la
 advertencia de urgencias se retiró del pie el 2026-08-28 por decisión del copy aprobado (anotado en
-`tasks/todo.md`). Un artículo dedicado la recupera donde sirve de verdad, con espacio para
+`tasks/home-refresh/todo.md`). Un artículo dedicado la recupera donde sirve de verdad, con espacio para
 explicarla.
 
 ## Formato — pensado para que la IA lo cite

@@ -2,7 +2,10 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    # `dev_aws` es la rama de integración: todo entra por PR ahí y solo después va a `main`.
+    # Cuando el CI solo miraba `main`, cada PR se mergeaba a `dev_aws` SIN que nada verificara
+    # lint, formato, tipos ni build, y los fallos aparecían todos juntos en el PR de release.
+    branches: [main, dev_aws]
 
 jobs:
   lint-build:

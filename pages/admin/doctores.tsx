@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import AdminLayout, { AdminLoading, Line } from '../../components/admin/AdminLayout'
+import DoctorCredentials from '../../components/admin/DoctorCredentials'
 import {
   fmtDate,
   getAccessToken,
@@ -127,6 +128,11 @@ export default function AdminDoctores() {
         )}
       </section>
 
+      {/* Aprobación de credenciales (backend: GET /doctors + POST /doctors/{id}/approve). Va antes
+          de la tabla de cuentas porque es la acción pendiente: un médico bloqueado por credencial
+          aparece "Activo" en la tabla de abajo y aun así no puede atender. */}
+      <DoctorCredentials />
+
       <section className="card">
         <h2 style={{ marginTop: 0 }}>
           Médicos y administradores{' '}
@@ -211,18 +217,23 @@ export default function AdminDoctores() {
                       ) : (
                         <span className="badge badge-red">Revocado</span>
                       )}
-                      <div style={{ marginTop: 4 }}>
-                        {p.verified ? (
-                          <span className="badge badge-green">Verificado</span>
-                        ) : (
-                          <span
-                            className="badge"
-                            style={{ background: '#e2e8f0', color: '#64748b' }}
-                          >
-                            No verificado
-                          </span>
-                        )}
-                      </div>
+                      {/* `== null` (laxo) y no `!== null`: atrapa tambien `undefined`, que es lo que
+                          llega si el backend aun no expone doctor_verified (despliegue del front
+                          por delante del back, o un rollback del back). Con el estricto, undefined
+                          pasaba el guard y caia en la rama falsy: "Cedula sin verificar" para
+                          TODO el mundo, peor que el bug que esto arregla. */}
+                      {/* Credencial real (SACS/FPV), no `users.verified`: esa columna es
+                          constante true y hacía que TODO el mundo saliera "Verificado", incluidos
+                          los 795 médicos cuya cédula no validó. null = no es médico. */}
+                      {p.doctor_verified != null && (
+                        <div style={{ marginTop: 4 }}>
+                          {p.doctor_verified ? (
+                            <span className="badge badge-green">Cédula verificada</span>
+                          ) : (
+                            <span className="badge badge-red">Cédula sin verificar</span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td>{fmtDate(p.created_at)}</td>
                     <td>{onlineIds.has(p.id) ? 'Sí' : 'No'}</td>

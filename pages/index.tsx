@@ -11,7 +11,7 @@
 //
 // Estado: las doce secciones del prototipo están montadas (T1–T9), más la banda de Psicología que
 // entró con la segunda ronda de copy (2026-08-28). Quedan los assets de foto que no se entregaron
-// y el re-skin de las páginas de registro — ver `tasks/todo.md`.
+// y el re-skin de las páginas de registro — ver `tasks/home-refresh/todo.md`.
 //
 // El ORDEN de las secciones y el color de fondo de cada una los fija el copy aprobado, no el gusto
 // de cada componente: 01 Hero #f4f4f4 · 02 Puertas #18202b · 03 Psicología #0066fe · 04 Quiénes

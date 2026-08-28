@@ -18,7 +18,7 @@
 // dentro de Quiénes Somos, y un aviso legal más corto en el pie. La paleta por sección también
 // cambió; eso vive en los componentes, no aquí.
 //
-// Las secciones se van añadiendo aquí a medida que se construyen (ver tasks/todo.md).
+// Las secciones se van añadiendo aquí a medida que se construyen (ver tasks/home-refresh/todo.md).
 //
 // AUDITORÍA (2026-08-13): de las 78 cadenas visibles del home, 67 salen del `.docx`. Las que NO,
 // y de dónde vienen — todas viven igualmente en este archivo, no sueltas por los componentes:
@@ -76,7 +76,10 @@ export const RUTAS = {
   // invitar a un colega desde un caso ya abierto dentro del panel. Un médico en Venezuela igual
   // tiene que registrarse antes de pedir nada. PENDIENTE de verificar con las owners.
   medicoVenezuela: '/registro-medico',
-  ingresar: '/login-medico',
+  // `/login` es el acceso único del sitio desde que se unificó el login: decide el destino por rol.
+  // `/login-medico` ya no tiene formulario, solo redirige aquí — enlazar al que redirige sería
+  // hacer pasar a todo el mundo por un salto de más.
+  ingresar: '/login',
   quienesSomos: '/quienes-somos',
   // El CTA de Psicología va al MISMO registro de paciente que la telemedicina, con un parámetro
   // que deja preseleccionada la especialidad. Lo lee `pages/registro-paciente.tsx`, que resuelve
