@@ -7,6 +7,27 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-08-28
 
+- **fix(home): en móvil la rejilla de Especialistas no aparecía nunca** — se quedaba en
+  `opacity: 0` para siempre, así que la sección salía vacía. En escritorio se veía bien.
+  - **La causa no era la imagen ni el `aspect-ratio`.** Era `useReveal`, que observaba con
+    `threshold: 0.15`: un umbral expresado como **fracción del elemento**. Para un elemento más
+    alto que la pantalla, eso pide más píxeles de los que el teléfono tiene, y el observer no se
+    dispara jamás.
+  - **Lo introdujo el propio cambio de esta rama:** la rejilla pasó de 6 tarjetas a 10, y en móvil
+    va a una columna, así que mide **5.147 px**. El 15 % son **772 px visibles a la vez**, y ningún
+    teléfono real llega: un iPhone SE deja ~560 px útiles y un iPhone 14, ~730. Con 6 tarjetas la
+    sección medía la mitad y entraba de sobra.
+  - **Por qué no se detectó antes:** la verificación se hizo a 375 × 812, y 772 < 812 por 40 px.
+    El emulador era el único tamaño donde funcionaba.
+  - **Arreglo:** el disparo pasa a medirse sobre la **altura de la pantalla** con
+    `rootMargin: '0px 0px -15% 0px'` en vez de sobre el alto del elemento con `threshold`. El ritmo
+    al hacer scroll es el mismo, pero ahora una sección no puede volver a esconderse por crecer.
+    Se aplica también a `useCountUp`, que compartía la constante.
+  - **Verificado** sobre el build de producción, comprobando la condición geométrica del observer
+    para las nueve secciones con reveal en cuatro alturas de pantalla (560, 690, 730 y 812 px):
+    antes, Especialistas fallaba en tres de las cuatro; ahora pasan las nueve en las cuatro,
+    incluida la última de la página, que era el riesgo de usar `rootMargin` negativo.
+
 - **Home — segunda ronda de copy de The Climb** — el documento corregido cambia textos, el orden de
   varias secciones y el color de fondo de casi todas. **Solo el home**; el panel médico y el admin
   no se tocan.
