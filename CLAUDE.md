@@ -154,13 +154,14 @@ migration to a dedicated backend is in progress:
 
 ## Services used
 
-| Service     | Role                                                                                                                                                          |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Supabase    | Database (Postgres), authentication, RLS authorization                                                                                                        |
-| FastAPI API | Separate backend (`api-medicos-por-venezuela`) — REST `/api/v1/*`; doctor self-profile + SACS/FPV verification                                                |
-| Vercel      | Hosting, environment variables, serverless API routes                                                                                                         |
-| Twilio      | (PARKED — compliance pending) would send video links via WhatsApp/SMS                                                                                         |
-| Jitsi Meet  | In-browser video rooms on our **self-hosted** instance `meet.medicosporvenezuela.org` (open rooms, no moderator login; public `meet.jit.si` now requires one) |
+| Service            | Role                                                                                                                                                                                                                                                                          |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Supabase           | Database (Postgres), authentication, RLS authorization                                                                                                                                                                                                                        |
+| FastAPI API        | Separate backend (`api-medicos-por-venezuela`) — REST `/api/v1/*`; doctor self-profile + SACS/FPV verification                                                                                                                                                                |
+| Vercel             | Hosting, environment variables, serverless API routes                                                                                                                                                                                                                         |
+| Twilio             | (PARKED — compliance pending) would send video links via WhatsApp/SMS                                                                                                                                                                                                         |
+| Jitsi Meet         | In-browser video rooms on our **self-hosted** instance `meet.medicosporvenezuela.org` (open rooms, no moderator login; public `meet.jit.si` now requires one)                                                                                                                 |
+| Google Analytics 4 | Property `G-09M01TF5F3`. Loaded **only** on the production domain: the inline snippet in `pages/_document.tsx` checks the hostname before it even creates the `<script>`, so local and branch previews issue no request to Google. No npm dependency — see `lib/analytics.ts` |
 
 ## Project layout
 

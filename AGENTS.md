@@ -37,6 +37,8 @@ Verified directly against `package.json` and the repo tree (not assumed):
   — the migration is ongoing
 - One Vercel serverless API route: `pages/api/videoconsulta.ts` (Twilio v6 + Supabase service-role,
   server-only)
+- **Google Analytics 4** — no npm dependency: an inline snippet in `pages/_document.tsx`, gated on
+  the production hostname (`lib/analytics.ts`). Nothing loads in local or in branch previews
 - No CSS framework — plain global CSS classes
 - No state-management library, no ORM — raw Supabase JS client + RLS, plus `fetch` via `lib/apiClient.ts`
 - `tsconfig.json` present; strictness not yet audited in depth

@@ -14,6 +14,22 @@ const API_URL =
 // Realtime (postgres_changes y presence) va por WebSocket al mismo host de Supabase.
 const SUPABASE_WS = SUPABASE_URL.replace(/^http/, 'ws')
 
+// Google Analytics 4. El script SOLO se carga en el dominio de producción (el guard vive en
+// `lib/analytics.ts`), pero la CSP se declara siempre: es una lista de permitidos, no un cargador,
+// así que tenerla en local no hace que se cargue nada. Al revés sí sería un problema — sin estas
+// entradas, la CSP reportaría una violación por cada evento de analítica en producción, y esos
+// falsos positivos taparían los reportes de verdad. Y el día que la CSP pase de Report-Only a
+// enforced, la analítica dejaría de funcionar.
+//   · `googletagmanager.com` sirve `gtag.js`.
+//   · `google-analytics.com` y sus subdominios reciben los eventos (`connect-src`), y el píxel
+//     `/collect` de respaldo cuando `fetch`/`sendBeacon` no está disponible (`img-src`).
+const GTM = 'https://www.googletagmanager.com'
+const GA_ENVIO = [
+  'https://www.google-analytics.com',
+  'https://*.google-analytics.com',
+  'https://*.analytics.google.com'
+]
+
 const csp = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -27,11 +43,13 @@ const csp = [
   // 'unsafe-inline': Next inyecta el bootstrap y __NEXT_DATA__ como scripts inline. Quitarlo
   // exige nonces por request, que en export estático no hay dónde generar. 'unsafe-eval' solo
   // en dev, que es donde Turbopack/HMR lo necesitan.
-  `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === 'production' ? '' : " 'unsafe-eval'"}`,
+  `script-src 'self' 'unsafe-inline' ${GTM}${process.env.NODE_ENV === 'production' ? '' : " 'unsafe-eval'"}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  `img-src 'self' data: blob: ${GTM} ${GA_ENVIO[0]}`,
   "font-src 'self' data:",
-  ['connect-src', "'self'", SUPABASE_URL, SUPABASE_WS, API_URL].filter(Boolean).join(' '),
+  ['connect-src', "'self'", SUPABASE_URL, SUPABASE_WS, API_URL, GTM, ...GA_ENVIO]
+    .filter(Boolean)
+    .join(' '),
   "form-action 'self'",
   "manifest-src 'self'"
 ].join('; ')
