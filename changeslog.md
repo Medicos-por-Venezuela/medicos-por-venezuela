@@ -28,6 +28,12 @@ Each entry: date, a short summary of what changed and why, and the key files/are
     antes, Especialistas fallaba en tres de las cuatro; ahora pasan las nueve en las cuatro,
     incluida la última de la página, que era el riesgo de usar `rootMargin` negativo.
 
+- **Instagram, la única red de la organización** — `MARCA.instagramUrl` pasa a la forma canónica con
+  `www.` (confirmado con el equipo, 2026-08-28). No es cosmético: esa URL es el `sameAs` del JSON-LD,
+  o sea lo que le dice a Google que la cuenta y la organización son la misma entidad, y sin `www.`
+  había un 301 de por medio. No hay cuenta de X: por eso `twitter:site` se queda fuera.
+  - Archivos: `components/home/copy.ts`.
+
 - **Meta tags, iconos e imagen para compartir** — una auditoría del dominio de producción dio
   **24/100 en Open Graph**. El `<head>` del sitio tenía cuatro etiquetas: `title`, `charset`,
   `viewport` y `description`. Nada más — ni `og:image`, ni canónica, ni un solo favicon en
