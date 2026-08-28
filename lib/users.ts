@@ -17,8 +17,13 @@ export interface ApiUser {
   // devolviendo, pero no debe decidir ni mostrarse.
   verified: boolean
   // `doctors.verified`: resultado de contrastar la cédula con SACS (médico) o FPV (psicólogo).
-  // null = esta persona no tiene ficha de médico, así que no hay credencial que verificar.
-  doctor_verified: boolean | null
+  // `null` = esta persona no tiene ficha, así que no hay credencial que verificar.
+  //
+  // Opcional a propósito: `ApiUser` tipa TODO lo que sale de /profiles, y solo el LISTADO trae
+  // este campo — `GET /profiles/{id}` y `PATCH /{id}/active` no. Marcarlo obligatorio hacía que el
+  // tipo prometiera algo que esas dos respuestas no cumplen. Por eso los consumidores comprueban
+  // `!= null` (laxo), que cubre ausente y null a la vez.
+  doctor_verified?: boolean | null
   created_at: string
 }
 

@@ -384,10 +384,13 @@ export default function UsersManager() {
                             ) : (
                               <span className="badge badge-red">Revocado</span>
                             )}
+                            {/* `== null` (laxo) para atrapar también `undefined`: si el back
+                                todavía no expone el campo, el estricto lo dejaba pasar al caso
+                                falsy y marcaba a todos como "sin verificar". */}
                             {/* Credencial real (SACS/FPV). Antes leía `users.verified`, que es
                                 constante true: el badge salía verde para todos. Un usuario sin
                                 ficha de médico (null) no lleva badge: no hay cédula que validar. */}
-                            {u.doctor_verified !== null &&
+                            {u.doctor_verified != null &&
                               (u.doctor_verified ? (
                                 <span className="badge badge-green" style={{ marginLeft: 4 }}>
                                   Cédula verificada

@@ -20,9 +20,10 @@ export type Profile = {
   // `users.verified`: nace true y ningún camino la baja — no significa nada. El dato real de
   // credencial es `doctor_verified`.
   verified: boolean
-  // `doctors.verified`: resultado de contrastar la cédula con SACS/FPV. null = no tiene ficha de
-  // médico, así que no hay credencial que verificar.
-  doctor_verified: boolean | null
+  // `doctors.verified`: resultado de contrastar la cédula con SACS/FPV. `null` = no tiene ficha de
+  // médico, así que no hay credencial que verificar. Opcional: solo el LISTADO lo trae (ver la
+  // nota en ApiUser, lib/users.ts).
+  doctor_verified?: boolean | null
   active: boolean
   last_seen_at: string | null
   created_at: string
