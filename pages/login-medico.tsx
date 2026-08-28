@@ -1,4 +1,4 @@
-import Head from 'next/head'
+import Seo from '../components/Seo'
 import { useRouter } from 'next/router'
 import { useEffect } from 'react'
 
@@ -14,9 +14,12 @@ export default function LoginMedicoRedirect() {
 
   return (
     <>
-      <Head>
-        <title>Iniciar sesión — Médicos por Venezuela</title>
-      </Head>
+      <Seo
+        titulo="Iniciar sesión — Médicos por Venezuela"
+        descripcion={'Acceso para pacientes, médicos y administradores de Médicos por Venezuela.'}
+        ruta="/login-medico"
+        noindex
+      />
       <main className="page">
         <div className="narrow">
           <div className="card">Llevándote al inicio de sesión...</div>

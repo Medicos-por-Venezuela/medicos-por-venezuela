@@ -1,4 +1,4 @@
-import Head from 'next/head'
+import Seo from '../components/Seo'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
@@ -155,9 +155,14 @@ export default function ElegirRol() {
 
   return (
     <>
-      <Head>
-        <title>Elegir rol — Médicos por Venezuela</title>
-      </Head>
+      <Seo
+        titulo="Elegir rol — Médicos por Venezuela"
+        descripcion={
+          'Paso final del registro con Google: elige si entras como paciente o como médico.'
+        }
+        ruta="/elegir-rol"
+        noindex
+      />
       <main className="page">
         <div className="narrow">
           <div className="card" style={{ marginTop: 14 }}>

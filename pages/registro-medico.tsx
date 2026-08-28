@@ -1,4 +1,4 @@
-import Head from 'next/head'
+import Seo from '../components/Seo'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useState } from 'react'
@@ -285,9 +285,14 @@ export default function RegistroMedico() {
 
   return (
     <>
-      <Head>
-        <title>Registro médico — Médicos por Venezuela</title>
-      </Head>
+      <Seo
+        titulo="Únete como médico voluntario — Médicos por Venezuela"
+        descripcion={
+          '¿Eres médico o psicólogo venezolano? Únete a la red: verificamos tu credencial ante ' +
+          'el SACS o la FPV y atiendes desde donde estés. Voluntariado, sin costo.'
+        }
+        ruta="/registro-medico"
+      />
       <main className="page registro-medico-page">
         <div className="narrow">
           <Link href="/" className="link-button">

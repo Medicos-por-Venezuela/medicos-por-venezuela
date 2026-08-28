@@ -1,4 +1,4 @@
-import Head from 'next/head'
+import Seo from '../../../components/Seo'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import DoctorPoolModal from '../../../components/DoctorPoolModal'
@@ -617,9 +617,12 @@ export default function ConsultaDetalle() {
 
   return (
     <>
-      <Head>
-        <title>Detalle de consulta — Médicos por Venezuela</title>
-      </Head>
+      <Seo
+        titulo="Detalle de consulta — Médicos por Venezuela"
+        descripcion={'Detalle del caso, videoconsulta y cierre.'}
+        ruta="/panel-medico/consulta"
+        noindex
+      />
       <main className="page">
         <div className="container">
           <div className="detail-topbar">

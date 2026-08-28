@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Las cuatro páginas públicas del sitio. Todo lo demás (login, panel, admin, sala de espera,
+  callback de OAuth) va con `noindex` y bloqueado en robots.txt: no son contenido.
+
+  Estático a mano y no generado: son cuatro URLs y no hay rutas dinámicas públicas. El día que
+  entre el blog —hoy la sección del home enlaza fuera— esto tendrá que generarse en el build.
+
+  Sin `<priority>` ni `<changefreq>`: Google los ignora desde hace años y mantenerlos solo crea
+  otra cosa que se queda desfasada.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://medicosporvenezuela.org/</loc>
+    <lastmod>2026-08-28</lastmod>
+  </url>
+  <url>
+    <loc>https://medicosporvenezuela.org/quienes-somos</loc>
+    <lastmod>2026-08-28</lastmod>
+  </url>
+  <url>
+    <loc>https://medicosporvenezuela.org/registro-paciente</loc>
+    <lastmod>2026-08-28</lastmod>
+  </url>
+  <url>
+    <loc>https://medicosporvenezuela.org/registro-medico</loc>
+    <lastmod>2026-08-28</lastmod>
+  </url>
+</urlset>

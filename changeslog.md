@@ -28,6 +28,45 @@ Each entry: date, a short summary of what changed and why, and the key files/are
     antes, Especialistas fallaba en tres de las cuatro; ahora pasan las nueve en las cuatro,
     incluida la última de la página, que era el riesgo de usar `rootMargin` negativo.
 
+- **Meta tags, iconos e imagen para compartir** — una auditoría del dominio de producción dio
+  **24/100 en Open Graph**. El `<head>` del sitio tenía cuatro etiquetas: `title`, `charset`,
+  `viewport` y `description`. Nada más — ni `og:image`, ni canónica, ni un solo favicon en
+  `public/`.
+  - **`components/Seo.tsx` (nuevo).** Todo lo que cambia de página a página en un componente:
+    título, descripción, canónica, Open Graph completo y tarjeta de X. Antes cada una de las
+    trece páginas ponía su `<title>` a mano y ninguna ponía nada más; así es justamente como se
+    acaba con trece títulos y cero descripciones. Lo usan las trece.
+  - **Lo que se veía roto de verdad.** Sin `og:image`, compartir el enlace por WhatsApp —el canal
+    de este público— daba un rectángulo gris. Sin `apple-touch-icon`, iOS usa una **captura de la
+    página** como icono al añadirla a la pantalla de inicio. Y sin `.ico`/`.png`, Google Search
+    pinta el globo genérico: **no lee favicons en SVG**.
+  - **`scripts/build-iconos.mjs` (nuevo).** Genera los ocho ficheros desde los SVG de
+    `public/brand/`: `favicon.svg`, 16, 32, `.ico` (16+32+48, armado a mano porque sharp no
+    escribe ICO), `apple-touch-icon`, 192, 512, 512 maskable y `og-image.png` (1200x630). El
+    isotipo son siete estrellas y **a 16 px se funden en una mancha**: los tamaños de pestaña
+    llevan solo la estrella central, cuya caja se mide con `getBBox()` en vez de estimarla. La
+    imagen de OG la pinta Chromium (Playwright, ya es dependencia) porque lleva texto con la
+    tipografía de marca, con el titular del hero palabra por palabra — quien abre el enlace tiene
+    que reconocer la página.
+  - **Título y descripción del home.** El título eran 69 caracteres (`nombre — tagline`) y se
+    cortaba en X y en Google; ahora 51. La descripción eran los 45 del tagline, la mitad del
+    espacio del resultado desaprovechado; ahora 159, diciendo qué se hace, para quién y a qué
+    precio.
+  - **Indexación.** Las páginas privadas y de tránsito (login, panel, admin, callback, sala de
+    espera, mi caso, elegir rol) van con `noindex`; entran además `robots.txt` y `sitemap.xml`,
+    que no existían. Las dos cosas hacen falta y no son la misma: `Disallow` pide que no se
+    rastree, `noindex` que no se indexe. Nota: en varias de esas páginas el `<head>` está detrás
+    de un early return por sesión, así que el `noindex` solo sale tras hidratar — de ahí que el
+    `Disallow` las cubra igualmente.
+  - **`_document.tsx`** recoge lo que no cambia nunca (iconos, manifiesto, `theme-color`) y
+    **`site.webmanifest`** entra nuevo. `twitter:site` se queda fuera a propósito: la organización
+    publica en Instagram, no en X, y poner una cuenta que no existe atribuiría el contenido a un
+    tercero.
+  - Archivos: `components/Seo.tsx`, `scripts/build-iconos.mjs`, `pages/_document.tsx`, las trece
+    páginas de `pages/`, y en `public/`: `favicon.*`, `favicon-16x16.png`, `favicon-32x32.png`,
+    `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`,
+    `og-image.png`, `site.webmanifest`, `robots.txt`, `sitemap.xml`.
+
 - **Home — segunda ronda de copy de The Climb** — el documento corregido cambia textos, el orden de
   varias secciones y el color de fondo de casi todas. **Solo el home**; el panel médico y el admin
   no se tocan.

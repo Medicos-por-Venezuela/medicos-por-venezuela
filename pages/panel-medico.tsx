@@ -1,4 +1,4 @@
-import Head from 'next/head'
+import Seo from '../components/Seo'
 import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
@@ -418,9 +418,12 @@ export default function PanelMedico() {
   if (credentialPending) {
     return (
       <>
-        <Head>
-          <title>Verificación pendiente — Médicos por Venezuela</title>
-        </Head>
+        <Seo
+          titulo="Verificación pendiente — Médicos por Venezuela"
+          descripcion={'Falta completar tu credencial profesional para poder atender.'}
+          ruta="/panel-medico"
+          noindex
+        />
         <main className="page">
           <div className="container">
             <div className="panel-topbar">
@@ -464,9 +467,12 @@ export default function PanelMedico() {
 
   return (
     <>
-      <Head>
-        <title>Panel médico — Médicos por Venezuela</title>
-      </Head>
+      <Seo
+        titulo="Panel médico — Médicos por Venezuela"
+        descripcion={'Cola de pacientes en espera, tus casos y los contadores del día.'}
+        ruta="/panel-medico"
+        noindex
+      />
       <main className="page">
         <div className="container">
           <div className="panel-topbar">
