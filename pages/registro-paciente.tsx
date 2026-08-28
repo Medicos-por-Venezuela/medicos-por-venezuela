@@ -1,4 +1,4 @@
-import Head from 'next/head'
+import Seo from '../components/Seo'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useState } from 'react'
@@ -434,9 +434,14 @@ export default function RegistroPaciente() {
 
   return (
     <>
-      <Head>
-        <title>Solicitar consulta — Médicos por Venezuela</title>
-      </Head>
+      <Seo
+        titulo="Solicitar consulta gratuita — Médicos por Venezuela"
+        descripcion={
+          'Cuéntanos qué necesitas y un especialista verificado te atenderá por videoconsulta, ' +
+          'sin costo. Puedes solicitarla de forma anónima, sin crear una cuenta.'
+        }
+        ruta="/registro-paciente"
+      />
       <main className="page patient-theme">
         <div className="narrow">
           <Link href="/" className="link-button">

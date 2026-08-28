@@ -39,7 +39,11 @@ export const MARCA = {
   web: 'medicosporvenezuela.org',
   correo: 'info@medicosporvenezuela.org',
   instagram: '@medicosxvenezuela',
-  instagramUrl: 'https://instagram.com/medicosxvenezuela'
+  // Con `www.`: es la forma canónica que sirve Instagram, y sin ella hay un salto 301 de por
+  // medio. Importa más de lo que parece porque esta URL no es solo el enlace del pie: es el
+  // `sameAs` del JSON-LD (`lib/schema.ts`), o sea lo que le dice a Google que esta cuenta y esta
+  // organización son la misma entidad. Es la ÚNICA red de la organización — no hay X.
+  instagramUrl: 'https://www.instagram.com/medicosxvenezuela'
 } as const
 
 // RESPALDO de las tres cifras de la portada. Desde el 2026-08-28 las de verdad salen del backend

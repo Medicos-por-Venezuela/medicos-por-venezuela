@@ -1,4 +1,4 @@
-import Head from 'next/head'
+import Seo from '../components/Seo'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useRef, useState } from 'react'
@@ -54,9 +54,15 @@ export default function SalaEspera() {
 
   return (
     <>
-      <Head>
-        <title>Sala de espera — Médicos por Venezuela</title>
-      </Head>
+      <Seo
+        titulo="Sala de espera — Médicos por Venezuela"
+        descripcion={
+          'Tu solicitud está registrada. Aquí tienes el enlace de la videoconsulta y el estado ' +
+          'de la espera.'
+        }
+        ruta="/sala-espera"
+        noindex
+      />
       <main className="page">
         <div className="narrow">
           <div className="card">

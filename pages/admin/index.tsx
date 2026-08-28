@@ -1,4 +1,4 @@
-import Head from 'next/head'
+import Seo from '../../components/Seo'
 import { useRouter } from 'next/router'
 import { useEffect } from 'react'
 
@@ -15,10 +15,12 @@ export default function AdminRedirect() {
 
   return (
     <>
-      <Head>
-        <title>Administración</title>
-        <meta name="robots" content="noindex" />
-      </Head>
+      <Seo
+        titulo="Administración — Médicos por Venezuela"
+        descripcion={'Sección privada de administración.'}
+        ruta="/admin"
+        noindex
+      />
       <main className="page">
         <div className="narrow">
           <div className="card">Llevándote al inicio de sesión...</div>

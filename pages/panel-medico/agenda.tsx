@@ -1,4 +1,4 @@
-import Head from 'next/head'
+import Seo from '../../components/Seo'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
@@ -68,9 +68,12 @@ export default function MiAgenda() {
 
   return (
     <>
-      <Head>
-        <title>Mi agenda — Médicos por Venezuela</title>
-      </Head>
+      <Seo
+        titulo="Mi agenda — Médicos por Venezuela"
+        descripcion={'Tus consultas asignadas y su estado.'}
+        ruta="/panel-medico/agenda"
+        noindex
+      />
       <main className="page">
         <div className="container">
           <button className="link-button" onClick={() => router.push('/panel-medico')}>

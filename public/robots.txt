@@ -1,0 +1,21 @@
+# El sitio no tenía robots.txt: cada rastreador recibía un 404 y rastreaba a ciegas, incluido el
+# panel médico y el admin.
+#
+# Las rutas de abajo llevan además `noindex` en su propio <head> (components/Seo.tsx). Las dos
+# cosas hacen falta y no son la misma: `Disallow` pide que NO se rastree, `noindex` que no se
+# indexe. Una URL bloqueada aquí puede acabar igualmente en el índice si alguien la enlaza —Google
+# la lista sin descripción—, y una URL con `noindex` solo funciona si Google puede entrar a leerla.
+# Por eso las privadas de verdad llevan las dos, y ninguna de ellas tiene nada que ganar rastreada.
+
+User-agent: *
+Disallow: /admin
+Disallow: /panel-medico
+Disallow: /auth/
+Disallow: /api/
+Disallow: /mi-caso
+Disallow: /sala-espera
+Disallow: /elegir-rol
+Disallow: /login
+Disallow: /login-medico
+
+Sitemap: https://medicosporvenezuela.org/sitemap.xml
