@@ -5,9 +5,13 @@
 // se leen las cifras de verdad y no ceros: en una sección cuyo argumento es el impacto, un "0" por
 // un fallo de carga es peor que no animar nada.
 //
+// Las cifras salen del backend (`useCifras`), no del copy: hasta el 2026-08-28 estaban escritas a
+// mano y envejecían. El respaldo, que es lo que se pinta en el servidor, sigue en `METRICAS`.
+//
 // Cada cifra vive en su propio componente porque `useCountUp` es un hook y no puede llamarse
 // dentro de un `.map()`.
 
+import { useCifras } from './cifras'
 import { conMiles, IMPACTO } from './copy'
 import { useCountUp } from './motion'
 
@@ -33,12 +37,22 @@ function Cifra({ numero }: { numero: number }) {
 }
 
 export default function Metricas() {
+  const cifras = useCifras()
+
   return (
     <section className="impacto" id="impacto" aria-label="Nuestro impacto">
       <div className="banda">
         {IMPACTO.map((m) => (
           <div className="cifra" key={m.etiqueta}>
-            {'numero' in m ? <Cifra numero={m.numero} /> : <span className="texto">{m.texto}</span>}
+            {'clave' in m ? (
+              // `key` con la cifra: `useCountUp` fija su objetivo al montar, así que cuando llega
+              // la respuesta del backend hay que remontarlo para que cuente hasta el número nuevo.
+              // En la práctica se remonta antes de que nadie haya bajado hasta aquí, así que la
+              // animación se ve una sola vez.
+              <Cifra key={cifras[m.clave]} numero={cifras[m.clave]} />
+            ) : (
+              <span className="texto">{m.texto}</span>
+            )}
             <span className="etiqueta">{m.etiqueta}</span>
           </div>
         ))}
@@ -46,7 +60,10 @@ export default function Metricas() {
 
       <style jsx>{`
         .impacto {
-          background: var(--h-blue);
+          /* Azul marino, no eléctrico: el copy reserva el eléctrico para Psicología y
+             Especialistas. El blanco sobre este fondo da 11,5:1, de sobra para las etiquetas de
+             11 px. */
+          background: var(--h-blue-deep);
           padding: 80px 48px;
         }
         .banda {

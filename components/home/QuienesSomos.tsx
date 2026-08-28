@@ -1,15 +1,18 @@
-// Quiénes Somos. Bloque de texto sobre fondo blanco, destino del ancla "Quiénes Somos" del navbar.
+// Quiénes Somos. Bloque de texto sobre el blanco roto de la paleta (#f4f4f4).
 //
 // El prototipo lo monta a dos columnas: texto a la izquierda y una foto de 460 px a la derecha
 // ("médico venezolano en consulta virtual"). Esa foto NO está entre los assets entregados, así que
-// la sección va a una sola columna. Para que el texto no quede en líneas larguísimas de 1180 px se
-// limita el ancho de lectura; el día que llegue la foto, se recupera el `display:flex` del
-// prototipo y se quita ese tope.
+// el bloque de introducción va a una sola columna. Para que el texto no quede en líneas larguísimas
+// de 1180 px se limita el ancho de lectura; el día que llegue la foto, se recupera el `display:flex`
+// del prototipo y se quita ese tope.
 //
-// "Conoce nuestra historia →" va como texto y no como enlace: la página Quiénes Somos está fuera
-// del alcance de este trabajo, y un enlace que no lleva a ninguna parte en la home de una
-// organización médica erosiona justo la credibilidad que el texto defiende.
+// SEGUNDA RONDA (2026-08-28): el equipo NO vive aquí. Las cofundadoras y el resto de las personas
+// se cuentan en `/quienes-somos` (`components/home/Equipo.tsx`), a la que se llega desde "Conoce
+// nuestra historia →". El "Quiénes Somos" del menú sigue apuntando a esta sección del home.
+//
+// Ese CTA es ya un enlace de verdad, no el texto inerte que era: la página existe.
 
+import Link from 'next/link'
 import { QUIENES_SOMOS } from './copy'
 import { useReveal } from './motion'
 
@@ -27,14 +30,14 @@ export default function QuienesSomos() {
             {p}
           </p>
         ))}
-        <span className="historia" aria-disabled="true">
+        <Link href={QUIENES_SOMOS.ctaHref} className="historia">
           {QUIENES_SOMOS.cta}
-        </span>
+        </Link>
       </div>
 
       <style jsx>{`
         .quienes {
-          background: var(--h-white);
+          background: var(--h-grey-bg);
           padding: 110px 48px 90px;
         }
         .contenido {
@@ -44,7 +47,9 @@ export default function QuienesSomos() {
         .eyebrow {
           font-size: 11px;
           font-weight: 800;
-          color: var(--h-blue);
+          /* Sobre el blanco roto, el azul de marca a 11 px da 4,41:1 y no llega al mínimo; la
+             variante oscura da 6,20:1. Mismo criterio que la cabecera de Cómo Funciona. */
+          color: var(--h-blue-dark);
           text-transform: uppercase;
           letter-spacing: 0.18em;
           margin: 0 0 10px;
@@ -76,9 +81,8 @@ export default function QuienesSomos() {
         .parrafo:last-of-type {
           margin-bottom: 32px;
         }
-        /* Texto, no enlace: sin cursor de mano y sin reacción al hover, para no prometer un clic
-           que no existe. */
-        .historia {
+        /* ':global()': el <a> que renderiza Link no lleva la clase de scope. Ver Navbar.tsx. */
+        .contenido :global(.historia) {
           display: inline-flex;
           align-items: center;
           gap: 8px;
@@ -89,8 +93,11 @@ export default function QuienesSomos() {
           letter-spacing: 0.06em;
           border-bottom: 1px solid var(--h-blue-deep);
           padding-bottom: 6px;
-          opacity: 0.55;
-          cursor: default;
+          transition: color var(--h-t-hover) var(--h-ease);
+        }
+        .contenido :global(.historia:hover),
+        .contenido :global(.historia:focus-visible) {
+          color: var(--h-blue-dark);
         }
 
         @media (max-width: 900px) {

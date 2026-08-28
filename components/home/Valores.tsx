@@ -1,14 +1,16 @@
 // Los cuatro valores, en una banda con filetes entre columnas, justo debajo de Quiénes Somos.
 //
-// El prototipo pone una foto circular de 52 px junto a cada valor; esos assets no están
-// entregados, así que van solo en texto. Y los valores son los del `.docx` (Verificados,
-// Autónomos, Gratuitos, Confidenciales), que difieren de los del prototipo — ver la nota en
-// copy.ts.
+// Cada valor lleva su icono (entregados el 2026-08-28, generados con
+// `scripts/optimize-value-icons.mjs`). Van con `alt` vacío y `aria-hidden`: el icono repite el
+// título que tiene justo debajo, y anunciarlo haría que un lector de pantalla dijera el valor dos
+// veces. Los valores son los del `.docx` (Verificados, Autónomos, Gratuitos, Confidenciales), que
+// difieren de los del prototipo — ver la nota en copy.ts.
 //
 // El `border-left` va en TODOS los ítems, incluido el primero, como en el prototipo: así la banda
 // se lee como una rejilla y, cuando las columnas envuelven, el primero de cada fila sigue teniendo
 // su filete en lugar de dejar un hueco raro.
 
+import Image from 'next/image'
 import { VALORES } from './copy'
 import { useReveal } from './motion'
 
@@ -20,6 +22,14 @@ export default function Valores() {
       <div ref={ref} className={`banda ${className}`}>
         {VALORES.map((v) => (
           <div className="valor" key={v.titulo}>
+            <Image
+              className="icono"
+              src={v.icono}
+              alt=""
+              width={48}
+              height={48}
+              aria-hidden="true"
+            />
             <h3 className="titulo">{v.titulo}</h3>
             <p className="descripcion">{v.descripcion}</p>
           </div>
@@ -28,7 +38,9 @@ export default function Valores() {
 
       <style jsx>{`
         .valores {
-          background: var(--h-white);
+          /* Misma banda que Quiénes Somos: es su cierre, no una sección aparte, así que comparte
+             el blanco roto de la sección 04. */
+          background: var(--h-grey-bg);
           padding: 0 48px 110px;
         }
         .banda {
@@ -43,6 +55,13 @@ export default function Valores() {
           flex: 1 1 240px;
           padding: 32px 26px;
           border-left: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        /* ':global()': Image no recibe la clase de scope de styled-jsx. Ver Navbar.tsx. */
+        .valor :global(.icono) {
+          display: block;
+          width: 48px;
+          height: 48px;
+          margin-bottom: 16px;
         }
         .titulo {
           font-size: 14px;

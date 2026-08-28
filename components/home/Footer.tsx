@@ -1,9 +1,13 @@
-// Pie del home, sobre `--h-navy`. Cuatro columnas (marca, plataforma, organización, contacto) y
-// una franja inferior con el aviso legal y el copyright. Valores del prototipo de The Climb.
+// Pie, sobre `--h-navy`. Cuatro columnas (marca, plataforma, organización, contacto), una franja
+// con el aviso legal y el copyright, y debajo la franja de créditos de la colaboración. Valores
+// del prototipo de The Climb.
 //
-// El aviso legal va completo y legible a propósito: en una plataforma de orientación médica, la
-// frase de "esto no reemplaza la atención de urgencia" es lo que evita que alguien con una
-// emergencia se quede esperando una videollamada.
+// Lo usan el home Y `/quienes-somos`: las anclas van como `/#seccion` por lo mismo que en el
+// Navbar. Ver la nota de allí.
+//
+// El aviso legal se acortó el 2026-08-28 por decisión del copy aprobado; con él desapareció la
+// frase de "esto no reemplaza la atención de urgencia". Queda anotado en copy.ts y en
+// tasks/todo.md: era una salvaguarda clínica, no un texto de relleno.
 
 import Image from 'next/image'
 import Link from 'next/link'
@@ -37,7 +41,7 @@ export default function Footer() {
                       {enlace.label}
                     </Link>
                   ) : 'ancla' in enlace && enlace.ancla ? (
-                    <a key={enlace.label} href={`#${enlace.ancla}`} className="enlace">
+                    <a key={enlace.label} href={`/#${enlace.ancla}`} className="enlace">
                       {enlace.label}
                     </a>
                   ) : (
@@ -80,6 +84,24 @@ export default function Footer() {
         <div className="legal">
           <p className="aviso">{FOOTER.avisoLegal}</p>
           <p className="copyright">{FOOTER.copyright}</p>
+        </div>
+
+        {/* Créditos de la colaboración. The Climb va como texto porque no se dio una URL; el día
+            que llegue, entra igual que la de Softronic. */}
+        <div className="creditos">
+          <p className="colaboracion">
+            {FOOTER.colaboracion.antes}
+            <strong>{FOOTER.colaboracion.climb}</strong>
+            {FOOTER.colaboracion.entre}
+            <a
+              className="socio"
+              href={FOOTER.colaboracion.softronicUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              {FOOTER.colaboracion.softronic}
+            </a>
+          </p>
         </div>
       </div>
 
@@ -174,6 +196,35 @@ export default function Footer() {
           color: var(--h-sobre-oscuro-tenue);
           white-space: nowrap;
           margin: 0;
+        }
+        .creditos {
+          border-top: 1px solid rgba(255, 255, 255, 0.08);
+          margin-top: 22px;
+          padding-top: 20px;
+        }
+        .colaboracion {
+          font-size: 11px;
+          color: var(--h-sobre-oscuro-tenue);
+          letter-spacing: 0.02em;
+          margin: 0;
+        }
+        .colaboracion strong {
+          font-weight: 700;
+          color: var(--h-sobre-oscuro-medio);
+        }
+        /* El enlace va subrayado y no solo en otro color: distinguirlo del texto de al lado por
+           color sería pedirle a quien no distingue bien los tonos que adivine dónde se puede
+           pinchar. */
+        .socio {
+          font-weight: 700;
+          color: var(--h-sobre-oscuro-medio);
+          text-decoration: underline;
+          text-underline-offset: 3px;
+          transition: color var(--h-t-hover) var(--h-ease);
+        }
+        .socio:hover,
+        .socio:focus-visible {
+          color: var(--h-white);
         }
 
         @media (max-width: 960px) {

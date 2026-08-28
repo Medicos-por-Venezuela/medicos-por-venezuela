@@ -9,8 +9,15 @@
 // `_app.tsx` para todo el sitio, así que tocar `:root` habría repintado el panel médico y el
 // admin, que están fuera del alcance.
 //
-// Estado: las doce secciones del prototipo están montadas (T1–T9). Quedan los assets de foto
-// que no se entregaron y el re-skin de las páginas de registro — ver `tasks/todo.md`.
+// Estado: las doce secciones del prototipo están montadas (T1–T9), más la banda de Psicología que
+// entró con la segunda ronda de copy (2026-08-28). Quedan los assets de foto que no se entregaron
+// y el re-skin de las páginas de registro — ver `tasks/todo.md`.
+//
+// El ORDEN de las secciones y el color de fondo de cada una los fija el copy aprobado, no el gusto
+// de cada componente: 01 Hero #f4f4f4 · 02 Puertas #18202b · 03 Psicología #0066fe · 04 Quiénes
+// Somos (con la banda de Valores) #f4f4f4 · 05 Cómo Funciona #18202b · 06 Especialistas #0066fe ·
+// 07 Testimonios #f4f4f4 · 08 Impacto #003d5f · 09 Blog #f4f4f4 · 10 CTA final y 11 pie #18202b.
+// Cada `background` vive en su sección; esta lista es el mapa para comprobarlo de un vistazo.
 
 import Head from 'next/head'
 import Blog from '../components/home/Blog'
@@ -21,11 +28,13 @@ import Footer from '../components/home/Footer'
 import Hero from '../components/home/Hero'
 import Metricas from '../components/home/Metricas'
 import Navbar from '../components/home/Navbar'
+import Psicologia from '../components/home/Psicologia'
 import Puertas from '../components/home/Puertas'
 import QuienesSomos from '../components/home/QuienesSomos'
 import Testimonios from '../components/home/Testimonios'
 import Valores from '../components/home/Valores'
 import { MARCA } from '../components/home/copy'
+import { comoScript, schemaHome } from '../lib/schema'
 
 export default function Home() {
   return (
@@ -43,6 +52,14 @@ export default function Home() {
           type="font/woff2"
           crossOrigin="anonymous"
         />
+        {/* JSON-LD. Va en el HTML del servidor, no inyectado desde JavaScript: la guía de
+            Google de diciembre de 2025 avisa de que los datos estructurados que aparecen solo tras
+            ejecutar JS pueden procesarse con retraso. Estas páginas son estáticas, así que sale ya
+            en la respuesta. */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: comoScript(schemaHome()) }}
+        />
       </Head>
 
       {/* Sin JavaScript, `useReveal` nunca llega a añadir `is-visible` y las secciones que lo usan
@@ -59,6 +76,7 @@ export default function Home() {
       <main>
         <Hero />
         <Puertas />
+        <Psicologia />
         <QuienesSomos />
         <Valores />
         <ComoFunciona />

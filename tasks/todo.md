@@ -432,8 +432,39 @@ patrón que ya existe: redefinir tokens dentro de una clase de tema.
 - [x] E2E en verde (11/11)
 - [x] **Accesibilidad WCAG 2.1 AA (axe-core)**: el home pasa con **0 violaciones** en los cinco
       estados auditados (1440/768/360, menú móvil abierto, tercera pestaña activa). Se partía de 18
-- [ ] **Pendiente antes de publicar**: sustituir los 6 perfiles y las 3 tarjetas de blog
-      placeholder por contenido real, y las 4 fotos del prototipo que no se entregaron
+- [ ] **Pendiente antes de publicar**: las 3 tarjetas de blog siguen siendo placeholder, y faltan
+      las 4 fotos del prototipo que no se entregaron. Los 10 especialistas ya son reales
+- [x] **Iconos de la banda de Valores** — entregados el 2026-08-28 y montados. Se generan con
+      `node scripts/optimize-value-icons.mjs` desde `nueva/iconos-valores/`
+- [x] **Fotos y datos de los 10 especialistas** — entregados el 2026-08-28. La rejilla ya no tiene
+      placeholders: nombres, especialidades y retratos reales. Se generan con
+      `node scripts/optimize-specialist-photos.mjs` desde `nueva/especialistas/`
+- [ ] **Confirmar el reparto de los iconos de Valores.** Los archivos de origen venían con los
+      nombres de los valores del PROTOTIPO (Calidad, Credibilidad, Autonomía, Gratuidad), no con
+      los del copy, y algún dibujo no cuadra ni con su propio nombre: `Gratis.png` son cinco
+      estrellas y `Autonomía.png` es un médico. El reparto actual respeta los tres nombres de
+      archivo que sí coinciden y deja el cuarto por descarte, así que **"Confidenciales" se quedó
+      con un pulgar arriba**, que es lo que peor encaja — la confidencialidad se dibuja con un
+      candado. Pedir un icono de candado o confirmar el reparto
+- [ ] **`next dev` no hidrata en este entorno** (Next 16.3 + Turbopack + `cacheComponents`): el
+      cliente descarga todos los chunks pero React nunca monta —no hay fibras en `#__next`— así que
+      la página se sirve, se lee y se indexa, pero no responde a un clic. `next build` + `next start`
+      SÍ hidratan, y con eso se verificó el trabajo del 2026-08-28. No es del refrescamiento del
+      home: afecta a todas las páginas. Merece rama propia
+- [ ] **Publicar `feat/stats-publicas` del backend antes que este home.** Las cifras del hero y de
+      la banda de Impacto salen de `GET /api/v1/stats/public`, que vive en esa rama del repo
+      `api-medicos-por-venezuela`. Si el home se publica antes, la portada se queda con las cifras
+      de respaldo de `METRICAS` — ciertas, pero más bajas que las reales
+- [ ] **La etiqueta dice "Consultas realizadas" y ahora se cuentan TODAS las consultas creadas**
+      (decisión del equipo, 2026-08-28), incluidas las que siguen en espera, las canceladas y los
+      no-show. Si se quiere que la etiqueta sea literal, o se cambia el texto a algo como
+      "Consultas recibidas", o se filtra por estado en `get_public_stats` del backend
+- [ ] **Varias fotos de especialistas traen el logotipo de la bata deformado** ("NEDx VZLA" en vez
+      de "MEDx VZLA" en la de Alejandro Marcano, y texto ilegible en el gafete de otra). A 236 px no
+      se lee, pero conviene que el equipo lo sepa antes de usarlas en cualquier sitio más grande
+- [ ] **Advertencia de urgencias retirada del pie** por el copy aprobado del 2026-08-28
+      ("no reemplaza la atención médica presencial de urgencia"). Era una salvaguarda clínica;
+      queda aquí por si el equipo la quiere recuperar en otro sitio de la página
 - [ ] **Crítico, en otra rama**: 21 de 25 campos de `/registro-paciente` y `/registro-medico` no
       tienen nombre accesible (etiquetas visibles sin asociar). Exige tocar el marcado de esas
       páginas, fuera del "solo colores y tipografía" de T10

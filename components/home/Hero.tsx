@@ -1,6 +1,7 @@
 // Hero del home. Split a dos columnas: a la izquierda el mensaje (eyebrow, titular, subtítulo,
-// dos CTA y tres métricas), a la derecha la foto con el rótulo "Interconsulta en curso" y la
-// franja "24/7 · Disponible · Confidencial". Medidas tomadas del prototipo de The Climb.
+// dos CTA y tres métricas), a la derecha la foto con la franja "24/7 · Disponible · Confidencial".
+// Medidas tomadas del prototipo de The Climb. El rótulo "Interconsulta en curso" que el prototipo
+// ponía sobre la esquina de la foto se retiró el 2026-08-28.
 //
 // Es donde vive el **gesto mayor** que se acordó: el texto entra escalonado (60 ms entre bloques)
 // mientras la foto hace un `scale(1.06) → 1` de 900 ms. Lo demás del sitio es sobrio a propósito;
@@ -20,9 +21,13 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { HERO, RUTAS } from './copy'
+import { useCifras } from './cifras'
+import { HERO, masDe, RUTAS } from './copy'
 
 export default function Hero() {
+  // Las dos primeras métricas son cifras reales del backend; ver components/home/cifras.ts.
+  const cifras = useCifras()
+
   return (
     <section className="portada" id="inicio">
       <div className="rejilla">
@@ -65,7 +70,7 @@ export default function Hero() {
             <div className="metricas">
               {HERO.metricas.map((m) => (
                 <div className="metrica" key={m.etiqueta}>
-                  <span className="valor">{m.valor}</span>
+                  <span className="valor">{'clave' in m ? masDe(cifras[m.clave]) : m.valor}</span>
                   <span className="etiqueta">{m.etiqueta}</span>
                 </div>
               ))}
@@ -87,7 +92,6 @@ export default function Hero() {
               sizes="(max-width: 900px) 100vw, 50vw"
             />
           </div>
-          <span className="rotulo">{HERO.fotoBadge}</span>
           <div className="franja">
             <span className="dato">{HERO.fotoDato}</span>
             <span className="dato-pie">{HERO.fotoDatoPie}</span>
@@ -101,7 +105,8 @@ export default function Hero() {
         .portada {
           position: relative;
           border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-          background: var(--h-white);
+          /* Blanco roto, no blanco puro: es el fondo que el copy asigna a la sección 01. */
+          background: var(--h-grey-bg);
         }
         .rejilla {
           display: flex;
@@ -113,7 +118,7 @@ export default function Hero() {
           overflow: hidden;
           flex: 1 1 480px;
           min-width: 340px;
-          background: var(--h-white);
+          background: var(--h-grey-bg);
           padding: 60px 64px 72px;
           display: flex;
           flex-direction: column;
@@ -272,18 +277,6 @@ export default function Hero() {
           to {
             transform: none;
           }
-        }
-        .rotulo {
-          position: absolute;
-          left: 0;
-          top: 0;
-          background: var(--h-navy);
-          color: var(--h-white);
-          font-size: 10.5px;
-          font-weight: 700;
-          letter-spacing: 0.1em;
-          text-transform: uppercase;
-          padding: 10px 16px;
         }
         .franja {
           position: absolute;

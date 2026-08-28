@@ -1,5 +1,10 @@
-// Barra superior del home. Fija, 76 px, sobre `--h-navy`, con el isotipo + wordmark a la
-// izquierda y la navegación + "Ingresar" a la derecha. Valores tomados del prototipo de The Climb.
+// Barra superior. Fija, 76 px, sobre `--h-navy`, con el isotipo + wordmark a la izquierda y la
+// navegación + "Ingresar" a la derecha. Valores tomados del prototipo de The Climb.
+//
+// La usan el home Y `/quienes-somos`, así que las anclas se escriben `/#seccion` y no `#seccion`:
+// desde una página que no es el home, un `#seccion` a secas no lleva a ninguna parte. Con el `/`
+// delante, en el home sigue siendo un salto de fragmento (misma ruta, sin recarga) y desde la otra
+// página navega al home y baja a la sección.
 //
 // NOTA sobre el tagline: el copy pide "el tagline aparece debajo del logo en el navbar — pequeño,
 // en itálica", pero el prototipo NO lo incluye ahí (solo el wordmark), y en 360 px no cabe junto
@@ -37,12 +42,12 @@ export default function Navbar() {
             }
             if (item.ancla) {
               return (
-                <a key={item.label} href={`#${item.ancla}`} className="item">
+                <a key={item.label} href={`/#${item.ancla}`} className="item">
                   {item.label}
                 </a>
               )
             }
-            // Sin destino todavía (Especialistas, Blog): texto, no enlace. Se marca con
+            // Sin destino todavía (hoy solo Blog): texto, no enlace. Se marca con
             // `aria-disabled` para que un lector de pantalla no lo anuncie como navegable.
             return (
               <span key={item.label} className="item item-inerte" aria-disabled="true">
@@ -87,7 +92,7 @@ export default function Navbar() {
             ) : item.ancla ? (
               <a
                 key={item.label}
-                href={`#${item.ancla}`}
+                href={`/#${item.ancla}`}
                 className="item"
                 onClick={() => setAbierto(false)}
               >

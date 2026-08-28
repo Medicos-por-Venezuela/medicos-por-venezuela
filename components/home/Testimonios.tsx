@@ -1,4 +1,6 @@
-// Testimonios: seis citas reales de pacientes, sobre `--h-blue-deep`.
+// Testimonios: seis citas reales de pacientes, sobre el blanco roto de la paleta (#f4f4f4). Hasta
+// la segunda ronda de copy (2026-08-28) iba sobre `--h-blue-deep`, así que todo el texto de aquí
+// está recalculado para fondo claro.
 //
 // Son las únicas voces de terceros del home, así que van en `<blockquote>` con su `<cite>`: no es
 // decoración, es una atribución. Todas son "Paciente, Venezuela" — anónimas a propósito, por eso
@@ -37,7 +39,7 @@ export default function Testimonios() {
 
       <style jsx>{`
         .testimonios {
-          background: var(--h-blue-deep);
+          background: var(--h-grey-bg);
           padding: 110px 48px;
         }
         .contenido {
@@ -50,7 +52,9 @@ export default function Testimonios() {
         .eyebrow {
           font-size: 11px;
           font-weight: 800;
-          color: var(--h-sobre-oscuro-tenue);
+          /* Sobre el blanco roto, el azul de marca a 11 px da 4,41:1; la variante oscura, 6,20:1.
+             Mismo criterio que Quiénes Somos. */
+          color: var(--h-blue-dark);
           text-transform: uppercase;
           letter-spacing: 0.18em;
           margin: 0 0 10px;
@@ -58,13 +62,13 @@ export default function Testimonios() {
         .filete {
           width: 36px;
           height: 2px;
-          background: var(--h-white);
+          background: var(--h-blue);
           margin-bottom: 26px;
         }
         .titulo {
           font-size: clamp(28px, 3.6vw, 40px);
           font-weight: 900;
-          color: var(--h-white);
+          color: var(--h-navy);
           line-height: 1.15;
           letter-spacing: -0.02em;
           margin: 0;
@@ -72,14 +76,14 @@ export default function Testimonios() {
         .rejilla {
           display: grid;
           grid-template-columns: repeat(3, minmax(0, 1fr));
-          border-top: 1px solid rgba(255, 255, 255, 0.18);
-          border-left: 1px solid rgba(255, 255, 255, 0.18);
+          border-top: 1px solid rgba(0, 0, 0, 0.12);
+          border-left: 1px solid rgba(0, 0, 0, 0.12);
         }
         .celda {
           margin: 0;
           padding: 34px 30px;
-          border-right: 1px solid rgba(255, 255, 255, 0.18);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+          border-right: 1px solid rgba(0, 0, 0, 0.12);
+          border-bottom: 1px solid rgba(0, 0, 0, 0.12);
           display: flex;
           flex-direction: column;
         }
@@ -91,14 +95,16 @@ export default function Testimonios() {
         }
         .cita p {
           font-size: 15px;
-          color: rgba(255, 255, 255, 0.9);
+          /* La cita es la voz del paciente y es lo que se viene a leer: va en navy, no en el gris
+             de cuerpo. Es el equivalente en claro del blanco casi puro que tenía sobre azul. */
+          color: var(--h-navy);
           line-height: 1.75;
           margin: 0;
         }
         .autor {
           font-size: 11px;
           font-weight: 800;
-          color: var(--h-sobre-oscuro-tenue);
+          color: var(--h-grey);
           text-transform: uppercase;
           letter-spacing: 0.1em;
         }

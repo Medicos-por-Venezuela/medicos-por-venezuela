@@ -1,5 +1,9 @@
-// Cómo Funciona: la única sección del home con estado. Tres pestañas (paciente, médico en
-// Venezuela, voluntario) con cuatro pasos cada una. Arranca en paciente, como pide el copy.
+// Cómo Funciona: la única sección del home con estado. Tres pestañas (interconsulta, paciente,
+// voluntario) con cuatro pasos cada una. Arranca en la primera —el médico que pide apoyo clínico—,
+// como pide el copy de la segunda ronda; antes arrancaba en paciente.
+//
+// La sección pasó de blanco roto a navy en esa misma ronda, así que TODO el texto de aquí está
+// recalculado sobre fondo oscuro: ver los tokens `--h-sobre-oscuro-*` de globals.css.
 //
 // Accesibilidad: es un tablist de verdad, no tres botones que cambian un div.
 //   · `role="tablist"` / `role="tab"` / `role="tabpanel"`, con `aria-selected`, `aria-controls`
@@ -12,9 +16,14 @@
 //     es lo recomendado cuando el panel es texto y no hay nada costoso que cargar. Enter y Espacio
 //     también seleccionan, por si alguien los pulsa.
 //
+// Cada panel termina en su BOTÓN DE REGISTRO (2026-08-28), con el mismo texto y el mismo destino
+// que la puerta de entrada equivalente del principio del home: quien baja leyendo los pasos no
+// debería tener que subir otra vez para encontrar por dónde se entra.
+//
 // El prototipo pone una foto a la izquierda ("médico atendiendo consulta por videollamada") que no
 // está entre los assets entregados; la sección va a una columna, como Quiénes Somos.
 
+import Link from 'next/link'
 import { useRef, useState } from 'react'
 import { COMO_FUNCIONA } from './copy'
 import { useReveal } from './motion'
@@ -106,13 +115,17 @@ export default function ComoFunciona() {
               </li>
             ))}
           </ol>
+          {/* El botón cierra el flujo: quien ha bajado leyendo los cuatro pasos no debería tener
+              que volver a las puertas del principio para encontrar el registro. */}
+          <Link href={flujo.href} className="cta">
+            {flujo.cta}
+          </Link>
         </div>
       </div>
 
       <style jsx>{`
         .como {
-          background: var(--h-grey-bg);
-          border-top: 1px solid rgba(0, 0, 0, 0.08);
+          background: var(--h-navy);
           padding: 110px 48px;
         }
         .contenido {
@@ -126,7 +139,8 @@ export default function ComoFunciona() {
         .eyebrow {
           font-size: 11px;
           font-weight: 800;
-          color: var(--h-blue-dark);
+          /* Sobre navy, el azul oscuro de marca es ilegible. La variante aclarada da 4,95:1. */
+          color: var(--h-blue-claro);
           text-transform: uppercase;
           letter-spacing: 0.18em;
           margin: 0 0 10px;
@@ -140,14 +154,14 @@ export default function ComoFunciona() {
         .titulo {
           font-size: clamp(26px, 3.4vw, 36px);
           font-weight: 900;
-          color: var(--h-navy);
+          color: var(--h-white);
           line-height: 1.15;
           letter-spacing: -0.02em;
           margin: 0 0 16px;
         }
         .intro {
           font-size: 15.5px;
-          color: var(--h-grey);
+          color: var(--h-sobre-oscuro-medio);
           line-height: 1.75;
           margin: 0;
         }
@@ -155,7 +169,7 @@ export default function ComoFunciona() {
           display: flex;
           flex-wrap: wrap;
           margin-bottom: 40px;
-          border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.18);
         }
         .tab {
           padding: 12px 0;
@@ -165,7 +179,7 @@ export default function ComoFunciona() {
           border: none;
           border-bottom: 2px solid transparent;
           background: transparent;
-          color: var(--h-grey);
+          color: var(--h-sobre-oscuro-tenue);
           text-transform: uppercase;
           letter-spacing: 0.05em;
           transition:
@@ -173,16 +187,16 @@ export default function ComoFunciona() {
             border-color var(--h-t-hover) var(--h-ease);
         }
         .tab:hover {
-          color: var(--h-navy);
+          color: var(--h-white);
         }
         .tab-activa {
-          border-bottom-color: var(--h-navy);
-          color: var(--h-navy);
+          border-bottom-color: var(--h-white);
+          color: var(--h-white);
         }
         /* El navegador no dibuja su contorno de foco sobre un borde de 2 px que ya cambia de color,
            así que se marca aparte: si no, con teclado no se distingue la pestaña enfocada. */
         .tab:focus-visible {
-          outline: 2px solid var(--h-blue);
+          outline: 2px solid var(--h-blue-claro);
           outline-offset: 3px;
         }
         .panel {
@@ -193,7 +207,7 @@ export default function ComoFunciona() {
           animation: como-entra 200ms var(--h-ease) both;
         }
         .panel:focus-visible {
-          outline: 2px solid var(--h-blue);
+          outline: 2px solid var(--h-blue-claro);
           outline-offset: 4px;
         }
         @keyframes como-entra {
@@ -206,7 +220,7 @@ export default function ComoFunciona() {
         }
         .panel-intro {
           font-size: 14.5px;
-          color: var(--h-grey);
+          color: var(--h-sobre-oscuro-medio);
           line-height: 1.75;
           margin: 0 0 32px;
           max-width: 680px;
@@ -228,7 +242,7 @@ export default function ComoFunciona() {
         .numero {
           font-size: 26px;
           font-weight: 900;
-          color: var(--h-blue);
+          color: var(--h-blue-claro);
           line-height: 1.2;
           letter-spacing: -0.02em;
           flex-shrink: 0;
@@ -241,13 +255,32 @@ export default function ComoFunciona() {
         .paso-titulo {
           font-size: 15px;
           font-weight: 800;
-          color: var(--h-navy);
+          color: var(--h-white);
           margin-bottom: 6px;
         }
         .paso-desc {
           font-size: 13px;
-          color: var(--h-grey);
+          color: var(--h-sobre-oscuro-medio);
           line-height: 1.7;
+        }
+        /* ':global()': el <a> que renderiza Link no lleva la clase de scope. Ver Navbar.tsx.
+           Blanco sobre el azul de marca da 4,85:1, por encima del mínimo AA. */
+        .panel :global(.cta) {
+          display: inline-block;
+          margin-top: 36px;
+          background: var(--h-blue);
+          color: var(--h-white);
+          padding: 15px 28px;
+          border-radius: 2px;
+          font-size: 12.5px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          transition: background var(--h-t-hover) var(--h-ease);
+        }
+        .panel :global(.cta:hover),
+        .panel :global(.cta:focus-visible) {
+          background: var(--h-blue-dark);
         }
 
         @media (max-width: 900px) {

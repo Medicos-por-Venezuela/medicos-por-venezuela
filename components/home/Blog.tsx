@@ -20,17 +20,12 @@ export default function Blog() {
     <section className="blog" aria-label="Blog">
       <div className="contenido">
         <div className="cabecera">
-          <div className="izquierda">
-            <p className="eyebrow">
-              {BLOG.eyebrow}
-              <span className="proximo">{BLOG.badge}</span>
-            </p>
-            <div className="filete" aria-hidden="true" />
-            <h2 className="titulo">{BLOG.titulo}</h2>
-          </div>
-          <p className="ver-todos" aria-disabled="true">
-            {BLOG.cta}
+          <p className="eyebrow">
+            {BLOG.eyebrow}
+            <span className="proximo">{BLOG.badge}</span>
           </p>
+          <div className="filete" aria-hidden="true" />
+          <h2 className="titulo">{BLOG.titulo}</h2>
         </div>
 
         <div ref={ref} className={`rejilla ${className}`}>
@@ -56,13 +51,9 @@ export default function Blog() {
           max-width: 1180px;
           margin: 0 auto;
         }
+        /* Era un flex a dos columnas con el "Ver todos" a la derecha; sin él sobra el reparto. */
         .cabecera {
-          display: flex;
-          align-items: flex-end;
-          justify-content: space-between;
           margin-bottom: 52px;
-          flex-wrap: wrap;
-          gap: 16px;
         }
         .eyebrow {
           font-size: 11px;
@@ -96,21 +87,6 @@ export default function Blog() {
           line-height: 1.15;
           letter-spacing: -0.02em;
           margin: 0;
-        }
-        .ver-todos {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          margin: 0;
-          font-size: 12px;
-          font-weight: 700;
-          color: var(--h-blue-deep);
-          text-transform: uppercase;
-          letter-spacing: 0.06em;
-          border-bottom: 1px solid var(--h-blue-deep);
-          padding-bottom: 6px;
-          opacity: 0.55;
-          cursor: default;
         }
         .rejilla {
           display: grid;
