@@ -211,10 +211,15 @@ export default function AdminDoctores() {
                       ) : (
                         <span className="badge badge-red">Revocado</span>
                       )}
+                      {/* `== null` (laxo) y no `!== null`: atrapa tambien `undefined`, que es lo que
+                          llega si el backend aun no expone doctor_verified (despliegue del front
+                          por delante del back, o un rollback del back). Con el estricto, undefined
+                          pasaba el guard y caia en la rama falsy: "Cedula sin verificar" para
+                          TODO el mundo, peor que el bug que esto arregla. */}
                       {/* Credencial real (SACS/FPV), no `users.verified`: esa columna es
                           constante true y hacía que TODO el mundo saliera "Verificado", incluidos
                           los 795 médicos cuya cédula no validó. null = no es médico. */}
-                      {p.doctor_verified !== null && (
+                      {p.doctor_verified != null && (
                         <div style={{ marginTop: 4 }}>
                           {p.doctor_verified ? (
                             <span className="badge badge-green">Cédula verificada</span>
