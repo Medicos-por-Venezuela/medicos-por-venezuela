@@ -15,6 +15,11 @@ export interface SpecialtyResponse {
   id: string
   name: string
   status: string
+  // Reserva de salud mental, definida en el catálogo (columnas de `specialties`), no por el
+  // nombre: `mental_health_only` marca la especialidad que SOLO atiende salud mental
+  // (Psicología). Usar el flag y no la cadena es lo que evita que renombrarla rompa el registro.
+  is_mental_health: boolean
+  mental_health_only: boolean
   created_at: string
   updated_at: string
   deleted_at: string | null

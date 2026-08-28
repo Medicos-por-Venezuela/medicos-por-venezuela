@@ -119,17 +119,21 @@ export default function RegistroMedico() {
 
   const requiereVerificacion = tipoProfesional === 'Médico' || tipoProfesional === 'Psicólogo'
   const mostrarEspecialidad = tipoProfesional === 'Médico'
+  // Se excluyen las de solo salud mental: el médico las elige de su propio selector y el
+  // psicólogo tiene su camino aparte (abajo). Por FLAG y no por nombre.
   const especialidadesActivas = specialties.filter(
-    (s) => s.status === 'active' && s.name !== 'Psicología'
+    (s) => s.status === 'active' && !s.mental_health_only
   )
 
-  // Psicólogo no tiene selector propio: se asigna automáticamente la especialidad
-  // "Psicología" del catálogo (intención original antes de que existiera este catálogo
-  // con id real — ver git blame). Para cualquier otro tipo (Nutricionista, etc.) no aplica.
+  // Psicólogo no tiene selector propio: se le asigna la especialidad de solo salud mental del
+  // catálogo. Se busca por el FLAG `mental_health_only`, no por el nombre 'Psicología': buscarla
+  // por nombre es el mismo fallo que dejaba a los menores sin especialidad (el catálogo renombró
+  // 'Pediatría'), y aquí sería peor — sin specialty_id un psicólogo no puede tomar NINGÚN caso
+  // de salud mental. Para cualquier otro tipo (Nutricionista, etc.) no aplica.
   function resolverSpecialtyId(): string | null {
     if (tipoProfesional === 'Médico') return especialidadId || null
     if (tipoProfesional === 'Psicólogo') {
-      return specialties.find((s) => s.name === 'Psicología')?.id ?? null
+      return specialties.find((s) => s.mental_health_only)?.id ?? null
     }
     return null
   }
@@ -462,7 +466,7 @@ export default function RegistroMedico() {
 
             <p style={{ marginTop: 18, color: '#64748b' }}>
               ¿Ya tienes cuenta?{' '}
-              <Link href="/login-medico" style={{ color: 'var(--home-blue)', fontWeight: 800 }}>
+              <Link href="/login" style={{ color: 'var(--home-blue)', fontWeight: 800 }}>
                 Entrar al panel médico
               </Link>
             </p>

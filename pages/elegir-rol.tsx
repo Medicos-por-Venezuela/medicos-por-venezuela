@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchMyProfile } from '../lib/consultations'
 import { finalizeMyRole } from '../lib/users'
-import { SPECIALTIES } from '../lib/utils'
+import { fetchSpecialties, type SpecialtyResponse } from '../lib/doctors'
+import { isAdminRole } from '../lib/utils'
 
 const PAISES = [
   'Venezuela',
@@ -34,7 +35,11 @@ export default function ElegirRol() {
   const [choice, setChoice] = useState<'' | 'patient' | 'doctor'>('')
   // True when the role was pre-selected from registration intent — hides the "Volver" choice toggle.
   const [locked, setLocked] = useState(false)
+  // El ID del catálogo, no el nombre: se envía como `specialty_id` y es la FK con la que el
+  // backend decide qué puede atender este médico. Ya no hay fallback a una lista hardcodeada —
+  // sin catálogo no se puede producir un id válido, así que se avisa en vez de inventar uno.
   const [specialty, setSpecialty] = useState('')
+  const [specialtyOptions, setSpecialtyOptions] = useState<SpecialtyResponse[]>([])
   const [country, setCountry] = useState('')
   const [license, setLicense] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
@@ -78,11 +83,14 @@ export default function ElegirRol() {
       setChecking(false)
     }
     run()
+    fetchSpecialties()
+      .then((list) => setSpecialtyOptions(list.filter((s) => s.status === 'active')))
+      .catch(() => setError('No se pudo cargar el catálogo de especialidades.'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function redirectByRole(role: string) {
-    if (['admin', 'super_admin'].includes(role)) router.replace('/admin/dashboard')
+    if (isAdminRole(role)) router.replace('/admin/dashboard')
     else if (['doctor', 'specialist'].includes(role)) router.replace('/panel-medico')
     else router.replace('/registro-paciente')
   }
@@ -121,7 +129,7 @@ export default function ElegirRol() {
       await finalizeMyRole(
         {
           role: 'doctor',
-          specialty,
+          specialty_id: specialty,
           country,
           medical_license: license.trim() || null,
           whatsapp_number: whatsapp.trim()
@@ -213,9 +221,9 @@ export default function ElegirRol() {
                     <label className="label">Especialidad *</label>
                     <select value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
                       <option value="">Selecciona...</option>
-                      {SPECIALTIES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
+                      {specialtyOptions.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
                         </option>
                       ))}
                     </select>

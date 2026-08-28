@@ -99,7 +99,7 @@ export default function PerfilMedico() {
   async function init() {
     const { data: sessionData } = await supabase.auth.getSession()
     if (!sessionData.session) {
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
     const accessToken = sessionData.session.access_token
@@ -117,7 +117,7 @@ export default function PerfilMedico() {
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         await supabase.auth.signOut()
-        router.push('/login-medico')
+        router.push('/login')
         return
       }
       if (e instanceof ApiError && e.status === 404) {
@@ -248,6 +248,18 @@ export default function PerfilMedico() {
     return payload
   }
 
+  // Aviso tras guardar. Solo cambia cuando el PATCH llevó cédula: ahí el texto refleja si la
+  // verificación oficial (SACS/FPV) pasó o quedó pendiente de revisión manual.
+  function savedNotice(sentCedula: boolean, verified: boolean): Notice {
+    if (!sentCedula) return { kind: 'success', text: 'Perfil actualizado.' }
+    if (verified)
+      return { kind: 'success', text: 'Perfil actualizado. Tu cédula se verificó contra SACS/FPV.' }
+    return {
+      kind: 'info',
+      text: 'Guardamos tus datos, pero tu cédula no pudo verificarse automáticamente en SACS/FPV. Un administrador la revisará.'
+    }
+  }
+
   async function save() {
     if (!profile) return
     setNotice(null)
@@ -275,7 +287,7 @@ export default function PerfilMedico() {
     // by Supabase auto-refresh (or expired), which would 401 the PATCH for no real reason.
     const { data: sessionData } = await supabase.auth.getSession()
     if (!sessionData.session) {
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
 
@@ -283,19 +295,7 @@ export default function PerfilMedico() {
     try {
       const updated = await updateMyDoctorProfile(payload, sessionData.session.access_token)
       hydrateForm(updated)
-      if (payload.cedula && updated.verified) {
-        setNotice({
-          kind: 'success',
-          text: 'Perfil actualizado. Tu cédula se verificó contra SACS/FPV.'
-        })
-      } else if (payload.cedula && !updated.verified) {
-        setNotice({
-          kind: 'info',
-          text: 'Guardamos tus datos, pero tu cédula no pudo verificarse automáticamente en SACS/FPV. Un administrador la revisará.'
-        })
-      } else {
-        setNotice({ kind: 'success', text: 'Perfil actualizado.' })
-      }
+      setNotice(savedNotice(!!payload.cedula, updated.verified))
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setNotice({ kind: 'danger', text: 'Esa cédula ya pertenece a otro médico.' })

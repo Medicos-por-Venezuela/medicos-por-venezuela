@@ -12,7 +12,18 @@ export interface ApiUser {
   role: string
   specialty: string | null
   active: boolean
+  // OJO: este es `users.verified`, que nace true y ningún camino la baja — no significa nada. El
+  // dato real de credencial es `doctor_verified`. Se conserva porque el backend lo sigue
+  // devolviendo, pero no debe decidir ni mostrarse.
   verified: boolean
+  // `doctors.verified`: resultado de contrastar la cédula con SACS (médico) o FPV (psicólogo).
+  // `null` = esta persona no tiene ficha, así que no hay credencial que verificar.
+  //
+  // Opcional a propósito: `ApiUser` tipa TODO lo que sale de /profiles, y solo el LISTADO trae
+  // este campo — `GET /profiles/{id}` y `PATCH /{id}/active` no. Marcarlo obligatorio hacía que el
+  // tipo prometiera algo que esas dos respuestas no cumplen. Por eso los consumidores comprueban
+  // `!= null` (laxo), que cubre ausente y null a la vez.
+  doctor_verified?: boolean | null
   created_at: string
 }
 
@@ -116,7 +127,9 @@ export async function setProfileActive(
 // whatsapp_number solo aplican cuando role === 'doctor' (el backend los ignora para 'patient').
 export interface FinalizeRolePayload {
   role: 'patient' | 'doctor'
-  specialty?: string | null
+  // El ID del catálogo, no el nombre: `users.specialty_id` es la FK con la que el backend decide
+  // qué puede atender el médico. El nombre lo resuelve él desde esa fila.
+  specialty_id?: string | null
   country?: string | null
   medical_license?: string | null
   whatsapp_number?: string | null

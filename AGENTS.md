@@ -43,30 +43,35 @@ Verified directly against `package.json` and the repo tree (not assumed):
 
 ## Testing capabilities (strict_tdd: false)
 
-**There is still no automated test harness (unit/integration/E2E) in this repo.** Lint and format
-ARE now enforced (ESLint + Prettier) — only `test` tooling is missing:
+**E2E exists; unit/integration still don't.** Lint and format are enforced (ESLint + Prettier):
 
-- `package.json` scripts: `dev`, `build`, `start`, `lint`, `format`, `format:check` — no `test` script
-- Zero matches for `**/*.test.*` or `**/*.spec.*`
+- `package.json` scripts: `dev`, `build`, `start`, `lint`, `format`, `format:check`, `test:e2e`
+- E2E: Playwright (`playwright.config.ts`, specs in `e2e/`) against the local stack —
+  needs Docker + local Supabase + the FastAPI backend; `e2e/global-setup.ts` seeds the test accounts
+- No unit/integration specs (`**/*.test.*`) yet
 - CI runs lint + build on PRs (`.github/workflows/ci.yml`) but has no test step
 
 | Layer        | Available | Tool / Command                                 |
 | ------------ | --------- | ---------------------------------------------- |
 | Unit         | ❌        | —                                              |
 | Integration  | ❌        | —                                              |
-| E2E          | ❌        | —                                              |
+| E2E          | ✅        | `pnpm test:e2e` (Playwright, `e2e/`)           |
 | Linter       | ✅        | `pnpm lint` (ESLint, `eslint-config-next`)     |
 | Type checker | ✅ manual | `pnpm exec tsc --noEmit` (no dedicated script) |
 | Formatter    | ✅        | `pnpm format` / `pnpm format:check` (Prettier) |
 | Coverage     | ❌        | —                                              |
 
 **Implication for agents:** verification after a change means `pnpm build`, `pnpm exec tsc --noEmit`,
-`pnpm lint`, and manual QA in the browser — there is no automated test suite to run or extend. Most
-business logic lives in Postgres RLS/triggers (`supabase_schema.sql`), not application code, so
-verification often means reading SQL alongside TypeScript.
+`pnpm lint`, `pnpm test:e2e`, and manual QA in the browser. Most business logic lives in Postgres
+RLS/triggers (`supabase_schema.sql`), not application code, so verification often means reading SQL
+alongside TypeScript.
 
-**Recommendation (not yet actioned):** add Vitest + React Testing Library and a `test` script before
-enabling Strict TDD mode for this project.
+**No lances `pnpm build` con un `next dev` corriendo sobre el mismo directorio**: se pisan el `.next`
+y el dev server pasa a servir chunks rotos (React deja de hidratar). Los E2E lo evitan con
+`NEXT_DIST_DIR=.next-e2e`; para un build manual, usa esa misma variable o para el dev primero.
+
+**Recommendation (not yet actioned):** add Vitest + React Testing Library and a unit `test` script
+before enabling Strict TDD mode for this project.
 
 ## Contribution standards
 
@@ -129,3 +134,34 @@ To recover any artifact: `mem_search(query: "{topic_key}", project: "medicos-por
   pnpm exec tsc --noEmit
   pnpm lint
   ```
+
+## Las dos columnas `verified`
+
+Hay dos, se llaman igual y significan cosas distintas. Confundirlas ya causó un bug: la lista de
+médicos del admin mostraba a **todos** como "Verificado", incluidos los 795 (de 2955) cuya cédula
+no validó.
+
+| Columna            | Qué significa                                                                                                             | Quién la escribe                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `users.verified`   | **Gancho reservado, hoy inerte.** Nace `true` en `handle_new_auth_user` y **ninguna ruta del backend la pone en `false`** | Solo `finalize_role`, y solo a `true`                      |
+| `doctors.verified` | El dato real: la cédula validó contra **SACS** (médico) o **FPV** (psicólogo)                                             | `_verify_credential()` al registrar y al cambiar la cédula |
+
+**Regla:** cualquier UI o lógica que hable de "verificado" en el sentido de credencial profesional
+lee `doctors.verified`. `users.verified` no debe decidir ni mostrarse; comprobarla es evaluar una
+constante.
+
+El admin lo ve vía `doctor_verified` en `GET /profiles` (LEFT JOIN a `doctors`, `null` = esa
+persona no tiene ficha). Fijado por `e2e/admin-cedula-verificada.spec.ts`.
+
+`users.verified` **no se borra**: `current_user_role()` sigue filtrando por ella, así que el gancho
+de aprobación previa (ver Security notes) funcionaría poniéndola en `false` sin tocar RLS.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

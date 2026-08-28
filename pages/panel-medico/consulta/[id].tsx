@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import DoctorPoolModal from '../../../components/DoctorPoolModal'
 import SignaturePad from '../../../components/SignaturePad'
-import { getAccessToken } from '../../../lib/admin'
+import { fmtDateTime, getAccessToken } from '../../../lib/admin'
 import { DoctorPoolItem } from '../../../lib/doctors'
 import {
   addConsultationEvent,
@@ -26,7 +26,13 @@ import {
 } from '../../../lib/interconsultations'
 import { supabase } from '../../../lib/supabase'
 import { fetchProfile } from '../../../lib/users'
-import { STATUS_LABELS, minutesSince } from '../../../lib/utils'
+import {
+  STATUS_LABELS,
+  isAdminRole,
+  isPanelRole,
+  minutesSince,
+  statusBadgeClass
+} from '../../../lib/utils'
 import { browserRoomUrl } from '../../../lib/jitsi'
 import { notify, requestNotifyPermission } from '../../../lib/nativeNotifications'
 import {
@@ -72,7 +78,6 @@ type Profile = {
   full_name: string
   role: string
   specialty: string | null
-  verified: boolean
   active: boolean
 }
 
@@ -85,9 +90,6 @@ type ConsultationEvent = {
 }
 
 type EventAuthor = Pick<Profile, 'id' | 'full_name' | 'role'>
-
-const ADMIN_ROLES = ['admin', 'super_admin'] as const
-const PANEL_ALLOWED_ROLES = ['doctor', 'specialist', ...ADMIN_ROLES] as const
 
 // Status options shown for WhatsApp-attended cases (the doctor handles these outside video).
 // 'closed' y 'referred_to_specialist' se quitaron a propósito: cerrar es solo vía el botón
@@ -111,17 +113,6 @@ const FINAL_STATUSES = [
   'referred_to_specialist'
 ]
 
-function isAdminRole(role?: string | null): boolean {
-  return !!role && ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number])
-}
-
-function statusBadgeClass(status: string): string {
-  if (status === 'urgent_in_person') return 'badge-red'
-  if (status === 'referred_to_specialist') return 'badge-blue'
-  if (status === 'in_progress') return 'badge-orange'
-  return 'badge-green'
-}
-
 function eventLabel(type: string): string {
   const labels: Record<string, string> = {
     opened: 'Consulta abierta',
@@ -130,15 +121,6 @@ function eventLabel(type: string): string {
     admin_update: 'Actualización administrativa'
   }
   return labels[type] || type
-}
-
-function fmtDateTime(value: string): string {
-  // Always render in Venezuela time (America/Caracas), regardless of the viewer's browser timezone.
-  return new Date(value).toLocaleString('es-VE', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-    timeZone: 'America/Caracas'
-  })
 }
 
 export default function ConsultaDetalle() {
@@ -188,6 +170,28 @@ export default function ConsultaDetalle() {
     window.setTimeout(() => setNotesBlink(false), 3000)
   }
 
+  // Cerrar la consulta y agendar seguimiento finalizan el caso: ambos exigen una nota NO vacía
+  // y YA persistida (lo escrito sin guardar no queda en el expediente). Devuelve false y titila
+  // el recuadro de notas si falta alguna de las dos condiciones.
+  function hasSavedNote(action: string): boolean {
+    if (!note.trim()) {
+      flagMissingNote(`Agrega una nota antes de ${action}.`)
+      return false
+    }
+    if (note !== savedNote) {
+      flagMissingNote(`Guarda la nota antes de ${action}.`)
+      return false
+    }
+    return true
+  }
+
+  // Aviso push de confirmación de cita, respetando el opt-out del médico.
+  async function notifyAppointment(title: string, body: string) {
+    if (!isPushEnabled(notifPrefs, 'appointment_confirm')) return
+    await requestNotifyPermission()
+    notify(title, body)
+  }
+
   useEffect(() => {
     if (!consultationId) return
     init(consultationId)
@@ -235,12 +239,12 @@ export default function ConsultaDetalle() {
   async function init(id: string) {
     const { data: sessionData } = await supabase.auth.getSession()
     if (!sessionData.session) {
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
 
     // Perfil propio vía GET /auth/me (backend), ya no la vista `profiles`. Trae id/full_name/role/
-    // specialty/verified/active, justo lo que necesita el guard y el "médico asignado = yo".
+    // specialty/active, justo lo que necesita el guard y el "médico asignado = yo".
     let p: Profile
     try {
       const me = await fetchMyProfile(sessionData.session.access_token)
@@ -249,22 +253,25 @@ export default function ConsultaDetalle() {
         full_name: me.full_name,
         role: me.role,
         specialty: me.specialty,
-        verified: me.verified,
         active: me.active
       }
     } catch {
       await supabase.auth.signOut()
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
 
-    if (!p.active || !p.verified) {
+    // Solo `active`: es el gate real, el que mueve el botón "Revocar acceso" del admin.
+    // `verified` (users.verified) se quitó de aquí porque nace true y ningún camino del backend
+    // la baja — comprobarla era evaluar una constante. El dato de credencial (SACS/FPV) vive en
+    // `doctors.verified` y no gatea el acceso: lo supervisa un admin desde su lista.
+    if (!p.active) {
       await supabase.auth.signOut()
-      router.push('/login-medico')
+      router.push('/login')
       return
     }
 
-    if (!PANEL_ALLOWED_ROLES.includes(p.role as (typeof PANEL_ALLOWED_ROLES)[number])) {
+    if (!isPanelRole(p.role)) {
       router.push('/')
       return
     }
@@ -459,16 +466,7 @@ export default function ConsultaDetalle() {
     setCloseError('')
     const noShow = outcome === 'patient_no_show'
     // Cierre real (no ausencia): exige una nota NO vacía y YA guardada.
-    if (!noShow) {
-      if (!note.trim()) {
-        flagMissingNote('Agrega una nota antes de cerrar la consulta.')
-        return
-      }
-      if (note !== savedNote) {
-        flagMissingNote('Guarda la nota antes de cerrar la consulta.')
-        return
-      }
-    }
+    if (!noShow && !hasSavedNote('cerrar la consulta')) return
     // Ambos caminos finalizan el caso: siempre se confirma (un tap accidental en
     // "no estaba en la sala" cerraba el caso sin vuelta atrás).
     const confirmMsg = noShow
@@ -515,13 +513,10 @@ export default function ConsultaDetalle() {
         },
         await getAccessToken()
       )
-      if (isPushEnabled(notifPrefs, 'appointment_confirm')) {
-        await requestNotifyPermission()
-        notify(
-          'Seguimiento agendado',
-          `Cita para ${new Date(scheduledAt).toLocaleString('es-VE')}.`
-        )
-      }
+      await notifyAppointment(
+        'Seguimiento agendado',
+        `Cita para ${new Date(scheduledAt).toLocaleString('es-VE')}.`
+      )
       router.push('/panel-medico?actualizado=1')
     } catch (e) {
       setBusy(false)
@@ -545,15 +540,12 @@ export default function ConsultaDetalle() {
         },
         await getAccessToken()
       )
-      if (isPushEnabled(notifPrefs, 'appointment_confirm')) {
-        await requestNotifyPermission()
-        notify(
-          'Referencia agendada',
-          `${referTarget.full_name} atenderá al paciente el ${new Date(
-            referScheduledAt
-          ).toLocaleString('es-VE')}.`
-        )
-      }
+      await notifyAppointment(
+        'Referencia agendada',
+        `${referTarget.full_name} atenderá al paciente el ${new Date(
+          referScheduledAt
+        ).toLocaleString('es-VE')}.`
+      )
       router.push('/panel-medico?actualizado=1')
     } catch (e) {
       setBusy(false)
@@ -592,14 +584,7 @@ export default function ConsultaDetalle() {
   function openScheduleFollowUp() {
     setMessage('')
     setCloseError('')
-    if (!note.trim()) {
-      flagMissingNote('Agrega una nota antes de agendar el seguimiento.')
-      return
-    }
-    if (note !== savedNote) {
-      flagMissingNote('Guarda la nota antes de agendar el seguimiento.')
-      return
-    }
+    if (!hasSavedNote('agendar el seguimiento')) return
     setScheduleOpen(true)
   }
 

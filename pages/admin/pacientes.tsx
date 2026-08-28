@@ -10,7 +10,7 @@ import {
   useAdminGuard
 } from '../../lib/admin'
 import { useEscapeToClose } from '../../lib/hooks'
-import { eligibleSpecialties, SPECIALTIES, STATUS_LABELS } from '../../lib/utils'
+import { STATUS_LABELS } from '../../lib/utils'
 // Todo el acceso a datos pasa por el backend (no Supabase directo): consultas con paciente anidado,
 // updates/eventos, buscador de médicos (/doctors/pool) y baja lógica del paciente.
 import {
@@ -285,6 +285,12 @@ export default function AdminPacientes() {
     }
   }
 
+  // Parche optimista de una fila de la tabla de casos. Todas las acciones inline siguen el mismo
+  // guion: aplicar local, persistir y revertir con el valor previo si el backend falla.
+  function patchConsultation(id: string, patch: Partial<Consultation>) {
+    setConsultations((list) => list.map((x) => (x.id === id ? { ...x, ...patch } : x)))
+  }
+
   async function deletePatient() {
     if (!deleteTarget) return
     setDeleting(true)
@@ -307,13 +313,13 @@ export default function AdminPacientes() {
   async function toggleContacted(c: Consultation) {
     const next = !c.contacted
     // Optimistic: flip locally, then persist; revert on error.
-    setConsultations((prev) => prev.map((x) => (x.id === c.id ? { ...x, contacted: next } : x)))
+    patchConsultation(c.id, { contacted: next })
     try {
       await updateConsultation(c.id, { contacted: next }, await getAccessToken())
     } catch (e) {
       console.error(e)
       setMessage('No se pudo actualizar "Contactado".')
-      setConsultations((prev) => prev.map((x) => (x.id === c.id ? { ...x, contacted: !next } : x)))
+      patchConsultation(c.id, { contacted: !next })
     }
   }
 
@@ -325,7 +331,7 @@ export default function AdminPacientes() {
     if (['closed', 'patient_no_show', 'closed_by_admin'].includes(newStatus))
       update.closed_at = new Date().toISOString()
     // Optimistic: change locally, then persist; revert on error.
-    setConsultations((list) => list.map((x) => (x.id === c.id ? { ...x, status: newStatus } : x)))
+    patchConsultation(c.id, { status: newStatus })
     try {
       const token = await getAccessToken()
       await updateConsultation(c.id, update, token)
@@ -338,9 +344,7 @@ export default function AdminPacientes() {
     } catch (e) {
       console.error(e)
       setMessage('No se pudo cambiar el estado.')
-      setConsultations((list) =>
-        list.map((x) => (x.id === c.id ? { ...x, status: prevStatus } : x))
-      )
+      patchConsultation(c.id, { status: prevStatus })
     }
   }
 
@@ -348,17 +352,13 @@ export default function AdminPacientes() {
   async function updateAdminSeguimiento(c: Consultation, value: string) {
     const next = value || null
     const prev = c.admin_seguimiento
-    setConsultations((list) =>
-      list.map((x) => (x.id === c.id ? { ...x, admin_seguimiento: next } : x))
-    )
+    patchConsultation(c.id, { admin_seguimiento: next })
     try {
       await updateConsultation(c.id, { admin_seguimiento: next }, await getAccessToken())
     } catch (e) {
       console.error(e)
       setMessage('No se pudo actualizar el seguimiento.')
-      setConsultations((list) =>
-        list.map((x) => (x.id === c.id ? { ...x, admin_seguimiento: prev } : x))
-      )
+      patchConsultation(c.id, { admin_seguimiento: prev })
     }
   }
 
@@ -370,13 +370,10 @@ export default function AdminPacientes() {
     const doctorId = doctor?.id || null
     const prev = { id: c.assigned_doctor_id, name: c.assigned_doctor_name }
     // Optimista: fija id y nombre (el nombre viene del pool; el backend lo confirma en la próxima carga).
-    setConsultations((list) =>
-      list.map((x) =>
-        x.id === c.id
-          ? { ...x, assigned_doctor_id: doctorId, assigned_doctor_name: doctor?.full_name || null }
-          : x
-      )
-    )
+    patchConsultation(c.id, {
+      assigned_doctor_id: doctorId,
+      assigned_doctor_name: doctor?.full_name || null
+    })
     setRowDocMenu(null)
     setRowDocQuery('')
     try {
@@ -394,11 +391,7 @@ export default function AdminPacientes() {
     } catch (e) {
       console.error(e)
       setMessage('No se pudo asignar el médico.')
-      setConsultations((list) =>
-        list.map((x) =>
-          x.id === c.id ? { ...x, assigned_doctor_id: prev.id, assigned_doctor_name: prev.name } : x
-        )
-      )
+      patchConsultation(c.id, { assigned_doctor_id: prev.id, assigned_doctor_name: prev.name })
     }
   }
 
@@ -412,7 +405,7 @@ export default function AdminPacientes() {
       setMessage('No se pudo guardar la nota admin.')
       return
     }
-    setConsultations((list) => list.map((x) => (x.id === c.id ? { ...x, nota_admin: draft } : x)))
+    patchConsultation(c.id, { nota_admin: draft })
     setNotaAdminDrafts((d) => {
       const rest = { ...d }
       delete rest[c.id]
@@ -430,9 +423,7 @@ export default function AdminPacientes() {
       setMessage('No se pudo guardar la nota.')
       return
     }
-    setConsultations((prev) =>
-      prev.map((x) => (x.id === c.id ? { ...x, internal_note: draft } : x))
-    )
+    patchConsultation(c.id, { internal_note: draft })
     setNoteDrafts((d) => {
       const rest = { ...d }
       delete rest[c.id]
@@ -630,7 +621,7 @@ export default function AdminPacientes() {
             </table>
           )}
           <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 12 }}>
-            Especialidades disponibles para derivar: {SPECIALTIES.length}.
+            Especialidades disponibles para derivar: {specialtyCatalog.length}.
           </p>
         </section>
       </div>
@@ -781,18 +772,11 @@ export default function AdminPacientes() {
                     <td>
                       <Line label="Categoría" value={c.category} />
                       <Line label="Motivo" value={c.chief_complaint} />
-                      {/* Especialidad asignada (la columna del match); los casos viejos sin
-                          specialty_id caen a las especialidades derivadas del tipo/necesidades. */}
-                      <Line
-                        label="La pueden atender"
-                        value={
-                          specialtyName(c.specialty_id) ||
-                          eligibleSpecialties(
-                            c.category || null,
-                            c.patients?.needs_tags || null
-                          ).join(', ')
-                        }
-                      />
+                      {/* Especialidad asignada: `consultations.specialty_id` ES el match. Los
+                          casos viejos sin esa columna quedan en blanco a proposito -- antes se
+                          adivinaba con un mapa hardcodeado de necesidades que se desincronizo del
+                          catalogo real; una sugerencia inventada es peor que ninguna. */}
+                      <Line label="La pueden atender" value={specialtyName(c.specialty_id)} />
                     </td>
                     <td>
                       <select
