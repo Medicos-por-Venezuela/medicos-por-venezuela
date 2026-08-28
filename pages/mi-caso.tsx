@@ -1,4 +1,4 @@
-import Head from 'next/head'
+import Seo from '../components/Seo'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
@@ -113,9 +113,12 @@ export default function MiCaso() {
 
   return (
     <>
-      <Head>
-        <title>Seguir mi caso — Médicos por Venezuela</title>
-      </Head>
+      <Seo
+        titulo="Seguir mi caso — Médicos por Venezuela"
+        descripcion={'Consulta el estado de tu solicitud y el enlace de tu videoconsulta.'}
+        ruta="/mi-caso"
+        noindex
+      />
       <main className="page">
         <div className="narrow">
           <div className="topbar">

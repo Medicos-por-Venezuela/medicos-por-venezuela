@@ -54,6 +54,24 @@ const csp = [
   "manifest-src 'self'"
 ].join('; ')
 
+// Los estáticos que viven en la raíz de `public/`: iconos, manifiesto, imagen de Open Graph y la
+// captura de instrucciones de Jitsi. Se enumeran para que la regla de caché no pueda alcanzar a
+// `/_next`; el resto de assets vive en `/brand` y `/img`, que llevan su propia regla.
+const ESTATICOS_RAIZ = [
+  'favicon.ico',
+  'favicon.svg',
+  'favicon-16x16.png',
+  'favicon-32x32.png',
+  'apple-touch-icon.png',
+  'icon-192.png',
+  'icon-512.png',
+  'icon-maskable-512.png',
+  'og-image.png',
+  'instruccion-jitsi.png'
+]
+
+const CACHE_ESTATICOS = 'public, max-age=604800, stale-while-revalidate=86400'
+
 // Enforced: ninguna de estas rompe nada del funcionamiento actual (verificado contra el sitio).
 // La CSP va aparte, en Report-Only, hasta confirmar que no bloquea nada real.
 const securityHeaders = [
@@ -90,6 +108,34 @@ const nextConfig = {
         // Todas las rutas, incluidos los assets de /_next (ZAP marcó esos también).
         source: '/:path*',
         headers: securityHeaders
+      },
+      {
+        // Los estáticos de `public/`: la fuente de marca, los iconos, la imagen de Open Graph y
+        // las fotos. Next los sirve con `cache-control: public, max-age=0`, así que el navegador
+        // REVALIDA cada uno en CADA navegación. Son 29 KB de fuente más los iconos pidiendo un 304
+        // por página, en un sitio cuyo público está en Venezuela y entra por móvil.
+        //
+        // Una semana, y NO `immutable`: estas rutas no llevan hash de contenido (`/favicon.ico`,
+        // no `/favicon.a1b2c3.ico`), así que si el fichero cambia el nombre sigue siendo el mismo
+        // y la única forma de invalidar la caché es esperar a que caduque. Con `immutable` un
+        // cambio de marca no llegaría nunca a quien ya hubiera visitado el sitio. Los assets que
+        // Next sí versiona (`/_next/static/*`) ya salen con `immutable` de fábrica, y ahí sí es
+        // correcto porque el nombre cambia con el contenido.
+        //
+        // `stale-while-revalidate` evita el peor caso al caducar: se pinta el fichero viejo al
+        // instante y se refresca de fondo, en vez de bloquear la carga esperando el 304.
+        //
+        // Las rutas van ENUMERADAS y no por extensión (`/:path*.(png|woff2|…)`): `headers()` se
+        // aplica también a `/_next`, así que un patrón por extensión acabaría pisando el
+        // `immutable` de un año de los assets que Next sí versiona el día que aparezca ahí un
+        // fichero con una de esas extensiones. Es la clase de regresión que no da ningún síntoma.
+        source: `/:file(${ESTATICOS_RAIZ.join('|')})`,
+        headers: [{ key: 'Cache-Control', value: CACHE_ESTATICOS }]
+      },
+      {
+        // Las dos carpetas de `public/` que sirven assets: la marca (fuentes y SVG) y las fotos.
+        source: '/:dir(brand|img)/:path*',
+        headers: [{ key: 'Cache-Control', value: CACHE_ESTATICOS }]
       },
       {
         // Opening this URL directly downloads the file instead of displaying it

@@ -1,4 +1,4 @@
-import Head from 'next/head'
+import Seo from '../../components/Seo'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
@@ -94,9 +94,12 @@ export default function AuthCallback() {
 
   return (
     <>
-      <Head>
-        <title>Acceso — Médicos por Venezuela</title>
-      </Head>
+      <Seo
+        titulo="Acceso — Médicos por Venezuela"
+        descripcion={'Validando tu sesión.'}
+        ruta="/auth/callback"
+        noindex
+      />
       <main className="page">
         <div className="narrow">
           <div className="card" style={{ marginTop: 14 }}>

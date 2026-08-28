@@ -1,4 +1,4 @@
-import Head from 'next/head'
+import Seo from '../../components/Seo'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
@@ -324,9 +324,12 @@ export default function PerfilMedico() {
 
   return (
     <>
-      <Head>
-        <title>Mi perfil — Médicos por Venezuela</title>
-      </Head>
+      <Seo
+        titulo="Mi perfil — Médicos por Venezuela"
+        descripcion={'Tus datos profesionales y la verificación de tu credencial.'}
+        ruta="/panel-medico/perfil"
+        noindex
+      />
       <main className="page">
         <div className="container">
           <div className="perfil-layout">

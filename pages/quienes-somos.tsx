@@ -10,19 +10,26 @@
 // justamente para que desde aquí lleven a la sección correspondiente del home.
 
 import Head from 'next/head'
+import Seo from '../components/Seo'
 import Equipo from '../components/home/Equipo'
 import Footer from '../components/home/Footer'
 import Navbar from '../components/home/Navbar'
 import QuienesSomosCabecera from '../components/home/QuienesSomosCabecera'
-import { MARCA, QUIENES_SOMOS } from '../components/home/copy'
 import { comoScript, schemaQuienesSomos } from '../lib/schema'
 
 export default function QuienesSomosPage() {
   return (
     <div className="home-theme">
+      <Seo
+        titulo="Quiénes somos — Médicos por Venezuela"
+        descripcion={
+          'Somos una red de especialistas venezolanos repartidos por el mundo que atiende gratis ' +
+          'a pacientes y médicos dentro del país. Conoce nuestra historia y equipo.'
+        }
+        ruta="/quienes-somos"
+      />
+
       <Head>
-        <title>{`${QUIENES_SOMOS.eyebrow} — ${MARCA.nombre}`}</title>
-        <meta name="description" content={QUIENES_SOMOS.titulo} />
         {/* Mismo preload que el home: el titular de la cabecera se pinta con la fuente de marca en
             el primer render, y sin preload el texto salta al cambiar de fuente. */}
         <link

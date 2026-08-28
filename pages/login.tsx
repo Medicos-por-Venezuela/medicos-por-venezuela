@@ -1,4 +1,4 @@
-import Head from 'next/head'
+import Seo from '../components/Seo'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
@@ -92,9 +92,12 @@ export default function Login() {
 
   return (
     <>
-      <Head>
-        <title>Iniciar sesión — Médicos por Venezuela</title>
-      </Head>
+      <Seo
+        titulo="Iniciar sesión — Médicos por Venezuela"
+        descripcion={'Acceso para pacientes, médicos y administradores de Médicos por Venezuela.'}
+        ruta="/login"
+        noindex
+      />
       <main className="page">
         <AuthPanel
           title="Iniciar sesión"

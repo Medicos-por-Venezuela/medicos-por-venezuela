@@ -11,9 +11,21 @@
 import { useRef, useState } from 'react'
 import { useMountEffect, usePrefersReducedMotion } from '../../lib/hooks'
 
-// Umbral de visibilidad para dar por "entrada" una sección. 0.15 es el valor que ya usaba el home
-// anterior; se conserva para que el ritmo al hacer scroll no cambie.
-const UMBRAL = 0.15
+// Cuánto tiene que haber entrado un elemento en la pantalla para darlo por "visible". Se mide
+// sobre la ALTURA DE LA PANTALLA, con `rootMargin`, y NO como fracción del elemento con
+// `threshold`. La diferencia no es de estilo: `threshold: 0.15` sobre un elemento MÁS ALTO QUE LA
+// PANTALLA pide más píxeles de los que el móvil tiene, y entonces no se dispara nunca.
+//
+// Pasó de verdad: la rejilla de Especialistas creció de 6 tarjetas a 10 y en móvil va a una
+// columna, así que mide ~5.150 px. El 15 % de eso son 772 px visibles a la vez, y ningún teléfono
+// real llega —un iPhone SE deja 560 px útiles y un iPhone 14, unos 730—. La sección se quedaba en
+// `opacity: 0` para siempre: en escritorio se veía y en móvil no.
+//
+// Con `rootMargin` el disparo depende de la pantalla, no del alto del elemento, así que una sección
+// no puede volver a esconderse por crecer. El 15 % se conserva para que el ritmo al hacer scroll
+// sea el mismo que en el home anterior.
+const ENTRADA = '-15%'
+const MARGEN_RAIZ = `0px 0px ${ENTRADA} 0px`
 
 /**
  * Marca un elemento como visible la primera vez que entra en pantalla, y deja de observarlo.
@@ -51,7 +63,7 @@ export function useReveal<T extends HTMLElement>() {
           obs.unobserve(e.target)
         })
       },
-      { threshold: UMBRAL }
+      { rootMargin: MARGEN_RAIZ }
     )
     obs.observe(el)
     return () => obs.disconnect()
@@ -103,7 +115,7 @@ export function useCountUp<T extends HTMLElement>(target: number, durationMs = 9
           animar()
         })
       },
-      { threshold: UMBRAL }
+      { rootMargin: MARGEN_RAIZ }
     )
     obs.observe(el)
     return () => {

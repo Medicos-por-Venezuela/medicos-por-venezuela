@@ -20,6 +20,7 @@
 // Cada `background` vive en su sección; esta lista es el mapa para comprobarlo de un vistazo.
 
 import Head from 'next/head'
+import Seo from '../components/Seo'
 import Blog from '../components/home/Blog'
 import ComoFunciona from '../components/home/ComoFunciona'
 import CtaFinal from '../components/home/CtaFinal'
@@ -33,15 +34,26 @@ import Puertas from '../components/home/Puertas'
 import QuienesSomos from '../components/home/QuienesSomos'
 import Testimonios from '../components/home/Testimonios'
 import Valores from '../components/home/Valores'
-import { MARCA } from '../components/home/copy'
 import { comoScript, schemaHome } from '../lib/schema'
 
 export default function Home() {
   return (
     <div className="home-theme">
+      {/* El título ya NO es `nombre — tagline`: daba 69 caracteres y X y Google lo cortaban a
+          media frase. Y la descripción tampoco es el tagline a secas —45 caracteres, la mitad del
+          espacio del resultado de búsqueda desaprovechado—: dice lo que la organización hace, para
+          quién y a qué precio, que es lo que decide el clic. Las dos frases salen del copy
+          aprobado (HERO y QUIENES_SOMOS), no son texto nuevo escrito para el buscador. */}
+      <Seo
+        titulo="Médicos por Venezuela — Orientación médica gratuita"
+        descripcion={
+          'Red de médicos venezolanos verificados que ofrece orientación médica gratuita por ' +
+          'telemedicina a pacientes y colegas dentro de Venezuela. Gratis, confidencial.'
+        }
+        ruta="/"
+      />
+
       <Head>
-        <title>{`${MARCA.nombre} — ${MARCA.tagline}`}</title>
-        <meta name="description" content={MARCA.tagline} />
         {/* La tipografía de marca entra en el primer render (titular del hero): sin preload, el
             navegador no la descubre hasta parsear el CSS y el texto salta al cambiar de fuente.
             Solo se precarga la redonda: la itálica la usa el tagline, que está más abajo. */}
