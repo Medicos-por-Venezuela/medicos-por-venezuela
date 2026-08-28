@@ -51,6 +51,11 @@ export interface UserRoleAssignment {
 export interface PermissionsResponse {
   roles: string[]
   permissions: string[]
+  // Gate de credencial: false = es médico y su ficha aún no está habilitada (sin verificar por
+  // SACS/FPV, o sin cédula/licencia). Llega con `permissions: []`, así que sin mirar este campo la
+  // UI no distingue "aún no aprobado" de "no tiene nada que hacer aquí" y muestra una pantalla
+  // vacía. Para pacientes y admins es siempre true (no aplica).
+  credential_verified: boolean
 }
 
 export interface UserCreate {

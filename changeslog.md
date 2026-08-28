@@ -5,6 +5,53 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-08-28
+
+- **El admin no tenía forma de aprobar a un médico, y el médico bloqueado no sabía por qué** — el
+  backend ya gatea el acceso por credencial (ficha en `doctors` verificada, activa y con cédula +
+  licencia), pero eso dejaba a 2909 de 2979 médicos fuera **sin ninguna pantalla** que lo explicara
+  ni ningún botón que lo resolviera. La única aprobación posible era un `PATCH` a mano.
+  - **Panel admin — "Credenciales para atender"** (`components/admin/DoctorCredentials.tsx`, en
+    `/admin/doctores`): tabla paginada con filtros _aprobado / no aprobado_ y _habilitado /
+    bloqueado_, búsqueda por nombre/cédula/email, y el **motivo de bloqueo** de cada uno. Consume
+    `GET /doctors` (ahora `{items, total}` con `can_practice`/`blocked_reason`) y los endpoints
+    nuevos `POST /doctors/{id}/approve` · `/revoke-approval`.
+  - **Aprobado != habilitado.** Una ficha puede estar `verified` y aun así no atender por faltarle
+    la cédula — es el caso de 2847 médicos. Por eso el botón de aprobar solo aparece cuando aprobar
+    de verdad desbloquea (`blocked_reason === 'no_verificado'`); en el resto la fila dice qué hay
+    que pedirle al médico. Si aun así se intenta, el 422 del backend se muestra tal cual.
+  - **Pantalla de "verificación pendiente"** en `/panel-medico`: el médico bloqueado llega con
+    `permissions: []`, así que antes veía un panel vacío y un error genérico. Ahora se comprueba
+    `credential_verified` (de `GET /auth/me/permissions`) antes de pedir la cola y se le explica qué
+    falta, con salida a `/panel-medico/perfil` — la única ruta que el gate deja abierta a propósito.
+  - E2E: `e2e/credencial-medica.spec.ts` cubre las dos puntas (el médico bloqueado y el admin que
+    aprueba/revoca). `global-setup` siembra ahora **licencia** en los médicos de prueba —sin ella
+    ninguno pasa el gate— y un tercer médico (`E2E Doctor Tres`) sin validar, que absorbe el caso
+    "sin verificar" para que doc1/doc2 puedan seguir atendiendo en los specs de cola.
+    `admin-cedula-verificada` pasa a anclar su selector a `.users-table`: la página tiene dos tablas.
+  - Archivos: `lib/doctors.ts`, `lib/users.ts`, `components/admin/DoctorCredentials.tsx`,
+    `pages/admin/doctores.tsx`, `pages/panel-medico.tsx`, `e2e/`.
+- **La cola de aprobación era invisible: parecía que el botón no existía.** Con los datos reales
+  (2979 médicos) solo **26** son aprobables de un clic, frente a **2847** a los que les falta la
+  cédula. Ordenando por fecha, la primera página de 25 filas no traía ni un aprobable —el primero
+  cae en la fila 29—, así que el admin veía un montón de filas sin botón y concluía, con razón,
+  que aprobar no estaba implementado.
+  - Filtro **por motivo de bloqueo** (`GET /doctors?blocked_reason=…`, enum cerrado) y selector en
+    el panel: "Listos para aprobar", "Les falta la cédula", etc. Es el filtro que convierte la
+    tabla en una cola de trabajo; los de aprobación y habilitación por sí solos no acotan nada
+    (las ~820 "no aprobadas" son casi todas irresolubles desde el panel).
+  - **Fila de contadores** por estado (`GET /doctors/credential-summary`, una sola consulta),
+    clicable: cada número aplica su filtro. Sin ella el filtro nuevo tampoco se descubre.
+  - **Nota del rebase:** este PR también llevaba el cambio de `!== null` a `!= null` en los badges
+    de cédula (contra un backend que aún no expone el campo, el estricto pintaba "Cédula sin
+    verificar" a todos, admins incluidos). Al rebasar sobre `dev_aws` resultó que la base ya lo
+    traía, del PR #90 y con la misma justificación, así que el diff ya **no** lo contiene y no
+    debe atribuírsele. Lo que sí queda es haberlo detectado corriendo los E2E contra un backend
+    sin ese campo.
+  - `credencial-medica.spec.ts` fija el texto exacto: `getByText` busca subcadena e ignora
+    mayúsculas, así que el badge "Sin aprobar" colisionaba con el motivo "Credencial sin aprobar"
+    de su propia fila (strict mode violation). El motivo pasa a tener su propio `<span>`.
+
 ## 2026-08-27
 
 - **El badge "Verificado" del admin decía la verdad a nadie** — la lista de médicos leía
