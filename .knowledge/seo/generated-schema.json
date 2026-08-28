@@ -1,0 +1,264 @@
+{
+  "/": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": ["MedicalOrganization", "NGO"],
+        "@id": "https://medicosporvenezuela.org/#organizacion",
+        "name": "Médicos por Venezuela",
+        "alternateName": "MEDxVZLA",
+        "url": "https://medicosporvenezuela.org",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://medicosporvenezuela.org/img/logo-medicos-por-venezuela.png",
+          "width": 1000,
+          "height": 384
+        },
+        "slogan": "Conocimiento médico al servicio de Venezuela.",
+        "description": "Somos una red de especialistas verificados que ofrece orientación médica gratuita a pacientes y médicos dentro de Venezuela, a través de la telemedicina y la interconsulta especializada.",
+        "email": "info@medicosporvenezuela.org",
+        "sameAs": ["https://instagram.com/medicosxvenezuela"],
+        "areaServed": {
+          "@type": "Country",
+          "name": "Venezuela"
+        },
+        "knowsLanguage": "es",
+        "member": [
+          {
+            "@type": "Person",
+            "name": "Adarvelys Valor",
+            "jobTitle": "Médico Ocupacional",
+            "image": "https://medicosporvenezuela.org/img/especialistas/adarvelys-valor.webp",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Alejandro Marcano",
+            "jobTitle": "Cirugía ortopédica y traumatología deportiva",
+            "image": "https://medicosporvenezuela.org/img/especialistas/alejandro-marcano.webp",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Antonio Briceño",
+            "jobTitle": "Traumatología y Ortopedia",
+            "image": "https://medicosporvenezuela.org/img/especialistas/antonio-briceno.webp",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Jesús Ramírez",
+            "jobTitle": "Médico internista",
+            "image": "https://medicosporvenezuela.org/img/especialistas/jesus-ramirez.webp",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Johanna Palacios",
+            "jobTitle": "Cirujana y patóloga",
+            "image": "https://medicosporvenezuela.org/img/especialistas/johanna-palacios.webp",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Lizbeth Villavicencio",
+            "jobTitle": "Psicología",
+            "image": "https://medicosporvenezuela.org/img/especialistas/lizbeth-villavicencio.webp",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Michael Sicurella",
+            "jobTitle": "Médico de Familia",
+            "image": "https://medicosporvenezuela.org/img/especialistas/michael-sicurella.webp",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Sara Altuna",
+            "jobTitle": "Internista Oncóloga",
+            "image": "https://medicosporvenezuela.org/img/especialistas/sara-altuna.webp",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Sirio Barreto",
+            "jobTitle": "Neurología",
+            "image": "https://medicosporvenezuela.org/img/especialistas/sirio-barreto.webp",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Yanara García Leyva",
+            "jobTitle": "Medicina Familiar y Dermatología",
+            "image": "https://medicosporvenezuela.org/img/especialistas/yanara-garcia-leyva.webp",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          }
+        ],
+        "contactPoint": {
+          "@type": "ContactPoint",
+          "contactType": "customer support",
+          "email": "info@medicosporvenezuela.org",
+          "availableLanguage": "Spanish",
+          "areaServed": "VE"
+        }
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://medicosporvenezuela.org/#sitio",
+        "url": "https://medicosporvenezuela.org",
+        "name": "Médicos por Venezuela",
+        "inLanguage": "es",
+        "publisher": {
+          "@id": "https://medicosporvenezuela.org/#organizacion"
+        }
+      }
+    ]
+  },
+  "/quienes-somos": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "AboutPage",
+        "@id": "https://medicosporvenezuela.org/quienes-somos#pagina",
+        "url": "https://medicosporvenezuela.org/quienes-somos",
+        "name": "Quiénes Somos — Médicos por Venezuela",
+        "description": "Una red médica construida sobre el compromiso, no sobre la distancia.",
+        "inLanguage": "es",
+        "isPartOf": {
+          "@id": "https://medicosporvenezuela.org/#sitio"
+        },
+        "about": {
+          "@id": "https://medicosporvenezuela.org/#organizacion"
+        },
+        "mainEntity": {
+          "@id": "https://medicosporvenezuela.org/#organizacion"
+        }
+      },
+      {
+        "@type": ["MedicalOrganization", "NGO"],
+        "@id": "https://medicosporvenezuela.org/#organizacion",
+        "name": "Médicos por Venezuela",
+        "url": "https://medicosporvenezuela.org",
+        "member": [
+          {
+            "@type": "Person",
+            "name": "Oriana Ramírez",
+            "jobTitle": "Cofundadora · Médico Internista",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Adarvelys Valor",
+            "jobTitle": "Cofundadora · Médico Ocupacional",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Sara Altuna",
+            "jobTitle": "Médico Internista · Oncóloga · Venezuela",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Johanna Palacios",
+            "jobTitle": "Cirujana · Patóloga · España",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Luis Enrique Bolívar Velázquez",
+            "jobTitle": "Psicólogo · Líder del equipo de psicología",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Gabriel Vilches",
+            "jobTitle": "Infectólogo · Estados Unidos",
+            "worksFor": {
+              "@id": "https://medicosporvenezuela.org/#organizacion"
+            }
+          }
+        ]
+      },
+      {
+        "@type": "Person",
+        "name": "Oriana Ramírez",
+        "jobTitle": "Cofundadora · Médico Internista",
+        "worksFor": {
+          "@id": "https://medicosporvenezuela.org/#organizacion"
+        }
+      },
+      {
+        "@type": "Person",
+        "name": "Adarvelys Valor",
+        "jobTitle": "Cofundadora · Médico Ocupacional",
+        "worksFor": {
+          "@id": "https://medicosporvenezuela.org/#organizacion"
+        }
+      },
+      {
+        "@type": "Person",
+        "name": "Sara Altuna",
+        "jobTitle": "Médico Internista · Oncóloga · Venezuela",
+        "worksFor": {
+          "@id": "https://medicosporvenezuela.org/#organizacion"
+        }
+      },
+      {
+        "@type": "Person",
+        "name": "Johanna Palacios",
+        "jobTitle": "Cirujana · Patóloga · España",
+        "worksFor": {
+          "@id": "https://medicosporvenezuela.org/#organizacion"
+        }
+      },
+      {
+        "@type": "Person",
+        "name": "Luis Enrique Bolívar Velázquez",
+        "jobTitle": "Psicólogo · Líder del equipo de psicología",
+        "worksFor": {
+          "@id": "https://medicosporvenezuela.org/#organizacion"
+        }
+      },
+      {
+        "@type": "Person",
+        "name": "Gabriel Vilches",
+        "jobTitle": "Infectólogo · Estados Unidos",
+        "worksFor": {
+          "@id": "https://medicosporvenezuela.org/#organizacion"
+        }
+      }
+    ]
+  }
+}

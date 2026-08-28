@@ -1,3 +1,35 @@
+/* Nunito Sans — tipografía de marca del refrescamiento del home (2026-08).
+   Fuente VARIABLE: un solo archivo cubre todo el eje de peso (200 a 1000), así que el diseño
+   puede pedir 400, 600, 700, 800 o 900 sin descargar una cara por peso. Generada desde
+   `nueva/material/Fuentes/` con `scripts/build-fonts.mjs`, que fija los ejes que no usamos
+   (wdth, opsz, YTLC) y recorta el juego de glifos a latin + flechas: 28 KB la redonda y 30 KB
+   la itálica. Como referencia, la estática de UN solo peso pesaba 40 KB.
+
+   El rango `font-weight: 200 1000` es lo que le dice al navegador que interpole de verdad. Si
+   se declara un peso suelto, el navegador trata la familia como de una sola cara y la usa para
+   todo: eso pasaba antes y hacía que 300 y 900 renderizaran idénticos.
+
+   Licencia OFL: `public/brand/OFL.txt` viaja junto a los ficheros, como exige la licencia.
+
+   Solo aplica dentro de `.home-theme`; el resto del sitio conserva su stack de sistema. */
+@font-face {
+  font-family: 'Nunito Sans';
+  src: url('/brand/nunito-sans-variable.woff2') format('woff2');
+  font-weight: 200 1000;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Itálica real, no la oblicua que el navegador inventa inclinando la redonda. La usa el tagline
+   de la marca, que el copy pide expresamente en itálica. */
+@font-face {
+  font-family: 'Nunito Sans';
+  src: url('/brand/nunito-sans-variable-italic.woff2') format('woff2');
+  font-weight: 200 1000;
+  font-style: italic;
+  font-display: swap;
+}
+
 :root {
   --green: #0f6e56;
   --green-light: #e1f5ee;
@@ -256,23 +288,39 @@ input[readonly] {
   cursor: not-allowed;
 }
 
-/* Alineado al azul del home (pages/index.tsx) solo en esta pantalla — el
-   resto de la app sigue en --green hasta que se decida un rebrand completo. */
-.registro-medico-page .btn-primary {
-  background: #fff;
-  color: var(--home-blue);
-  border: 2px solid var(--home-gold);
+/* Las dos pantallas de registro adoptan la paleta y la tipografía nuevas (2026-08). Se hace
+   redefiniendo tokens DENTRO de su clase de tema, que es el patrón que ya usaba `.patient-theme`:
+   así no cambia ni una línea de `registro-paciente.tsx` ni de `registro-medico.tsx`, y el resto de
+   la app (panel médico, admin) sigue en verde hasta que se decida un rebrand completo.
+
+   Antes, `registro-medico` tenía cuatro reglas propias con el azul y el dorado del home ANTIGUO
+   (`--home-blue`, `--home-gold`). Se han quitado: con `--green` apuntando al azul de marca, el
+   `.btn-primary` por defecto ya da el botón azul sólido del home nuevo, y el dorado no existe en
+   esta paleta. `--home-blue` sí se conserva redefinido aquí abajo porque `registro-medico.tsx`
+   lo usa en un `style` en línea, y tocar la página está fuera del alcance de este trabajo. */
+.patient-theme,
+.registro-medico-page {
+  font-family:
+    'Nunito Sans',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  /* El acento del sitio, de verde a azul de marca. `--green` es el token que usan `.btn-primary`,
+     `.btn-outline`, `.link-button` y el `:focus` de los campos. */
+  --green: #0066fe;
+  --green-light: #e6f0ff;
+  --home-blue: #0066fe;
 }
-.registro-medico-page .btn-primary:hover {
-  background: var(--home-gold);
-  color: var(--home-blue);
-}
-.registro-medico-page input:focus,
-.registro-medico-page select:focus {
-  border-color: var(--home-gold);
-}
-.registro-medico-page .link-button {
-  color: var(--home-blue);
+
+/* La clase global `.hint` usa #888 sobre blanco: 3,54:1, por debajo del 4,5:1 que pide WCAG AA
+   para texto pequeño (lo marcó axe-core en `/registro-medico`). Se corrige con el gris de marca,
+   que da 7,0:1. Va acotado a estas dos pantallas porque cambiar `.hint` en global tocaría el
+   panel médico y el admin, que deben quedarse idénticos; el fallo sigue ahí y está anotado. */
+.patient-theme .hint,
+.registro-medico-page .hint {
+  color: var(--h-grey, #4a5a6e);
 }
 .table {
   width: 100%;
@@ -323,13 +371,137 @@ input[readonly] {
   border-color: var(--green);
   box-shadow: 0 0 0 2px var(--green-light);
 }
-/* Registro de paciente: reemplaza el acento verde por el mismo azul de la tarjeta
-   "Soy paciente" del home (pages/index.tsx: --blue: #1a3a6b, hcard-icon--blue: #e8effb),
-   ahora que el médico usa amarillo/dorado ahí. Shadowing de las custom properties que ya
-   consumen .btn-primary/.link-button/.badge-green/.tag.selected — sin tocar otras páginas. */
-.patient-theme {
-  --green: #1a3a6b;
-  --green-light: #e8effb;
+/* `.patient-theme` (registro de paciente) ya no se define aquí: desde el refrescamiento de agosto
+   de 2026 comparte paleta y tipografía con `.registro-medico-page`, y las dos se definen juntas
+   más arriba, junto a las reglas de las pantallas de registro. */
+
+/* Refrescamiento del home (2026-08). Los tokens van AQUÍ y no en `:root` a propósito:
+   `globals.css` lo carga `_app.tsx` para todas las páginas, así que tocar `:root` repintaría
+   también el panel médico y el admin, que están fuera del alcance de este trabajo. Mismo patrón
+   que `.patient-theme` de arriba. Paleta extraída del prototipo de The Climb. */
+.home-theme {
+  --h-navy: #18202b;
+  --h-blue: #0066fe;
+  --h-blue-dark: #0052cc;
+  --h-blue-deep: #003d5f;
+  --h-grey: #4a5a6e;
+  --h-grey-bg: #f4f4f4;
+  --h-green: #4ade80;
+  --h-white: #ffffff;
+
+  font-family:
+    'Nunito Sans',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  color: var(--h-navy);
+  background: var(--h-white);
+
+  /* Duraciones en un solo sitio para que las doce secciones respiren igual. */
+  --h-t-hover: 150ms;
+  --h-t-reveal: 500ms;
+  --h-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* Alto de la barra fija. Lo usan el propio Navbar (barra y hueco) y el `scroll-margin-top` de
+     abajo; si vive en dos sitios, tarde o temprano uno se queda desfasado. */
+  --h-navbar: 76px;
+
+  /* Texto sobre fondos oscuros. Los valores NO son a ojo: son el mínimo que cumple el 4,5:1 que
+     exige WCAG AA para texto pequeño, calculado sobre cada fondo. Sobre `--h-navy` hace falta
+     blanco al 46 %; sobre `--h-blue-deep`, al 55 %. El prototipo baja hasta el 25 %, que da
+     2,28:1 — auditado con axe-core, eran 45 nodos incumpliendo. En un sitio dirigido a pacientes,
+     con el texto en 10-11 px, eso no es un matiz de diseño.
+     Dos niveles para no aplanar la jerarquía: `medio` para cuerpo, `tenue` para etiquetas y meta. */
+  --h-sobre-oscuro-medio: rgba(255, 255, 255, 0.8);
+  --h-sobre-oscuro-tenue: rgba(255, 255, 255, 0.62);
+
+  /* El azul de marca como texto PEQUEÑO da 3,38:1 sobre navy. Esta variante aclarada da 4,95:1 y
+     conserva el tono. Solo para texto pequeño sobre oscuro; sobre fondo claro el que cumple es
+     `--h-blue-dark` (6,20:1 sobre `--h-grey-bg`, frente al 4,41:1 del azul base). */
+  --h-blue-claro: #3d8bff;
+}
+
+/* La barra es `position: fixed`, asi que un salto a `#loquesea` deja los primeros 76 px de la
+   seccion escondidos debajo. Medido antes de esto: el eyebrow de "Unete" aterrizaba en y=56, es
+   decir, tapado. Se aplica a cualquier elemento con `id` dentro del home para que las secciones
+   que faltan (T7-T9) lo hereden sin acordarse de ponerlo. */
+.home-theme [id] {
+  scroll-margin-top: var(--h-navbar);
+}
+
+/* Reveal al hacer scroll. La clase la alterna `useReveal` (components/home/motion.ts); la
+   animación vive aquí para que el `@media` de abajo pueda apagarla desde el primer frame. */
+.home-theme .reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity var(--h-t-reveal) var(--h-ease),
+    transform var(--h-t-reveal) var(--h-ease);
+}
+.home-theme .reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Escalonado del hero: el gesto mayor del refrescamiento. Cada hijo entra 60 ms después del
+   anterior, mientras la foto hace su propio scale (ver Hero). */
+.home-theme .stagger > * {
+  animation: home-fade-up 520ms var(--h-ease) both;
+}
+.home-theme .stagger > *:nth-child(2) {
+  animation-delay: 60ms;
+}
+.home-theme .stagger > *:nth-child(3) {
+  animation-delay: 120ms;
+}
+.home-theme .stagger > *:nth-child(4) {
+  animation-delay: 180ms;
+}
+.home-theme .stagger > *:nth-child(5) {
+  animation-delay: 240ms;
+}
+/* La columna del hero tiene seis bloques (eyebrow, filete, titular, párrafo, botones, métricas).
+   El escalonado se enumera a mano porque CSS no sabe multiplicar por el índice del hijo; si una
+   sección necesita más de seis, hay que añadir la línea aquí. */
+.home-theme .stagger > *:nth-child(6) {
+  animation-delay: 300ms;
+}
+
+@keyframes home-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Quien pide menos movimiento no ve NINGUNO. Va por CSS y no solo por JS porque esto aplica antes
+   de que React hidrate: con el guard solo en JS, el usuario vería el destello de la animación
+   justo antes de que se desactivara. En un sitio de salud no es un detalle estético — hay quien
+   navega con vértigo o migraña. */
+@media (prefers-reduced-motion: reduce) {
+  .home-theme .reveal,
+  .home-theme .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .home-theme .stagger > * {
+    animation: none;
+  }
+  .home-theme *,
+  .home-theme *::before,
+  .home-theme *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 .input-group {

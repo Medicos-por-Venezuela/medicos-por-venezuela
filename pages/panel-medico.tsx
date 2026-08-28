@@ -29,6 +29,7 @@ import {
 } from '../lib/interconsultations'
 import { ensureVideoRoom } from '../lib/patients'
 import { usePatientsInRoom } from '../lib/patientPresence'
+import { fetchMyPermissions } from '../lib/users'
 
 type Patient = {
   id: string
@@ -123,6 +124,9 @@ export default function PanelMedico() {
   // row) does — this tracks whether /doctors/me resolved for them, so we only show "Mi perfil"
   // when there's actually a profile to open (a pure admin would just hit a 404 there).
   const [hasDoctorProfile, setHasDoctorProfile] = useState(false)
+  // Gate de credencial del backend (`credential_verified` de /auth/me/permissions): el médico
+  // conserva su rol pero llega SIN permisos hasta que su ficha esté verificada y completa.
+  const [credentialPending, setCredentialPending] = useState(false)
   const isCurrentUserAdmin = isAdminRole(profile?.role)
   // Non-admins are doctors → always have a profile. Admins only if the probe below found one.
   const showProfileButton = !isCurrentUserAdmin || hasDoctorProfile
@@ -219,6 +223,21 @@ export default function PanelMedico() {
       router.replace('/panel-medico/perfil')
       return
     }
+
+    // Gate de credencial: quien ejerce como médico y no tiene la ficha verificada llega sin
+    // permisos, así que TODO el panel respondería 403. Se comprueba antes de pedir nada para
+    // mostrar la pantalla de "pendiente" en vez de una cola vacía y un error genérico.
+    try {
+      const perms = await fetchMyPermissions(sessionData.session.access_token)
+      if (!perms.credential_verified) {
+        setCredentialPending(true)
+        setLoading(false)
+        return
+      }
+    } catch {
+      // Backend caído o endpoint viejo: se sigue como antes; la cola dará su propio error.
+    }
+
     await loadConsultations(me)
     setLoading(false)
   }
@@ -389,6 +408,57 @@ export default function PanelMedico() {
           <div className="card">Cargando...</div>
         </div>
       </main>
+    )
+  }
+
+  // Credencial pendiente: el backend le vació los permisos, así que la cola y todo lo demás
+  // responden 403. Sin esta pantalla el médico vería un panel vacío sin explicación y creería
+  // que la plataforma está rota. Aquí se le dice qué falta y por dónde salir del limbo
+  // (/panel-medico/perfil queda FUERA del gate justamente para eso).
+  if (credentialPending) {
+    return (
+      <>
+        <Head>
+          <title>Verificación pendiente — Médicos por Venezuela</title>
+        </Head>
+        <main className="page">
+          <div className="container">
+            <div className="panel-topbar">
+              <div>
+                <h1 style={{ margin: 0 }}>{profile?.full_name}</h1>
+                <p style={{ margin: 0, color: '#64748b' }}>
+                  <span className="badge badge-orange">Verificación pendiente</span>
+                </p>
+              </div>
+              <div className="panel-actions">
+                <button className="btn btn-muted" onClick={logout}>
+                  Salir
+                </button>
+              </div>
+            </div>
+
+            <div className="card">
+              <h2 style={{ marginTop: 0 }}>Tu credencial profesional aún no está verificada</h2>
+              <p style={{ color: '#475569' }}>
+                Para atender pacientes tu ficha necesita tu <strong>cédula</strong> y tu{' '}
+                <strong>número de licencia</strong>, y que el registro oficial (SACS para médicos,
+                FPV para psicólogos) los confirme. Mientras tanto no puedes ver la cola ni tomar
+                casos.
+              </p>
+              <p style={{ color: '#475569' }}>
+                Completa o corrige tus datos en tu perfil. Si el registro oficial no te encuentra,
+                un administrador revisará tu ficha y la aprobará a mano.
+              </p>
+              <button
+                className="btn btn-primary"
+                onClick={() => router.push('/panel-medico/perfil')}
+              >
+                Completar mi perfil
+              </button>
+            </div>
+          </div>
+        </main>
+      </>
     )
   }
 

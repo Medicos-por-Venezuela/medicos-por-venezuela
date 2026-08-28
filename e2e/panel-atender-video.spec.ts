@@ -3,6 +3,7 @@
 // una pestaña nueva y el detalle debe mostrar "Unirse a videoconsulta". Reproduce el reporte
 // "no me abre el link y desaparece el botón de unirse".
 import { test, expect, request } from '@playwright/test'
+import { idEspecialidadGeneral } from './helpers'
 
 const API = 'http://localhost:8000/api/v1'
 
@@ -22,7 +23,11 @@ test('atender por videoconsulta crea la sala si falta y el detalle muestra Unirs
   const patientId = (await patient.json()).id
   // La cola oculta el nombre; el card muestra chief_complaint → lo usamos como marcador.
   const cons = await api.post(`${API}/consultations`, {
-    data: { patient_id: patientId, chief_complaint: 'E2E Paciente Video' }
+    data: {
+      patient_id: patientId,
+      chief_complaint: 'E2E Paciente Video',
+      specialty_id: await idEspecialidadGeneral()
+    }
   })
   const cid = (await cons.json()).id
   await api.dispose()

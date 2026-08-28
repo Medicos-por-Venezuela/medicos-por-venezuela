@@ -34,3 +34,10 @@ Thumbs.db
 /blob-report/
 /playwright/.cache/
 /.next-e2e/
+
+# Material de origen del rediseño del home (agosto 2026): el prototipo de The Climb (10 MB), el
+# .docx del copy, la foto sin tocar (5 MB) y las fuentes en TTF. Es referencia para trabajar, no
+# se sirve ni se compila: lo que el sitio necesita ya está derivado en `public/` mediante
+# `scripts/build-fonts.mjs` y `scripts/optimize-hero-image.mjs`. Versionarlo metería 15 MB de
+# binarios en el historial para siempre.
+/nueva/

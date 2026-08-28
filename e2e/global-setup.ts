@@ -1,12 +1,14 @@
-// Setup global de Playwright: siembra dos médicos de prueba (cuenta de Auth + fila en users/doctors
-// con cédula, para que el panel cargue sin redirigir a completar perfil) y guarda su sesión de
-// Supabase como storageState, de modo que los tests entren ya logueados sin pasar por el form de
-// login. Solo usa el Supabase LOCAL (127.0.0.1) — nunca prod.
+// Setup global de Playwright: siembra tres médicos de prueba (cuenta de Auth + fila en
+// users/doctors con cédula y licencia, para que el panel cargue sin redirigir a completar perfil y
+// para que pasen el gate de credencial del backend) y guarda su sesión de Supabase como
+// storageState, de modo que los tests entren ya logueados sin pasar por el form de login.
+// Solo usa el Supabase LOCAL (127.0.0.1) — nunca prod.
 import { execSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { createClient } from '@supabase/supabase-js'
 import type { FullConfig } from '@playwright/test'
+import type { User } from '@supabase/supabase-js'
 
 const ROOT = path.join(__dirname, '..')
 const DB_CONTAINER = 'supabase_db_api-medicos-por-venezuela'
@@ -22,19 +24,33 @@ const SUPABASE_URL = envVar('NEXT_PUBLIC_SUPABASE_URL')
 const ANON_KEY = envVar('NEXT_PUBLIC_SUPABASE_ANON_KEY')
 const SERVICE_KEY = envVar('SUPABASE_SERVICE_ROLE_KEY')
 
+// El backend gatea a los médicos por credencial: sin `license` (además de cédula y `verified`)
+// ninguno puede atender. Por eso doc1 y doc2 van completos — son los que trabajan en los specs de
+// panel/cola — y el caso "sin verificar" se aísla en doc3, que nadie más usa.
 const DOCTORS = [
   {
     email: 'e2e-doc1@example.com',
     name: 'E2E Doctor Uno',
     cedula: 'V-88880001',
+    license: 'MPPS-88880001',
     file: 'e2e/.auth/doc1.json'
   },
   {
     email: 'e2e-doc2@example.com',
     name: 'E2E Doctor Dos',
     cedula: 'V-88880002',
-    file: 'e2e/.auth/doc2.json',
-    // Cédula NO validada: el otro estado del badge de la lista del admin.
+    license: 'MPPS-88880002',
+    file: 'e2e/.auth/doc2.json'
+  },
+  {
+    email: 'e2e-doc3@example.com',
+    name: 'E2E Doctor Tres',
+    cedula: 'V-88880003',
+    license: 'MPPS-88880003',
+    file: 'e2e/.auth/doc3.json',
+    // Cédula NO validada por el SACS: es el médico bloqueado por el gate de credencial. Da los dos
+    // estados del badge del admin, el caso aprobable del panel y la pantalla de "pendiente".
+    // Tiene cédula y licencia a propósito: así aprobarlo SÍ lo habilita (`no_verificado`).
     verified: false
   }
 ]
@@ -52,22 +68,42 @@ async function ensureAuthUser(email: string): Promise<string> {
   if (created.data?.user) return created.data.user.id
   // Ya existía: lo buscamos y le fijamos la contraseña conocida.
   const list = await admin.auth.admin.listUsers()
-  const user = list.data.users.find((u) => u.email === email)
+  if (list.error) {
+    throw new Error(`No pude listar los usuarios de auth: ${list.error.message}`)
+  }
+  // La anotación `: User[]` no es decorativa. `listUsers()` devuelve una unión discriminada por
+  // `error` (éxito -> `users: User[]`; fallo -> `users: []`), pero este `tsconfig.json` usa
+  // `strict: false`, así que sin `strictNullChecks` el `null` del caso correcto no discrimina
+  // nada: comprobar `list.error` arriba NO estrecha el tipo. `users` se quedaba como
+  // `User[] | []`, cuyo elemento común es `never`, y el `.find()` fallaba con
+  // `TS2339: Property 'email' does not exist on type 'never'`.
+  // Importa porque `next build` verifica tipos de TODO el proyecto (`ignoreBuildErrors: false`):
+  // este fichero de test rompía el build de producción y con él el despliegue en Amplify.
+  const usuarios: User[] = list.data.users
+  const user = usuarios.find((u) => u.email === email)
   if (!user) throw new Error(`No pude crear ni encontrar ${email}: ${created.error?.message}`)
   await admin.auth.admin.updateUserById(user.id, { password: PASSWORD })
   return user.id
 }
 
 // `verified` = doctors.verified, el resultado de contrastar la cédula con SACS/FPV. Se fija a
-// propósito (doc2 va sin validar) para que admin-cedula-verificada.spec.ts tenga los dos estados.
+// propósito (doc3 va sin validar) para que admin-cedula-verificada.spec.ts tenga los dos estados.
 // No confundir con users.verified, que nace true y no gatea nada.
-function seedDoctorRow(uid: string, name: string, cedula: string, verified = true): void {
+function seedDoctorRow(
+  uid: string,
+  name: string,
+  cedula: string,
+  license: string,
+  verified = true
+): void {
   const sql = [
     // Idempotencia entre corridas: libera esta cédula de cualquier otro doctor de prueba previo.
     `update public.doctors set cedula=null where cedula='${cedula}' and user_id<>'${uid}';`,
     `update public.users set role='doctor', verified=true, active=true, role_chosen=true, full_name='${name}' where id='${uid}';`,
     `insert into public.doctors (user_id, full_name, cedula) select '${uid}','${name}','${cedula}' where not exists (select 1 from public.doctors where user_id='${uid}');`,
-    `update public.doctors set cedula='${cedula}', verified=${verified} where user_id='${uid}';`
+    // `status=1` y `license` se reafirman en cada corrida: son parte del gate de credencial, y un
+    // spec anterior (aprobar/revocar) pudo dejar `verified` en otro valor.
+    `update public.doctors set cedula='${cedula}', license='${license}', status=1, verified=${verified} where user_id='${uid}';`
   ].join(' ')
   execSync(`docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c "${sql}"`, {
     stdio: 'pipe'
@@ -109,7 +145,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   cleanupTestData()
   for (const doc of DOCTORS) {
     const uid = await ensureAuthUser(doc.email)
-    seedDoctorRow(uid, doc.name, doc.cedula, doc.verified ?? true)
+    seedDoctorRow(uid, doc.name, doc.cedula, doc.license, doc.verified ?? true)
     await saveSession(doc.email, baseURL, doc.file)
   }
 

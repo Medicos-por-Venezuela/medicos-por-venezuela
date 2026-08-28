@@ -5,6 +5,294 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-08-28
+
+- **Home — segunda ronda de copy de The Climb** — el documento corregido cambia textos, el orden de
+  varias secciones y el color de fondo de casi todas. **Solo el home**; el panel médico y el admin
+  no se tocan.
+  - **Orden y paleta.** El copy fija ahora fondo por sección: 01 Hero `#f4f4f4` · 02 Puertas
+    `#18202b` · **03 Psicología `#0066fe` (sección nueva)** · 04 Quiénes Somos `#f4f4f4` ·
+    05 Cómo Funciona `#18202b` · 06 Especialistas `#0066fe` · 07 Testimonios `#f4f4f4` ·
+    08 Impacto `#003d5f` · 09 Blog `#f4f4f4` · 10 CTA final y 11 pie `#18202b`. Cambian de fondo
+    cinco secciones; el mapa completo queda comentado en `pages/index.tsx` para poder cotejarlo de
+    un vistazo. La banda de Valores no aparece en el orden del documento: se mantiene como cierre
+    de Quiénes Somos —decisión del equipo— y comparte su blanco roto.
+  - **Contraste recalculado, no heredado.** Cómo Funciona pasó de claro a navy y Testimonios de
+    azul marino a claro: los dos llevan todo el texto recalculado. El caso exigente es
+    `--h-blue` (#0066fe), el fondo de Psicología y Especialistas: da **4,85:1 contra blanco puro**,
+    apenas por encima del 4,5:1 de AA, y **cualquier transparencia se cae del mínimo**
+    (`--h-sobre-oscuro-medio`, el blanco al 80 % que usan las secciones navy, se queda en 3,63:1).
+    Por eso esas dos secciones usan `--h-white` sin `opacity` y hacen la jerarquía con tamaño y
+    peso. Se retiraron ahí el `opacity: 0.75` del "Ver todos" (3,2:1) y el check verde de las
+    fichas (2,78:1). Auditoría propia sobre el DOM renderizado, a 1440 y a 375 px: **0 nodos por
+    debajo del mínimo**, sin contar la franja del hero, que va sobre un degradado encima de la foto.
+  - **Puertas de entrada:** nuevo orden y textos. La del médico venezolano pasa a la 01 y se llama
+    "Soy médico, necesito apoyo clínico"; el paciente baja a la 02. Descripciones completas en vez
+    de fragmentos.
+  - **Psicología:** banda nueva entre las puertas y Quiénes Somos. El CTA va al **mismo** registro
+    de paciente que la telemedicina: no hay un flujo aparte para salud mental, y mandar a la gente
+    a otra ruta sería prometer algo que no existe.
+  - **Cómo Funciona:** los tabs cambian de orden (interconsulta primero, y es el activo al cargar)
+    y entra un paso nuevo, **"Recepción Clínica"**, en los flujos de médico y de paciente — el que
+    dice que hay una persona del equipo entre el caso y el especialista. Sustituye a "Describe el
+    caso clínico" y a "Espera a ser atendido", que era justo lo que ese paso hacía sin nombrarlo.
+    El flujo de voluntario no lo lleva y queda igual.
+  - **Quiénes Somos:** debajo del texto entra el equipo en dos grupos —2 cofundadoras y 4 personas—
+    con cargo y biografía. Son nombres **reales** entregados por la organización, a diferencia de
+    la rejilla de Especialistas. Van sin retrato a propósito: las fotos que llegan son para
+    Especialistas, y una imagen de archivo aquí pondría una cara ajena junto al nombre de una
+    persona real.
+  - **Pie:** el aviso legal se reduce a "Médicos por Venezuela es una organización sin fines de
+    lucro registrada". ⚠️ Con ello desaparece la advertencia de que la orientación **no sustituye
+    la atención presencial de urgencia**, que era una salvaguarda clínica, no relleno. Se retira
+    porque lo pide el copy aprobado y queda anotado en `copy.ts`. La descripción de la columna de
+    marca también decía "registrada en Estados Unidos"; se quita ahí igualmente, porque si no el
+    pie se contradecía consigo mismo a dos párrafos de distancia.
+  - **Pendiente de assets** (ver `tasks/todo.md`): los iconos de la banda de Valores y las fotos de
+    los 10 especialistas, que además amplían la rejilla de 6 plazas a 10.
+  - **Verificación:** `tsc --noEmit` · `eslint` · `prettier --check` sobre lo tocado · `next build`
+    · orden, fondos y textos comprobados sobre el DOM renderizado · sin desbordamiento horizontal
+    a 375 px. **No verificado:** el cambio de pestaña con el ratón, porque el `next dev` de este
+    entorno no llega a hidratar (rechaza `_clientMiddlewareManifest.js` por MIME `application/json`);
+    la lógica del tablist no se tocó, solo sus datos y colores.
+  - **Archivos:** `components/home/{copy.ts,Psicologia.tsx,QuienesSomos.tsx,ComoFunciona.tsx,`
+    `Especialistas.tsx,Testimonios.tsx,Hero.tsx,Valores.tsx,Metricas.tsx}`, `pages/index.tsx`,
+    `tasks/todo.md`.
+
+- **Home — segunda tanda de ajustes del mismo día** — assets entregados y cuatro decisiones del
+  equipo. Sigue siendo **solo el home** más una página nueva; el panel médico y el admin no cambian.
+  - **Iconos de Valores.** Los cuatro PNG entregados (500 × 500, RGBA, relleno plano) pasan a WebP
+    de 96 px con `scripts/optimize-value-icons.mjs`, siguiendo el patrón del hero: el origen vive
+    en `nueva/iconos-valores/` (sin versionar) y solo se versiona lo que se sirve. ~3 KB cada uno.
+    Van con `alt` vacío porque repiten el título que tienen al lado.
+    ⚠️ Los nombres de archivo son los de los valores del PROTOTIPO (Calidad, Credibilidad,
+    Autonomía, Gratuidad), no los del copy, y algún dibujo no cuadra ni con su propio nombre
+    (`Gratis.png` son cinco estrellas). El reparto respeta los tres que sí coinciden, así que
+    **"Confidenciales" se queda con un pulgar arriba** — lo que peor encaja. En `tasks/todo.md`.
+  - **Página `/quienes-somos`.** Las cofundadoras y el equipo salen del home y pasan a una página
+    propia, a la que se llega desde "Conoce nuestra historia →" (que era texto inerte y ahora es un
+    enlace de verdad). El "Quiénes Somos" del MENÚ sigue siendo el ancla de la sección del home:
+    fue una decisión explícita del equipo. La página reutiliza el copy aprobado de la organización
+    en una cabecera navy y añade abajo a las seis personas; no se inventó texto institucional.
+  - **Efecto lateral de tener una segunda página:** Navbar y Footer los comparten las dos, así que
+    sus anclas pasan de `#seccion` a `/#seccion`. Desde `/quienes-somos`, un `#seccion` a secas no
+    llevaba a ninguna parte. Comprobado: el salto aterriza a 76 px del borde, justo debajo de la
+    barra fija.
+  - **Psicología preselecciona la especialidad.** El CTA entra como
+    `/registro-paciente?especialidad=psicologia` y el formulario llega con "Conozco la especialidad"
+    marcado y Psicología elegida. Se localiza por el flag `mental_health_only` del catálogo, NUNCA
+    por el nombre — renombrarla en la base rompería un `find` por cadena, que es exactamente lo que
+    ya pasó con "Pediatría". Si el catálogo no la trae, no se preselecciona nada y el formulario se
+    comporta como siempre.
+  - **Especialistas: 10 plazas y sin "Ver todos".** La rejilla pasa de 6 a 10 y de 3 a 5 columnas.
+    El número de columnas no es estético: los filetes se dibujan con bordes por celda, y con una
+    última fila a medias queda media banda abierta que parece un fallo. 5/2/1 son los divisores de 10. Se retiran el enlace "Ver todos los especialistas →" y la entrada "Especialistas" del menú
+    —y también la del pie, que si no contradecía al menú—: esa página no existe.
+  - **Pie: franja de créditos.** "Esto es posible gracias a una colaboración entre The Climb y
+    Softronic", con Softronic enlazando a softronic.dev. The Climb va como texto porque no se dio
+    una URL. El enlace va subrayado y no solo en otro color.
+  - **Verificación, esta vez sobre el build de producción** (`next build` + `next start`), que es
+    donde sí hidrata: la preselección de Psicología funciona y **no** se activa sin el parámetro;
+    las pestañas de Cómo Funciona cambian; la rejilla de especialistas da 10 celdas en 5 columnas
+    de 234 px y 2 filas exactas; el salto desde `/quienes-somos` al home aterriza bajo la barra.
+    Contraste recalculado sobre el DOM a 1280 y 375 px: **0 nodos por debajo del mínimo** en las
+    dos páginas (sin contar la franja del hero, que va sobre un degradado encima de la foto), y sin
+    desbordamiento horizontal.
+  - **Hallazgo, fuera de alcance:** `next dev` NO hidrata en este entorno (Next 16.3 + Turbopack +
+    `cacheComponents`): los chunks se descargan pero React nunca monta, así que ninguna página
+    responde a un clic en desarrollo. No es del home —afecta a todo el sitio— y `next start` no lo
+    tiene. Anotado en `tasks/todo.md`.
+  - **Archivos:** `components/home/{copy.ts,Equipo.tsx,QuienesSomosCabecera.tsx,QuienesSomos.tsx,`
+    `Valores.tsx,Especialistas.tsx,Navbar.tsx,Footer.tsx}`, `pages/{quienes-somos.tsx,`
+    `registro-paciente.tsx}`, `scripts/optimize-value-icons.mjs`, `public/img/valores/*`,
+    `tasks/todo.md`.
+
+- **Home — tercera tanda del mismo día: assets reales y cifras reales** — llegan los diez retratos
+  de especialistas y se cierran cuatro peticiones más del equipo. Toca también el repo del backend.
+  - **Diez especialistas de verdad.** Se acabaron las plazas "Perfil por publicar": nombres,
+    especialidades y retratos entregados por la organización. La tarjeta cambia de forma —foto
+    arriba a sangre y datos debajo, como un directorio médico— porque la cara es lo que sostiene la
+    confianza que esa sección defiende, y un avatar de 64 px en una esquina ya no servía. Fuera el
+    campo "País", a petición del equipo.
+  - **El recorte de los retratos, calculado y no automático.** Los diez originales son 9:16 pero el
+    encuadre va de plano de busto a cuerpo entero: un recorte fijo, o el `attention` de sharp
+    —ambos probados—, dejan una rejilla donde unos parecen de cerca y otros de lejos. La solución
+    mide la cabeza de cada foto y deriva el recorte de ahí: el alto sale de igualar el tamaño de la
+    cabeza, y el borde superior de igualar el aire sobre la coronilla. Dos medidas por foto y una
+    regla, en `scripts/optimize-specialist-photos.mjs`. 204 KB los diez, a 640 × 800.
+  - **Fuera del menú: Blog** (y con él el "Ver todos los artículos →", igual que se hizo con
+    Especialistas). Con eso **el menú ya no tiene ni una entrada inerte**: las cinco llevan a algún
+    sitio. Las secciones de Blog y Especialistas siguen en la página.
+  - **Cómo Funciona cierra cada flujo con su botón de registro**, con el mismo texto y el mismo
+    destino que su puerta de entrada del principio: quien baja leyendo los cuatro pasos ya no tiene
+    que subir otra vez para encontrar por dónde se entra.
+  - **Las cifras de la portada ya son reales.** Hero e Impacto piden `GET /api/v1/stats/public` al
+    backend — endpoint NUEVO, en la rama `feat/stats-publicas` del repo `api-medicos-por-venezuela`.
+    Antes eran números escritos a mano que envejecían: el copy original decía "+3.000 médicos"
+    cuando la base tenía ~2.960, y hubo que bajarlo a "+2.000" para no mentir. Ahora dice +2.500,
+    que es cierto y sale del conteo.
+    - **El redondeo se hace en el SERVIDOR**, no en el navegador: el endpoint no pide token, así que
+      devolver el conteo exacto publicaría el pulso operativo de la organización a quien mire la
+      pestaña de red. Escalones: medios millares por encima de 1.000 (2.900 → 2.500) y centenas por
+      debajo (379 → 300, 450 → 400), más decenas por debajo de 100 para que 47 no se publique como
+      "+0". **Siempre a la baja**, nunca al más cercano: la cifra publicada tiene que ser una que la
+      organización pueda defender.
+    - **Consultas: todas las creadas**, sin filtrar por estado (decisión del equipo). ⚠️ La etiqueta
+      sigue diciendo "Consultas realizadas" y ahí entran también las que están en espera, las
+      canceladas y los no-show. Anotado en `tasks/todo.md`.
+    - Una sola petición aunque la usen dos secciones, y **respaldo** en `METRICAS`: es lo que se
+      pinta en el servidor, lo que ve quien no tenga JavaScript y lo que queda si el backend no
+      responde. Comprobado en el HTML servido: sin JS se leen +2.000 y +200, que son ciertas.
+  - **Backend (`feat/stats-publicas`):** `GET /stats/public` sin token, tres `COUNT(*)` y ninguna
+    fila leída, con el redondeo en el servicio. 13 pruebas en `tests/test_stats.py` (los escalones,
+    que nunca redondee hacia arriba para 0..2999, que el endpoint no pida token y que cuente todas
+    las consultas y solo los médicos activos). **Suite completa: 326 pasan, 0 fallan.** `ruff check`
+    y `ruff format` limpios.
+  - **Fuera el rótulo "Interconsulta en curso"** de la esquina de la foto del hero. Venía del
+    prototipo, no del copy. La franja "24/7 · Disponible · Confidencial" se queda.
+  - **Borrado:** `public/img/avatar-placeholder.png` (54 KB), que lo había añadido esta misma rama
+    para las plazas vacías y ya no lo usa nadie.
+  - **Verificación** sobre `next build` + `next start`: menú sin Blog ni Especialistas, botón de
+    registro en los tres flujos, 10 fichas con foto, y las cifras del hero y de Impacto coincidiendo
+    (+2.500 / +200 / +20) tras una única llamada al backend. Contraste recalculado sobre el DOM en
+    las tres pestañas de Cómo Funciona: **0 nodos por debajo del mínimo** (sin contar la franja del
+    hero, que va sobre un degradado encima de la foto). `tsc`, `eslint` y `prettier` limpios.
+  - **Archivos:** `components/home/{copy.ts,cifras.ts,Especialistas.tsx,ComoFunciona.tsx,Blog.tsx,`
+    `Hero.tsx,Metricas.tsx}`, `lib/api.ts`, `scripts/optimize-specialist-photos.mjs`,
+    `public/img/especialistas/*`, `tasks/todo.md`. En el backend:
+    `src/{routers,services,schemas}/stats.py` y `tests/test_stats.py`.
+
+- **Google Analytics 4, solo en el sitio de producción** — propiedad `G-09M01TF5F3`.
+  - **La condición se comprueba contra el DOMINIO en el navegador, no contra la rama en el build.**
+    La rama no existe en tiempo de ejecución: depender de `AWS_BRANCH`/`VERCEL_GIT_COMMIT_REF`
+    significa que el día que esa variable no esté —un build local, otro runner, otro proveedor— el
+    sitio publica analítica sin que nadie se entere, o deja de publicarla sin que nadie se entere.
+    El dominio sí es exactamente lo que se pidió: ni local ni la previsualización de `dev_aws`
+    sirven desde `medicosporvenezuela.org`, así que ninguna carga nada. El efecto es el mismo que
+    "solo en main" porque ese dominio sirve main, pero si mañana se publicara otra rama en
+    producción la analítica seguiría funcionando, en vez de apagarse en silencio.
+  - **Fuera de producción NO se pide nada a Google.** El guard va antes de crear el `<script>`, no
+    después de cargarlo: con el `<script async src>` del snippet original, el navegador haría la
+    petición siempre y el guard llegaría tarde. Comprobado en local: 0 peticiones a
+    googletagmanager/google-analytics y `gtag` sin definir.
+  - **Vistas de página en las navegaciones internas** (`pages/_app.tsx`). El snippet manda una sola
+    vista, la de la carga inicial; este sitio navega del lado del cliente, así que sin esto
+    Analytics vería a todo el mundo entrando por el home y no saliendo de ahí jamás.
+  - **El snippet va encapsulado.** El de Google, tal cual, deja `dataLayer` y la variable del
+    `<script>` como globales sueltas; en una página que ya carga Supabase y Realtime no hacía falta
+    añadir dos nombres más al espacio global. `gtag.js` lee `window.dataLayer` por su nombre, así
+    que no le afecta.
+  - **CSP actualizada** (`next.config.js`): `googletagmanager.com` en `script-src`,
+    `google-analytics.com` y sus subdominios en `connect-src`, y ambos en `img-src` para el píxel
+    de respaldo. La CSP está en Report-Only, así que sin esto no se rompería nada hoy — pero cada
+    evento de analítica generaría una violación en producción, y esos falsos positivos taparían los
+    reportes de verdad. Y el día que pase a enforced, la analítica dejaría de funcionar.
+  - **Verificación:** el snippet TAL CUAL sale en el HTML servido, ejecutado con un `location`
+    simulado y `appendChild` interceptado (para no mandar visitas falsas a la propiedad real): con
+    `https://medicosporvenezuela.org` y con `www.` crea el `<script>` de `gtag.js` con el ID
+    correcto y encola `js` + `config`; con la URL de una rama, con `localhost` y con `http://` del
+    propio dominio, no crea nada. Ocho URLs comprobadas, incluida `medicosporvenezuela.org.evil.com`
+    (no carga: la comparación es exacta, no un `endsWith`).
+  - **Archivos:** `lib/analytics.ts`, `pages/{_document.tsx,_app.tsx}`, `next.config.js`,
+    `CLAUDE.md`, `AGENTS.md`.
+
+- **Nota de la fusión con `dev_aws` (2026-08-28).** La rama se puso al día con `dev_aws`, que había
+  avanzado cuatro PR. Tres conflictos eran de documentación y uno no:
+  - `pages/index.tsx`: `dev_aws` editaba el home VIEJO, que esta rama sustituyó entero. Se conserva
+    la composición nueva — pero **el cambio que hacía allí sí importaba**: el login se unificó en
+    `/login`, que resuelve el destino por rol. `RUTAS.ingresar` pasa de `/login-medico` (que ahora
+    solo redirige) a `/login`, para no hacer pasar a todo el mundo por un salto de más.
+  - `tasks/{plan,todo}.md`: son artefactos SDD que cada rama sobrescribe con SU cambio. Los de
+    `dev_aws` son del login unificado y los de esta rama del refrescamiento del home; no hay un lado
+    que descartar. `dev_aws` ya había introducido `tasks/users-verified/` como subcarpeta por cambio,
+    así que se sigue esa convención: los de esta rama pasan a `tasks/home-refresh/`.
+  - `changeslog.md` y `AGENTS.md`: se conservan las dos partes.
+
+- **SEO: plan estratégico y datos estructurados** — `.knowledge/seo/` (cinco documentos) y
+  `lib/schema.ts`.
+  - **Auditoría del estado real, medida sobre el build de producción**, no estimada. El sitio NO
+    tenía: `robots.txt` (404), `sitemap.xml` (404), Open Graph en ninguna de las 8 páginas públicas,
+    `canonical` en ninguna, `meta description` en 6 de 8, ni `<title>`/`<h1>` en `/mi-caso` y
+    `/elegir-rol`. Y las superficies de aplicación (`/sala-espera`, `/mi-caso`, `/elegir-rol`,
+    `/auth/callback`) son indexables.
+  - **Lo de Open Graph es lo más grave, y no por posicionamiento:** el canal por el que este público
+    comparte es WhatsApp, y hoy cada enlace compartido llega sin imagen, sin título y sin
+    descripción. Es la corrección con mejor relación esfuerzo/impacto de todo el plan.
+  - **Estrategia.** El sitio son tres embudos que casi no se solapan (paciente, médico en Venezuela,
+    médico voluntario) compartiendo una sola página, y por eso no compite en ninguno. El panorama
+    competitivo se comprobó con búsqueda: "telemedicina gratis Venezuela" lleva ocupado desde 2017
+    (MVO, Asistensi) y hay una universidad en el nicho (SOS Telemedicina, UCV, dominio `.ucv.ve`).
+    **Pero nadie ocupa interconsulta ni voluntariado.** Ahí va la apuesta.
+  - **Sin cifras inventadas.** No hay Search Console ni herramienta de datos conectada, así que no
+    hay volúmenes de búsqueda, ni dificultad de palabra clave, ni autoridad de dominio. Un plan con
+    números inventados es peor que uno sin ellos: se toman decisiones creyéndolos. Instrumentar es
+    la tarea 1 de la fase 1, y las casillas de línea base están marcadas "sin medir".
+  - **JSON-LD implementado** en el home y en `/quienes-somos`: `MedicalOrganization` + `NGO` (las dos
+    ciertas; ninguna sola dice lo que es esto), `WebSite`, `AboutPage`, y `Person` para los 10
+    especialistas y las 6 personas del equipo. La organización se define UNA vez y las demás páginas
+    la referencian por `@id`, para que los buscadores vean una entidad con varias páginas y no varias
+    organizaciones parecidas. Va en el HTML del servidor, no inyectado por JS.
+  - **Lo que NO se declaró, y por qué:** sin `foundingDate` (nadie ha dado una fecha), sin
+    `nonprofitStatus` (el enumerado es por jurisdicción y el copy retiró la mención a EE. UU.), sin
+    `address` (no hay sede), sin `aggregateRating` (**no hay reseñas reales**; fabricar una
+    valoración en un sitio médico es justo lo que se penaliza) y sin `SearchAction` (no hay buscador).
+    En salud, un dato falso en JSON-LD no es un adorno de más: es una declaración formal.
+  - **Logotipo en mapa de bits** (`scripts/build-logo-raster.mjs`): el sitio solo tenía SVG y el
+    `logo` de la organización necesita un formato que el rastreador pueda usar. Sirve también para
+    la imagen de Open Graph cuando se implemente — WhatsApp, Facebook y X no renderizan SVG.
+  - **Validación:** validador propio sobre el HTML servido de las dos páginas. JSON válido, `@type`
+    en todos los nodos, URLs absolutas, sin texto de relleno, sin tipos obsoletos, un solo bloque por
+    página. Pendiente el Rich Results Test, que necesita una URL pública.
+  - **Archivos:** `.knowledge/seo/{SEO-STRATEGY,COMPETITOR-ANALYSIS,SITE-STRUCTURE,CONTENT-CALENDAR,`
+    `IMPLEMENTATION-ROADMAP,SCHEMA-REPORT}.md`, `generated-schema.json`, `lib/schema.ts`,
+    `pages/{index,quienes-somos}.tsx`, `scripts/build-logo-raster.mjs`,
+    `public/img/logo-medicos-por-venezuela.png`.
+
+- **El admin no tenía forma de aprobar a un médico, y el médico bloqueado no sabía por qué** — el
+  backend ya gatea el acceso por credencial (ficha en `doctors` verificada, activa y con cédula +
+  licencia), pero eso dejaba a 2909 de 2979 médicos fuera **sin ninguna pantalla** que lo explicara
+  ni ningún botón que lo resolviera. La única aprobación posible era un `PATCH` a mano.
+  - **Panel admin — "Credenciales para atender"** (`components/admin/DoctorCredentials.tsx`, en
+    `/admin/doctores`): tabla paginada con filtros _aprobado / no aprobado_ y _habilitado /
+    bloqueado_, búsqueda por nombre/cédula/email, y el **motivo de bloqueo** de cada uno. Consume
+    `GET /doctors` (ahora `{items, total}` con `can_practice`/`blocked_reason`) y los endpoints
+    nuevos `POST /doctors/{id}/approve` · `/revoke-approval`.
+  - **Aprobado != habilitado.** Una ficha puede estar `verified` y aun así no atender por faltarle
+    la cédula — es el caso de 2847 médicos. Por eso el botón de aprobar solo aparece cuando aprobar
+    de verdad desbloquea (`blocked_reason === 'no_verificado'`); en el resto la fila dice qué hay
+    que pedirle al médico. Si aun así se intenta, el 422 del backend se muestra tal cual.
+  - **Pantalla de "verificación pendiente"** en `/panel-medico`: el médico bloqueado llega con
+    `permissions: []`, así que antes veía un panel vacío y un error genérico. Ahora se comprueba
+    `credential_verified` (de `GET /auth/me/permissions`) antes de pedir la cola y se le explica qué
+    falta, con salida a `/panel-medico/perfil` — la única ruta que el gate deja abierta a propósito.
+  - E2E: `e2e/credencial-medica.spec.ts` cubre las dos puntas (el médico bloqueado y el admin que
+    aprueba/revoca). `global-setup` siembra ahora **licencia** en los médicos de prueba —sin ella
+    ninguno pasa el gate— y un tercer médico (`E2E Doctor Tres`) sin validar, que absorbe el caso
+    "sin verificar" para que doc1/doc2 puedan seguir atendiendo en los specs de cola.
+    `admin-cedula-verificada` pasa a anclar su selector a `.users-table`: la página tiene dos tablas.
+  - Archivos: `lib/doctors.ts`, `lib/users.ts`, `components/admin/DoctorCredentials.tsx`,
+    `pages/admin/doctores.tsx`, `pages/panel-medico.tsx`, `e2e/`.
+- **La cola de aprobación era invisible: parecía que el botón no existía.** Con los datos reales
+  (2979 médicos) solo **26** son aprobables de un clic, frente a **2847** a los que les falta la
+  cédula. Ordenando por fecha, la primera página de 25 filas no traía ni un aprobable —el primero
+  cae en la fila 29—, así que el admin veía un montón de filas sin botón y concluía, con razón,
+  que aprobar no estaba implementado.
+  - Filtro **por motivo de bloqueo** (`GET /doctors?blocked_reason=…`, enum cerrado) y selector en
+    el panel: "Listos para aprobar", "Les falta la cédula", etc. Es el filtro que convierte la
+    tabla en una cola de trabajo; los de aprobación y habilitación por sí solos no acotan nada
+    (las ~820 "no aprobadas" son casi todas irresolubles desde el panel).
+  - **Fila de contadores** por estado (`GET /doctors/credential-summary`, una sola consulta),
+    clicable: cada número aplica su filtro. Sin ella el filtro nuevo tampoco se descubre.
+  - **Nota del rebase:** este PR también llevaba el cambio de `!== null` a `!= null` en los badges
+    de cédula (contra un backend que aún no expone el campo, el estricto pintaba "Cédula sin
+    verificar" a todos, admins incluidos). Al rebasar sobre `dev_aws` resultó que la base ya lo
+    traía, del PR #90 y con la misma justificación, así que el diff ya **no** lo contiene y no
+    debe atribuírsele. Lo que sí queda es haberlo detectado corriendo los E2E contra un backend
+    sin ese campo.
+  - `credencial-medica.spec.ts` fija el texto exacto: `getByText` busca subcadena e ignora
+    mayúsculas, así que el badge "Sin aprobar" colisionaba con el motivo "Credencial sin aprobar"
+    de su propia fila (strict mode violation). El motivo pasa a tener su propio `<span>`.
+
 ## 2026-08-27
 
 - **El badge "Verificado" del admin decía la verdad a nadie** — la lista de médicos leía
@@ -77,6 +365,174 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 - **Docs:** `CLAUDE.md`/`AGENTS.md` afirmaban que no había harness E2E — falso desde que existe
   `playwright.config.ts` + 11 specs. Corregido, y documentado que `pnpm build` con un `next dev`
   vivo sobre el mismo `.next` corrompe el dev server.
+
+## 2026-08-13
+
+- **Refrescamiento del home — completo (T1 a T11)** — primera mitad del
+  rediseño del home según `.knowledge/spec-home-refresh.md` y `tasks/todo.md`. **Solo el home**: el resto del
+  sitio no cambia.
+  - **T1 assets:** `nueva/oriana.jpg` (5,0 MB, 3117 × 4675) → `public/img/hero-interconsulta.webp`
+    de **32 KB** a 960 × 1120 con recorte `north`, reproducible con
+    `scripts/optimize-hero-image.mjs`. Se midieron 6 variantes antes de elegir WebP q70 (AVIF q45
+    pesaba menos pero WebP lo soporta todo navegador vigente). Los 5 logos SVG y la fuente a
+    `public/brand/`. El original NO se versiona en `public/`.
+  - **T2 tokens:** 8 tokens `--h-*` y la `@font-face` bajo `.home-theme`, siguiendo el patrón
+    `.patient-theme` que ya existía. El cambio en `styles/globals.css` es **puramente aditivo**
+    (0 líneas eliminadas) y `:root` queda intacto: comprobado que `--h-navy` sale vacío en `:root`
+    en `/`, `/login-medico`, `/panel-medico` y `/admin`.
+  - **T3 movimiento:** `usePrefersReducedMotion()` en `lib/hooks.ts` y `useReveal`/`useCountUp` en
+    `components/home/motion.ts`, sin dependencias nuevas. Doble capa a propósito: el CSS apaga el
+    movimiento desde el primer frame y el hook solo puede saberlo tras hidratar.
+  - **T4 navbar y footer:** `components/home/{Navbar,Footer,copy}.tsx`. `pages/index.tsx` pasa de
+    1313 líneas a composición (el home viejo sigue en `git show origin/dev_aws:pages/index.tsx`).
+    **Ningún `href="#"`**: lo que aún no existe (Especialistas, Blog) se pinta como
+    `<span aria-disabled>`, no como enlace muerto.
+  - **Fallo encontrado en verificación y corregido:** styled-jsx añade su clase de scope a los
+    elementos nativos del JSX pero **no a los componentes** (`Link`, `Image`). `.marca`, `Únete`,
+    `Ingresar` y los tres enlaces de "Plataforma" del footer quedaban sin estilo — navy sobre navy,
+    invisibles en pantalla. Resuelto con `:global()` acotado siempre por un ancestro sí scopeado.
+    El home anterior no lo sufría porque navegaba con `<button onClick={router.push}>` en lugar de
+    enlaces reales.
+  - **T5 hero:** `components/home/Hero.tsx`. Split a dos columnas con el gesto mayor acordado —
+    seis bloques de texto entrando a 0/60/120/180/240/300 ms y la foto con `scale(1.06) → 1` de
+    0,9 s. Con `prefers-reduced-motion: reduce` no se mueve nada (medido: 1e-05s y `transform`
+    identidad). La foto va por `next/image` con `priority` y `sizes`: en móvil descarga **10 KB**
+    (w=384) y en escritorio 22 KB (w=750), una sola variante por viewport. El `alt` del prototipo
+    ("Dos médicos venezolanos") se reescribió porque la foto es de **una** médica sola.
+  - **Defecto corregido en T5:** los separadores de las métricas eran `<span>` y al envolverse la
+    fila dejaban una rayita colgando — a 360, 480 **y 1100 px**, este último con pantalla ancha y
+    columna estrecha. Ahora son `border-left` bajo una **container query** sobre el ancho de la
+    columna: un breakpoint de viewport no podía cubrir ese caso. Comprobado en 13 anchos de 320 a
+    1920 px sin scroll horizontal.
+  - **Tipografía, bloqueo resuelto:** el equipo aportó Nunito Sans como **fuente variable**
+    (`wght 200..1000`). Antes solo existía la estática Bold y, al ser la única cara de la familia,
+    el emparejador CSS la usaba para todos los pesos: medido, 300 a 900 renderizaban el mismo
+    ancho exacto (606,44 px) y el home no tenía jerarquía tipográfica. Ahora miden 450,13 / 457,92
+    / 465,83 / 475,11 / 485,55 / 496,23. `scripts/build-fonts.mjs` fija los ejes que no usamos
+    (wdth, opsz, YTLC) y recorta a latin + flechas: **28 KB** la redonda y 30 KB la itálica real,
+    frente a los ~160 KB que habrían costado cuatro estáticas. `OFL.txt` viaja con los ficheros,
+    como exige la licencia. La declaración usa `font-weight: 200 1000`: con un peso suelto el
+    navegador vuelve a tratar la familia como de una sola cara.
+  - **T6 puertas de entrada y cierre:** `components/home/Puertas.tsx` y `CtaFinal.tsx`. Las 6
+    tarjetas se visitaron una a una en la verificación: las 6 devuelven HTTP 200 y ninguna cae en
+    la 404. El hover pinta el filete azul en 0,15 s, y también con `:focus-visible`. La de "Soy
+    médico en Venezuela" apunta al registro porque hoy **no existe** flujo público de
+    interconsulta; anotado en el código y pendiente con las owners. El cierre va sobre navy: el
+    prototipo lo monta sobre una foto que no está entre los assets entregados.
+  - **Tres defectos corregidos en T6:**
+    1. Sin JavaScript, las secciones con `useReveal` se quedaban en `opacity: 0` **para siempre**
+       — el texto estaba en el HTML pero era invisible para una persona. Un `<noscript>` neutraliza
+       `.reveal`; es el único caso que no puede resolverse desde JS.
+    2. Con la navbar fija de 76 px, saltar a un ancla dejaba la cabecera de la sección tapada. Se
+       añadió `scroll-margin-top: var(--h-navbar)` a todo `[id]` del home. El 76 estaba duplicado
+       en JS dentro de `Navbar.tsx`: ahora es un token con una sola fuente.
+    3. El cierre usaba `auto-fit` y a 768 px seguían entrando 3 columnas mientras la media query
+       aplicaba los bordes del apilado. Mismo error que con las métricas del hero: mezclar layout
+       intrínseco con breakpoint de viewport. Ahora el número de columnas es explícito.
+  - **T7 Quiénes Somos + Valores:** `components/home/QuienesSomos.tsx` y `Valores.tsx`. El ancla
+    del navbar deja la sección justo bajo la barra, ambas revelan al entrar en pantalla, y "Conoce
+    nuestra historia →" va como `<span aria-disabled>` porque esa página está fuera de alcance.
+    Faltan dos assets del prototipo (la foto de 460 px de Quiénes Somos y las cuatro fotos
+    circulares de los valores): la sección va a una columna con el ancho de lectura limitado y los
+    valores solo en texto.
+  - **T8 Cómo Funciona:** `components/home/ComoFunciona.tsx`, la única sección con estado. Tres
+    pestañas con cuatro pasos cada una, arrancando en paciente. Es un `tablist` de verdad, no tres
+    botones que cambian un div: roles y `aria-*` enlazados por id, **roving tabindex** (se llega en
+    un salto de tabulador y desde la pestaña activa otro Tab lleva al panel), flechas con vuelta
+    circular, Home/End y Enter/Espacio. Fundido de entrada de 200 ms, a ~0 con `reduce` y con el
+    panel visible. No es un cross-fade literal: superponer paneles de distinta altura daría saltos
+    de maquetación.
+  - **Auditoría de accesibilidad con axe-core (WCAG 2.1 AA).** Se auditaron 7 estados: el home a
+    1440/768/360, con el menú móvil abierto, con la tercera pestaña de Cómo Funciona activa, y las
+    dos pantallas de registro. Partía de **18 violaciones**; el home quedó en **0** en los cinco
+    estados (43 reglas pasadas cada uno). Lo corregido:
+    - **Contraste: 45 nodos por debajo del 4,5:1.** El prototipo pone texto de 10-11 px en blanco
+      al 25-45 % sobre fondos oscuros; el peor daba **2,28:1**. Se calcularon los mínimos reales
+      (blanco al 46 % sobre `--h-navy`, al 55 % sobre `--h-blue-deep`) y se crearon dos tokens,
+      `--h-sobre-oscuro-medio` (80 %) y `--h-sobre-oscuro-tenue` (62 %), para no aplanar la
+      jerarquía. El azul de marca como texto pequeño da 3,38:1 sobre navy: se añadió
+      `--h-blue-claro` (#3d8bff, 4,95:1) para ese caso, y sobre fondo claro se usa `--h-blue-dark`
+      (6,20:1 frente al 4,41:1 del azul base). **Es una desviación visible del prototipo** — las
+      secciones oscuras quedan más claras — pero 2,28:1 en una web para pacientes no es defendible.
+    - **`<html lang="es">`**: no existía `pages/_document.tsx`, así que el sitio **entero** servía
+      `<html>` sin idioma. Un lector de pantalla leía el español con fonética inglesa. Es un fallo
+      de nivel A (WCAG 3.1.1) y afectaba a las siete páginas auditadas, no solo al home.
+    - **Menú móvil fuera de landmark**: pasó de `<div>` a `<nav aria-label>`.
+    - **`.hint` a 3,54:1**: corregido con el gris de marca, acotado a las dos pantallas de registro
+      para no tocar el panel ni el admin.
+  - **Hallazgo crítico NO corregido (fuera de alcance):** en `/registro-paciente` y
+    `/registro-medico`, **21 de 25 campos no tienen nombre accesible**. Las etiquetas visibles
+    existen pero no están asociadas (sin `id`/`htmlFor` ni `<label>` envolvente), así que un lector
+    de pantalla anuncia "cuadro de edición" sin decir qué se pide — en el formulario por el que un
+    paciente pide atención médica. Arreglarlo exige tocar el marcado de esas páginas, y el encargo
+    era "solo colores y tipografía". **Merece su propia rama.**
+  - **T10 re-tematizado de las pantallas de registro:** `/registro-paciente` y `/registro-medico`
+    adoptan la paleta y la tipografía nuevas **sin que cambie una sola línea de esas dos páginas**
+    — `git diff` de ambas está vacío. Se hizo redefiniendo tokens dentro de sus clases de tema, que
+    es el patrón que ya usaba `.patient-theme`. Incluso el enlace con
+    `style={{ color: 'var(--home-blue)' }}` de `registro-medico` se resolvió redefiniendo ese token.
+    Se quitaron las cuatro reglas propias que usaban el azul y el dorado del home **antiguo**: con
+    `--green` apuntando al azul de marca, el `.btn-primary` por defecto ya da el botón correcto.
+    Comprobado que `/panel-medico`, `/admin`, `/mi-caso` y `/login-medico` siguen exactamente igual
+    (fuente de sistema, `--green: #0f6e56`) y que `:root` es byte a byte el de HEAD.
+  - **T11 verificación final — los 10 criterios del spec, medidos:** (1) las 12 secciones en el
+    orden del prototipo; (2) las tres puertas a `/registro-paciente`, `/registro-medico`,
+    `/registro-medico`; (3) 23 enlaces, **0 muertos y 0 anclas rotas**; (4) foto del hero de
+    **32 KB** a 960 × 1120 (2× del hueco de 480 × 560); (5) métricas del hero en **+2.000**;
+    (6) `:root` sin cambios; (7) panel y admin idénticos; (8) con `prefers-reduced-motion: reduce`,
+    **0 elementos con animación viva y 0 ocultos**; (9) `tsc`, `lint`, `format:check` y `build` en
+    verde sin warnings nuevos; (10) **E2E 11/11**.
+  - **E2E: 8 specs estaban en rojo y no por este trabajo.** `POST /consultations` empezó a exigir
+    `specialty_id` (cambio de backend de esta misma sesión) y los specs creaban las consultas solo
+    con `patient_id`: 422 → el `id` llegaba `undefined` → fallo en cascada en todo lo que dependía
+    de esa consulta. Se añadió `e2e/helpers.ts` con `idEspecialidadGeneral()`, que lee una
+    especialidad real del catálogo (el UUID cambia por entorno, no se puede fijar en el código), y
+    los 8 puntos de creación la pasan. Suite completa en verde.
+  - **T9 Especialistas + Testimonios + Impacto + Blog:** las cuatro rejillas que cierran el cuerpo
+    del home. Con esto **las doce secciones del prototipo están montadas**. Verificado sobre el
+    home completo: **23 enlaces, ninguno muerto** (0 con `href` vacío o `#`), las 7 anclas
+    resuelven, y los 5 CTA sin destino son texto con `aria-disabled`, no enlaces.
+  - **Placeholders sin inventar datos.** Los 6 perfiles de Especialistas y las 3 tarjetas de Blog
+    son placeholder declarados como tales en el copy. No llevan nombres de médicos ni titulares de
+    artículos inventados: una tarjeta con un nombre y una especialidad plausibles junto a un
+    "✓ Verificado" es una credencial falsa aunque sea de mentira para maquetar, y esta organización
+    se define por verificar a sus médicos. Dicen "Perfil por publicar / Especialidad / País".
+    **⚠️ No pueden publicarse así.** Los testimonios, en cambio, son las 6 citas reales del copy, y
+    van sin la foto circular del prototipo porque son pacientes anónimos.
+  - **Fallo corregido en la primitiva de movimiento (T3):** `useCountUp` arrancaba en 0, así que el
+    servidor pintaba "+0" y sin JavaScript las cifras de impacto se quedaban en cero — números
+    falsos en la sección que argumenta el impacto. Ahora arranca en el valor final y la animación
+    baja a 0 solo cuando el observer dispara. Es el mismo tipo de fallo que el `.reveal` invisible
+    sin JS: una animación que decide el contenido en vez de solo su entrada.
+  - **Auditoría de copy (respuesta a "¿todo lo escrito está en el copy?"):** de las 78 cadenas
+    visibles del home, **67 salen del `.docx` y 11 no**. Del prototipo y no del copy:
+    "Interconsulta en curso", "24/7", "Disponible · Confidencial", la numeración "01/02/03" de las
+    puertas, y "Plataforma", "Organización", "Contacto", "Ser voluntario", "Interconsulta médica"
+    del pie — "Contacto" e "Interconsulta médica" no aparecen en el `.docx` en absoluto. Aparte:
+    "+2.000" (decisión del equipo, el copy dice +3.000) y el `alt` de la foto más los `aria-label`,
+    que un documento de copy no cubre pero un lector de pantalla sí lee. Todas viven en `copy.ts`,
+    con la lista anotada en su cabecera.
+  - **Copy: el prototipo va por detrás del `.docx`.** Los valores del prototipo son Calidad /
+    Credibilidad / Autonomía / Gratuidad; los del copy aprobado son Verificados / Autónomos /
+    Gratuitos / **Confidenciales** — no es solo un cambio de nombre, uno de los cuatro conceptos es
+    distinto. Lo mismo pasa con las descripciones de las tres puertas. Queda escrita la regla en
+    `copy.ts`: **el texto sale del `.docx`, la maqueta sale del prototipo**. El copy quedó
+    confirmado como aprobado el 2026-08-13.
+  - **Colisión de nombres de clase (encontrada al revisar el hero):** `globals.css` ya tenía
+    `.hero` y `.badge` del sitio anterior. Una regla scopeada de styled-jsx solo gana en las
+    propiedades que declara, así que el hero heredaba en silencio `padding: 40px 24px`,
+    `border-radius: 24px` y `color: white` de una, y `border-radius: 999px` de la otra. Renombradas
+    a `.portada` y `.rotulo`: las demás clases del home no chocaron por estar en español. Regla
+    anotada en `Hero.tsx` para las secciones que faltan.
+  - **`nueva/` al `.gitignore`:** es material de referencia (prototipo de 10 MB, copy, foto de
+    5 MB, fuentes TTF) y no se versiona. Lo que el sitio necesita ya está derivado en `public/`.
+  - **Nota ajena a este trabajo:** `pnpm build` **ya venía rojo desde la base** por
+    `e2e/global-setup.ts(53,46) TS2339` (`list.data.users` se infiere `never[]`, tipos de
+    `@supabase/supabase-js`). Excluyendo `e2e` del typecheck el build compila y genera las 23 rutas.
+    No se toca aquí: merece su propia rama.
+  - Archivos: `components/home/` (nuevo), `pages/index.tsx`, `styles/globals.css`, `lib/hooks.ts`,
+    `scripts/optimize-hero-image.mjs`, `public/brand/`, `public/img/`, `tasks/`,
+    `.knowledge/spec-home-refresh.md`.
 
 ## 2026-07-21
 

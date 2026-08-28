@@ -1,4 +1,5 @@
 import { test, expect, request } from '@playwright/test'
+import { idEspecialidadGeneral } from './helpers'
 
 const API = 'http://localhost:8000/api/v1'
 
@@ -15,7 +16,11 @@ async function createWaitingConsultation(): Promise<void> {
   const patientId = (await patient.json()).id
   // La cola oculta el nombre; el card muestra chief_complaint → lo usamos como marcador.
   await ctx.post(`${API}/consultations`, {
-    data: { patient_id: patientId, chief_complaint: 'E2E Paciente Pool' }
+    data: {
+      patient_id: patientId,
+      chief_complaint: 'E2E Paciente Pool',
+      specialty_id: await idEspecialidadGeneral()
+    }
   })
   await ctx.dispose()
 }

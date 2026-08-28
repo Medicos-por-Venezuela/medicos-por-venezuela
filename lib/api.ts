@@ -66,3 +66,24 @@ export async function fetchAffectedZoneCatalog(): Promise<string[]> {
     return ZONAS_FALLBACK
   }
 }
+
+// Cifras de la portada. Llegan YA REDONDEADAS a la baja desde el backend (`GET /stats/public`,
+// público, sin token): el conteo exacto no sale de la base, así que este cliente no tiene nada que
+// redondear ni debe intentarlo.
+export type PublicStats = {
+  doctors: number
+  consultations: number
+  specialties: number
+}
+
+// Devuelve `null` —y no un fallback— cuando el backend no responde: las cifras de respaldo son
+// copy aprobado y viven en `components/home/copy.ts`, junto al resto del texto del home. Meterlas
+// aquí las dejaría a dos sitios de distancia de donde se editan.
+export async function fetchPublicStats(): Promise<PublicStats | null> {
+  try {
+    return await getJson<PublicStats>('/api/v1/stats/public', 'No se pudieron cargar las cifras')
+  } catch (e) {
+    console.error('No se pudieron cargar las cifras públicas del backend:', e)
+    return null
+  }
+}
