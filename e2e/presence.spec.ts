@@ -1,4 +1,5 @@
 import { test, expect, request } from '@playwright/test'
+import { idEspecialidadGeneral } from './helpers'
 
 const API = 'http://localhost:8000/api/v1'
 
@@ -16,7 +17,11 @@ async function createWaitingConsultation(): Promise<void> {
   // La cola de espera oculta el nombre del paciente (seguridad); el card muestra el chief_complaint,
   // así que sembramos ese campo como marcador para localizar el caso en el panel.
   await ctx.post(`${API}/consultations`, {
-    data: { patient_id: patientId, chief_complaint: 'E2E Paciente Presencia' }
+    data: {
+      patient_id: patientId,
+      chief_complaint: 'E2E Paciente Presencia',
+      specialty_id: await idEspecialidadGeneral()
+    }
   })
   await ctx.dispose()
 }

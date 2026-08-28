@@ -170,11 +170,37 @@ export default function RegistroPaciente() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // El CTA "Hablar con un psicólogo" del home entra aquí como
+  // `/registro-paciente?especialidad=psicologia` y deja el bloque de especialidad ya marcado y
+  // resuelto. No hay un flujo aparte para salud mental: es este mismo formulario con la
+  // especialidad puesta, que es justo lo que el paciente tendría que elegir a mano.
+  //
+  // Psicología se localiza por el flag `mental_health_only` del catálogo, NUNCA por el nombre:
+  // renombrarla en la base rompería un `find` por cadena, y ya pasó con "Pediatría" (ver la nota
+  // del envío, más abajo). Si el catálogo no la trae, no se preselecciona nada y el formulario se
+  // comporta como siempre — el paciente elige, que es peor que la preselección pero nunca es un
+  // error.
+  //
+  // El parámetro se lee de `window.location.search` y no de `router.query`: en una página estática
+  // `router.query` llega vacío en el primer render, y este callback puede resolverse antes de que
+  // el router esté listo.
+  const preseleccionarPsicologia = (activas: SpecialtyResponse[]) => {
+    if (new URLSearchParams(window.location.search).get('especialidad') !== 'psicologia') return
+    const psicologia = activas.find((e) => e.mental_health_only)
+    if (!psicologia) return
+    setWantsSpecialty(true)
+    setSpecialty(psicologia.id)
+  }
+
   useMountEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) setAuthedPatient(true)
     })
-    fetchSpecialties().then((list) => setSpecialties(list.filter((s) => s.status === 'active')))
+    fetchSpecialties().then((list) => {
+      const activas = list.filter((s) => s.status === 'active')
+      setSpecialties(activas)
+      preseleccionarPsicologia(activas)
+    })
     fetchAffectedZoneCatalog().then(setZonas)
   })
 

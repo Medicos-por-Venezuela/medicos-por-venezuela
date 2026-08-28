@@ -3,6 +3,7 @@
 // puede corregirla desde Gestionar caso). La tabla muestra la especialidad asignada, con
 // fallback a las derivadas del tipo/necesidades para casos viejos sin specialty_id.
 import { test, expect, request } from '@playwright/test'
+import { idEspecialidadGeneral } from './helpers'
 
 const API = 'http://localhost:8000/api/v1'
 
@@ -17,7 +18,9 @@ async function seedConsultation(): Promise<void> {
     }
   })
   const patientId = (await patient.json()).id
-  await ctx.post(`${API}/consultations`, { data: { patient_id: patientId } })
+  await ctx.post(`${API}/consultations`, {
+    data: { patient_id: patientId, specialty_id: await idEspecialidadGeneral() }
+  })
   await ctx.dispose()
 }
 
