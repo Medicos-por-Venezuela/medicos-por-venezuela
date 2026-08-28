@@ -28,6 +28,31 @@ Each entry: date, a short summary of what changed and why, and the key files/are
     antes, Especialistas fallaba en tres de las cuatro; ahora pasan las nueve en las cuatro,
     incluida la última de la página, que era el riesgo de usar `rootMargin` negativo.
 
+- **Carga del home: 697 KB → 463 KB de JavaScript** — medido sobre el build, no estimado.
+  - **El SDK de Supabase estaba en la portada.** `_app.tsx` monta `PresenceProvider` en las trece
+    rutas, y ese provider importaba `lib/supabase`, así que **229 KB de auth + realtime** —un
+    tercio de la primera carga— viajaban a cada visitante anónimo que entraba a leer la portada,
+    para no usarlos nunca. Se parte en dos: `lib/presence.tsx` se queda con el contexto y los
+    hooks, y `lib/presenceCanal.tsx` (nuevo) con todo lo que habla con Supabase, cargado con
+    `next/dynamic({ ssr: false })`. **Los dos efectos van copiados palabra por palabra**: no cambia
+    a quién se anuncia, ni cuándo se re-suscribe, ni el `setTimeout(…, 0)` que evita el deadlock
+    del lock de auth-js. Lo único que cambia es cuándo llega el código — la presencia arranca un
+    viaje de red más tarde, después de hidratar. `ssr: false` es inocuo porque el componente
+    devuelve `null`: los hijos del provider se siguen renderizando en el servidor, que es lo que se
+    indexa. Las páginas que sí necesitan Supabase (`/login` 640 KB, `/panel-medico` 655 KB) lo
+    siguen cargando igual.
+  - **Los estáticos de `public/` se revalidaban en cada navegación.** Next los sirve con
+    `cache-control: public, max-age=0`: la fuente de marca (29 KB), los iconos y las fotos pedían
+    un 304 por página. Entra una regla en `next.config.js` con una semana +
+    `stale-while-revalidate`. **No `immutable`**: estas rutas no llevan hash de contenido, así que
+    con `immutable` un cambio de marca no llegaría nunca a quien ya hubiera visitado el sitio.
+  - PENDIENTE: el visitante anónimo ya no carga Supabase en la ruta crítica, pero el chunk sigue
+    descargándose tras hidratar, porque el provider se monta en todas las rutas. Saltárselo del
+    todo para quien no tiene sesión exige mirar `localStorage` antes de cargar el SDK, y eso acopla
+    el código a un detalle interno de Supabase con un fallo silencioso si cambia (médicos que
+    aparecen desconectados). No se hizo por eso.
+  - Archivos: `lib/presence.tsx`, `lib/presenceCanal.tsx` (nuevo), `next.config.js`.
+
 - **Instagram, la única red de la organización** — `MARCA.instagramUrl` pasa a la forma canónica con
   `www.` (confirmado con el equipo, 2026-08-28). No es cosmético: esa URL es el `sameAs` del JSON-LD,
   o sea lo que le dice a Google que la cuenta y la organización son la misma entidad, y sin `www.`
