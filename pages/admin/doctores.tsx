@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import AdminLayout, { AdminLoading, Line } from '../../components/admin/AdminLayout'
+import DoctorCredentials from '../../components/admin/DoctorCredentials'
 import {
   fmtDate,
   getAccessToken,
@@ -126,6 +127,11 @@ export default function AdminDoctores() {
           </div>
         )}
       </section>
+
+      {/* Aprobación de credenciales (backend: GET /doctors + POST /doctors/{id}/approve). Va antes
+          de la tabla de cuentas porque es la acción pendiente: un médico bloqueado por credencial
+          aparece "Activo" en la tabla de abajo y aun así no puede atender. */}
+      <DoctorCredentials />
 
       <section className="card">
         <h2 style={{ marginTop: 0 }}>
