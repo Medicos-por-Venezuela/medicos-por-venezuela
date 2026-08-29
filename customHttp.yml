@@ -1,0 +1,83 @@
+# Cabeceras HTTP que aplica AWS Amplify Hosting, leídas de este fichero en cada despliegue.
+#
+# POR QUÉ EXISTE. `next.config.js` ya declara estas mismas reglas de caché en su `headers()`, y en
+# local funcionan. En producción NO llegan: medido el 2026-08-29 contra el sitio desplegado,
+#
+#   GET /brand/nunito-sans-variable.woff2  ->  Cache-Control: max-age=5, stale-while-revalidate
+#   GET /og-image.png                      ->  Cache-Control: max-age=5, stale-while-revalidate
+#   GET /img/hero-interconsulta.webp       ->  Cache-Control: max-age=5, stale-while-revalidate
+#
+# que es el valor por defecto de Amplify, no el `max-age=604800` que pide `next.config.js`. Amplify
+# sirve los ficheros de `public/` desde su propia capa de CDN, sin pasar por el runtime que aplica
+# `headers()`. Los de `/_next/static/*` sí salen bien (`max-age=31536000, immutable`) porque Amplify
+# los trata como caso especial, y por eso el problema pasaba desapercibido.
+#
+# EL EFECTO. Cinco segundos de caché es, en la práctica, ninguna: la fuente variable (28,8 KB), los
+# diez retratos de especialistas y la imagen del hero se revalidan en CADA navegación. En un sitio
+# cuyo público entra desde Venezuela y por móvil, eso es una ronda de red por recurso antes de poder
+# pintar el texto. Es exactamente lo que el comentario de `next.config.js` quería evitar.
+#
+# Las reglas de abajo son las MISMAS que `next.config.js`; no se borra aquello porque en local y en
+# cualquier otro proveedor sigue siendo la fuente correcta. Este fichero es el parche del hosting.
+#
+# Una semana y NO `immutable`, por el mismo motivo que allí: estas rutas no llevan hash de contenido
+# (`/favicon.ico`, no `/favicon.a1b2c3.ico`). Con `immutable`, un cambio de marca no le llegaría
+# nunca a quien ya hubiera visitado el sitio. `stale-while-revalidate` evita el peor caso al
+# caducar: se pinta el fichero viejo al instante y se refresca de fondo.
+#
+# NO se declara ningún patrón que alcance a `/_next/*`: esos ya salen con el `immutable` de un año
+# que pone Next, y pisarlo con una semana sería una regresión silenciosa.
+customHeaders:
+  # La marca: la fuente variable Nunito Sans (28,8 KB, bloquea el texto hasta que llega) y los SVG
+  # del logo. Y las fotos: el hero, los diez retratos y los iconos de valores.
+  - pattern: '/brand/**'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=604800, stale-while-revalidate=86400'
+  - pattern: '/img/**'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=604800, stale-while-revalidate=86400'
+  # Los estáticos que viven en la raíz de `public/`. Van ENUMERADOS, igual que en `next.config.js`:
+  # un patrón por extensión (`/*.png`) es más corto pero acabaría alcanzando cualquier PNG que
+  # apareciera en la raíz el día de mañana, incluido alguno que sí deba revalidarse.
+  - pattern: '/favicon.ico'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=604800, stale-while-revalidate=86400'
+  - pattern: '/favicon.svg'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=604800, stale-while-revalidate=86400'
+  - pattern: '/favicon-16x16.png'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=604800, stale-while-revalidate=86400'
+  - pattern: '/favicon-32x32.png'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=604800, stale-while-revalidate=86400'
+  - pattern: '/apple-touch-icon.png'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=604800, stale-while-revalidate=86400'
+  - pattern: '/icon-192.png'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=604800, stale-while-revalidate=86400'
+  - pattern: '/icon-512.png'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=604800, stale-while-revalidate=86400'
+  - pattern: '/icon-maskable-512.png'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=604800, stale-while-revalidate=86400'
+  - pattern: '/og-image.png'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=604800, stale-while-revalidate=86400'
+  - pattern: '/instruccion-jitsi.png'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=604800, stale-while-revalidate=86400'
