@@ -98,27 +98,43 @@ export default function MiCaso() {
     router.replace('/login')
   }
 
+  // El `noindex` se declara ANTES del return temprano de carga, y no solo dentro del arbol final.
+  // En el servidor el estado inicial es siempre "cargando", asi que el HTML que recibe un crawler
+  // es SIEMPRE esa pantalla. Con el <Seo> unicamente en la rama de abajo, esa respuesta salia con
+  // el <head> vacio: sin `noindex`, sin `<title>` y con un 200. El `Disallow` de robots.txt pide
+  // que no se rastree, pero una URL enlazada desde fuera puede acabar indexada igualmente --el
+  // propio comentario de robots.txt explica por que hacen falta las dos senales-- y estas rutas
+  // no tienen gate en servidor: responden 200 y el control de acceso llega tras la hidratacion.
+  const seo = (
+    <Seo
+      titulo="Seguir mi caso — Médicos por Venezuela"
+      descripcion={'Consulta el estado de tu solicitud y el enlace de tu videoconsulta.'}
+      ruta="/mi-caso"
+      noindex
+    />
+  )
+
   if (loading)
     return (
-      <main className="page">
-        <div className="narrow">
-          <div className="card">Cargando...</div>
-        </div>
-      </main>
+      <>
+        {seo}
+        <main className="page">
+          <div className="narrow">
+            <div className="card">Cargando...</div>
+          </div>
+        </main>
+      </>
     )
 
   // Sin sesión, load() ya disparó el redirect a /login (la puerta única del sitio).
   // Esta página es solo el portal del paciente; ya no aloja un formulario propio.
-  if (!authed) return null
+  // Devuelve el <Seo> y no `null`: no pinta nada visible, pero deja el `noindex` en el <head>
+  // durante el instante en que el redirect está en vuelo.
+  if (!authed) return seo
 
   return (
     <>
-      <Seo
-        titulo="Seguir mi caso — Médicos por Venezuela"
-        descripcion={'Consulta el estado de tu solicitud y el enlace de tu videoconsulta.'}
-        ruta="/mi-caso"
-        noindex
-      />
+      {seo}
       <main className="page">
         <div className="narrow">
           <div className="topbar">
