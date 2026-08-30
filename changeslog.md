@@ -5,6 +5,40 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-08-30
+
+- **El HTML no se cacheaba en el borde: PageSpeed movil oscilaba entre 80 y 100** — la primera
+  tanda de caché cubrió `/brand/**`, `/img/**` y los estáticos de la raíz, pero **dejó fuera el
+  documento HTML**, que es la primera petición y bloquea todo lo demás.
+  - **Medido contra producción:** el HTML sale **sin ninguna cabecera de caché**, así que
+    CloudFront no lo guarda jamás — cinco peticiones seguidas, cinco `X-Cache: Miss from
+cloudfront`. Cada visita de cada usuario atraviesa el CDN hasta el origen.
+  - **El síntoma no era lentitud, era varianza.** Tres pasadas de Lighthouse contra la misma URL
+    de producción dieron **96, 100 y 80**, con el LCP oscilando entre **1,3 s y 4,7 s**. El 79 que
+    reportó PageSpeed era una muestra real del extremo malo de esa horquilla, no un error de
+    medición ni una regresión.
+  - **Es seguro cachearlo:** las 25 rutas se generan estáticas en el build (`○ (Static)`), así que
+    no hay HTML por usuario — la autenticación ocurre en el cliente, después de hidratar.
+  - **Arreglo:** `public, max-age=0, s-maxage=600, stale-while-revalidate=86400` en las cuatro
+    rutas públicas. El `max-age=0` mantiene al navegador revalidando, así que un despliegue le
+    llega al usuario al instante; el `s-maxage` es lo único que quita el viaje al origen. Amplify
+    invalida CloudFront en cada deploy, así que los 10 minutos no retrasan una publicación.
+  - Van enumeradas y no con un patrón general (`/**`): ese patrón alcanzaría a `/_next/*` y
+    pisaría el `immutable` de un año que Next ya pone donde sí corresponde.
+
+- **`robots.txt`, `sitemap.xml` y `site.webmanifest` seguían en `max-age=5`** — se quedaron fuera
+  de la primera tanda porque no están en `ESTATICOS_RAIZ` de `next.config.js`.
+  - Los dos primeros van a **una hora, no a la semana de los iconos**: Google cachea `robots.txt`
+    hasta 24 h por su cuenta, y un `robots.txt` con una semana de caché es un error que tarda una
+    semana en poder corregirse. Aquí la caché no ahorra tiempo de carga a nadie, solo peticiones.
+  - El manifiesto sí va con la semana de los iconos: cambia con la marca y al mismo ritmo.
+
+- **Nota de infraestructura (fuera del repo).** El apex ya es el host canónico y sirve 200; las 4
+  URLs del sitemap responden directo, sin redirección. Pero `www` volvió a servir **200 con el
+  mismo contenido** en vez de redirigir: la regla de Amplify usa `<*>` dentro de una URL absoluta y
+  no está casando. Mitigado mientras tanto porque la canónica de `www` apunta al apex, pero
+  **falta el 301** para transferir la señal de las URLs con www que Google tiene indexadas.
+
 ## 2026-08-29
 
 - **Rendimiento móvil: el LCP del home baja 877 ms y la puntuación sube de 90 a 96** — medianas de

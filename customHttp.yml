@@ -28,6 +28,84 @@
 # NO se declara ningún patrón que alcance a `/_next/*`: esos ya salen con el `immutable` de un año
 # que pone Next, y pisarlo con una semana sería una regresión silenciosa.
 customHeaders:
+  # ---------------------------------------------------------------------------
+  # EL DOCUMENTO HTML. Es lo que faltaba en la primera tanda, y era la pieza que
+  # mas pesaba: es la primera peticion y bloquea todo lo demas.
+  #
+  # Medido el 2026-08-30 contra produccion: el HTML sale SIN ninguna cabecera de
+  # cache, asi que CloudFront no lo guarda jamas -- cinco peticiones seguidas,
+  # cinco `X-Cache: Miss from cloudfront`. Cada visita de cada usuario atraviesa
+  # el CDN hasta el origen.
+  #
+  # El sintoma no es que el sitio sea lento, es que es INCONSISTENTE. Tres
+  # pasadas de Lighthouse contra la misma URL dieron 96, 100 y 80, con el LCP
+  # oscilando entre 1,3 s y 4,7 s. PageSpeed marcaba 79 porque cayo en el
+  # extremo malo de esa horquilla.
+  #
+  # Es seguro cachearlo en el borde: las 25 rutas se generan estaticas en el
+  # build (`○ (Static)` en la salida de `next build`), asi que no hay HTML por
+  # usuario -- la autenticacion ocurre en el cliente, despues de hidratar, y el
+  # mismo documento sirve para todo el mundo.
+  #
+  # Los tres valores hacen cosas distintas y hacen falta los tres:
+  #   · `max-age=0`    el NAVEGADOR revalida siempre, asi que un despliegue le
+  #                    llega al usuario al instante y no se queda con una copia
+  #                    vieja de la pagina.
+  #   · `s-maxage=600` el CDN si la cachea 10 minutos. Es lo unico que elimina el
+  #                    viaje al origen, que es la causa de la varianza. Amplify
+  #                    invalida CloudFront en cada despliegue, asi que estos 10
+  #                    minutos no retrasan una publicacion.
+  #   · `stale-while-revalidate` al caducar, el borde sirve la copia vieja al
+  #                    momento y la refresca por detras, en vez de bloquear la
+  #                    carga esperando al origen.
+  #
+  # Van ENUMERADAS las cuatro rutas publicas y no un patron general (`/**`):
+  # ese patron alcanzaria tambien a `/_next/*` y a los estaticos, y pisaria el
+  # `immutable` de un ano que Next ya pone donde SI corresponde. Las rutas
+  # privadas quedan fuera a proposito: llevan `noindex`, no reciben trafico de
+  # busqueda y no ganan nada cacheadas.
+  - pattern: '/'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400'
+  - pattern: '/quienes-somos'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400'
+  - pattern: '/registro-paciente'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400'
+  - pattern: '/registro-medico'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400'
+
+  # Los dos ficheros que leen los rastreadores. Se quedaron fuera de la primera
+  # tanda porque no estan en `ESTATICOS_RAIZ` de `next.config.js`, asi que hoy
+  # siguen saliendo con el `max-age=5` por defecto de Amplify.
+  #
+  # Una hora, y NO la semana que llevan los iconos: Google cachea `robots.txt`
+  # hasta 24 h por su cuenta, y un `robots.txt` con una semana de cache es un
+  # error que tarda una semana en poder corregirse. Aqui la cache no ahorra
+  # tiempo de carga a nadie -- solo peticiones -- asi que no hay razon para
+  # apurarla.
+  - pattern: '/robots.txt'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=3600, stale-while-revalidate=86400'
+  - pattern: '/sitemap.xml'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=3600, stale-while-revalidate=86400'
+
+  # El manifiesto si va con la semana de los iconos: cambia con la marca, al
+  # mismo ritmo que ellos, y tampoco lleva hash en el nombre.
+  - pattern: '/site.webmanifest'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=604800, stale-while-revalidate=86400'
+
   # La marca: la fuente variable Nunito Sans (28,8 KB, bloquea el texto hasta que llega) y los SVG
   # del logo. Y las fotos: el hero, los diez retratos y los iconos de valores.
   - pattern: '/brand/**'
