@@ -144,25 +144,39 @@ export default function ElegirRol() {
     }
   }
 
+  // El `noindex` se declara ANTES del return temprano de carga, y no solo dentro del arbol final.
+  // En el servidor el estado inicial es siempre "cargando", asi que el HTML que recibe un crawler
+  // es SIEMPRE esa pantalla. Con el <Seo> unicamente en la rama de abajo, esa respuesta salia con
+  // el <head> vacio: sin `noindex`, sin `<title>` y con un 200. El `Disallow` de robots.txt pide
+  // que no se rastree, pero una URL enlazada desde fuera puede acabar indexada igualmente --el
+  // propio comentario de robots.txt explica por que hacen falta las dos senales-- y estas rutas
+  // no tienen gate en servidor: responden 200 y el control de acceso llega tras la hidratacion.
+  const seo = (
+    <Seo
+      titulo="Elegir rol — Médicos por Venezuela"
+      descripcion={
+        'Paso final del registro con Google: elige si entras como paciente o como médico.'
+      }
+      ruta="/elegir-rol"
+      noindex
+    />
+  )
+
   if (checking)
     return (
-      <main className="page">
-        <div className="narrow">
-          <div className="card">Cargando...</div>
-        </div>
-      </main>
+      <>
+        {seo}
+        <main className="page">
+          <div className="narrow">
+            <div className="card">Cargando...</div>
+          </div>
+        </main>
+      </>
     )
 
   return (
     <>
-      <Seo
-        titulo="Elegir rol — Médicos por Venezuela"
-        descripcion={
-          'Paso final del registro con Google: elige si entras como paciente o como médico.'
-        }
-        ruta="/elegir-rol"
-        noindex
-      />
+      {seo}
       <main className="page">
         <div className="narrow">
           <div className="card" style={{ marginTop: 14 }}>

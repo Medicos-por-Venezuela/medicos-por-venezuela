@@ -20,6 +20,7 @@
 // clase, comprobar que no exista ya (`grep -n "^\.nombre" styles/globals.css`).
 
 import Image from 'next/image'
+import MarcaAgua from './MarcaAgua'
 import Link from 'next/link'
 import { useCifras } from './cifras'
 import { HERO, masDe, RUTAS } from './copy'
@@ -32,17 +33,10 @@ export default function Hero() {
     <section className="portada" id="inicio">
       <div className="rejilla">
         <div className="columna">
-          {/* Marca de agua del prototipo: el isotipo al 4 % de opacidad. Decorativa por completo,
-              de ahí el `alt` vacío y el `aria-hidden`. */}
-          <Image
-            className="marca-agua"
-            src="/brand/iso-navy.svg"
-            alt=""
-            width={180}
-            height={148}
-            aria-hidden="true"
-            unoptimized
-          />
+          {/* Marca de agua del prototipo: el isotipo al 4 % de opacidad. Decorativa por completo.
+              Va como SVG en línea y no como <Image> porque así era el elemento LCP en móvil; el
+              porqué completo está en components/home/MarcaAgua.tsx. */}
+          <MarcaAgua />
 
           <div className="texto stagger">
             <p className="eyebrow">{HERO.eyebrow}</p>
