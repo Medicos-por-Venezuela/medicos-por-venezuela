@@ -25,11 +25,19 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   - **El fragmento se borra de la barra de direcciones** en cuanto la sesión está creada. Los
     tokens ya no hacen falta ahí, y mientras sigan en la URL viajan a donde se copie el enlace y
     quedan en el historial. El `refresh_token` no caduca en una hora como el de acceso.
-  - **Red de seguridad en `_app.tsx`:** un correo enviado sin `redirectTo` —los del panel de
-    Supabase— aterriza en la raíz. Se reenvía a `/auth/recuperar` conservando el fragmento, con
-    `location.replace` y no con el router de Next: el router puede perder el hash, y `replace` no
-    deja la URL con el token en el historial. Solo actúa sobre `type=recovery`; el resto de tokens
-    son cosa de `/auth/callback`.
+  - **Red de seguridad en `_app.tsx`, para las DOS mitades de auth.** Supabase devuelve los tokens
+    en el fragmento de la URL; cuando el `redirect_to` no está en la lista de Redirect URLs del
+    proyecto, los descarta y cae al `Site URL`, la raíz. Y en la raíz no los recoge nadie, porque
+    el cliente lleva `detectSessionInUrl: false`. El usuario ve la home, sin sesión, y reintenta.
+    Ha pasado con las dos: los correos de recuperación del panel de Supabase van sin `redirectTo`
+    y aterrizan siempre ahí, y el login con Google lo hacía porque la lista solo tenía el host
+    `www`. Síntoma reportado: **«tuve que darle dos veces a entrar con Google»**.
+    Ahora un fragmento con `type=recovery` se reenvía a `/auth/recuperar` y cualquier otro con
+    `access_token` a `/auth/callback`, conservando el fragmento. Con `location.replace` y no con
+    el router de Next: el router puede perder el hash, y `replace` no deja la URL con el token en
+    el historial. Es defensa en profundidad, **no el arreglo** —lo que toca arreglar es la lista
+    de Redirect URLs—, pero un fallo de configuración no debería dejar a nadie fuera sin
+    explicación. Un fragmento con `error=` y sin token sigue sin hacer nada, igual que antes.
   - `/auth/recuperar` hereda el `Disallow: /auth/` del robots.txt y lleva su `noindex`.
   - Archivos: `pages/auth/recuperar.tsx` (nuevo), `pages/login.tsx`, `pages/_app.tsx`, `CLAUDE.md`.
 
