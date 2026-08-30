@@ -1,0 +1,49 @@
+// La marca de agua del hero: el isotipo al 4 % de opacidad, detrás del titular. Decorativa por
+// completo — de ahí el `aria-hidden`, que la saca del árbol de accesibilidad.
+//
+// POR QUÉ VA EN LÍNEA Y NO ES UN <Image src="/brand/iso-navy.svg">, que es como estaba.
+//
+// Porque era el elemento LCP en móvil. Medido con Lighthouse el 2026-08-29 contra producción:
+// LCP móvil de 5160 ms, de los cuales 1113,9 ms eran `resourceLoadDelay` — es decir, el navegador
+// ni siquiera había empezado a pedir el fichero. La causa es que `next/image` marca sus imágenes
+// con `loading="lazy"` por defecto, y una imagen diferida no se descubre en el HTML inicial.
+//
+// El resultado era absurdo: la métrica que Google usa para juzgar cuándo la página "aparece"
+// estaba midiendo un adorno invisible al 4 % de opacidad, y no el titular. En escritorio no
+// pasaba, porque allí la foto del hero sí cabe en el viewport y es unas 40 veces más grande, así
+// que gana ella; en móvil la foto se queda fuera del fold y el adorno era lo mayor que había
+// pintado. De ahí que el mismo sitio marque 99 en escritorio y 80 en móvil.
+//
+// Un `<svg>` en línea NO es candidato a LCP: el algoritmo solo mira `<img>`, `<image>`, el póster
+// de un `<video>` y los fondos declarados en CSS. Al meterlo en línea desaparece del cálculo y el
+// LCP pasa a ser el titular, que es lo que la métrica debería haber estado midiendo desde el
+// principio. De paso se ahorra una petición.
+//
+// Alternativa descartada: añadirle `priority` al <Image>. Arregla el retraso con una sola línea,
+// pero deja el LCP anclado a una decoración para siempre — cualquier retoque de marca movería la
+// métrica sin que nada del contenido hubiera cambiado.
+//
+// Los trazados salen de `public/brand/iso-navy.svg`, que sigue siendo el original de marca. Ese
+// fichero ya no lo carga nadie en runtime: si el isotipo cambia, hay que regenerar este componente.
+export default function MarcaAgua() {
+  return (
+    <svg
+      className="marca-agua"
+      viewBox="0 0 469 383.76"
+      // El color lo declaraba el original en un <style> interno (`.cls-1`); aquí va como atributo
+      // del <svg> y lo heredan los siete trazados. Es el mismo navy de la marca.
+      fill="#18202b"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M322.08,357.73,301,343.44a3.71,3.71,0,0,0-3.39-.38l-23.74,9.29a3.67,3.67,0,0,1-4.86-4.43l7.07-24.49a3.7,3.7,0,0,0-.69-3.34l-16.17-19.7a3.67,3.67,0,0,1,2.71-6l25.48-.85a3.66,3.66,0,0,0,3-1.69L304.1,270.4a3.66,3.66,0,0,1,6.53.73l8.68,24a3.64,3.64,0,0,0,2.52,2.3l24.66,6.44a3.67,3.67,0,0,1,1.33,6.44l-20.11,15.66a3.64,3.64,0,0,0-1.41,3.1l1.5,25.45A3.67,3.67,0,0,1,322.08,357.73Z" />
+      <path d="M139.22,353.29,141,327.87a3.65,3.65,0,0,0-1.36-3.13l-19.92-15.91a3.67,3.67,0,0,1,1.41-6.42l24.74-6.13a3.66,3.66,0,0,0,2.55-2.27l9-23.85a3.67,3.67,0,0,1,6.55-.65l13.47,21.64a3.66,3.66,0,0,0,2.94,1.73l25.46,1.17a3.66,3.66,0,0,1,2.64,6l-16.42,19.5a3.68,3.68,0,0,0-.73,3.33l6.76,24.58a3.66,3.66,0,0,1-4.91,4.36l-23.62-9.58a3.67,3.67,0,0,0-3.4.33l-21.28,14A3.67,3.67,0,0,1,139.22,353.29Z" />
+      <path d="M51.64,192.71l22.93-11.14a3.65,3.65,0,0,0,2-2.74l3.83-25.21a3.66,3.66,0,0,1,6.26-2L104.36,170a3.63,3.63,0,0,0,3.23,1.07l25.15-4.15a3.66,3.66,0,0,1,3.83,5.34l-12,22.49a3.64,3.64,0,0,0,0,3.41l11.72,22.64a3.67,3.67,0,0,1-3.9,5.29l-25.1-4.47a3.68,3.68,0,0,0-3.25,1L86.12,240.8a3.67,3.67,0,0,1-6.24-2.07l-3.51-25.25a3.64,3.64,0,0,0-2-2.77L51.6,199.28A3.66,3.66,0,0,1,51.64,192.71Z" />
+      <path d="M146.92,36.57,168,50.86a3.68,3.68,0,0,0,3.39.37L195.15,42A3.66,3.66,0,0,1,200,46.37l-7.07,24.49a3.72,3.72,0,0,0,.69,3.35l16.17,19.7a3.67,3.67,0,0,1-2.71,6l-25.48.85a3.67,3.67,0,0,0-3,1.68L164.9,123.9a3.66,3.66,0,0,1-6.53-.73l-8.68-24a3.64,3.64,0,0,0-2.52-2.3l-24.66-6.44A3.67,3.67,0,0,1,121.18,84l20.11-15.66a3.65,3.65,0,0,0,1.41-3.11l-1.5-25.44A3.67,3.67,0,0,1,146.92,36.57Z" />
+      <path d="M329.78,41,328,66.43a3.66,3.66,0,0,0,1.36,3.13l19.92,15.91a3.67,3.67,0,0,1-1.41,6.42L323.09,98a3.65,3.65,0,0,0-2.55,2.26l-9,23.86a3.67,3.67,0,0,1-6.55.64l-13.47-21.63a3.66,3.66,0,0,0-2.94-1.73l-25.46-1.17a3.66,3.66,0,0,1-2.64-6l16.42-19.5a3.68,3.68,0,0,0,.73-3.33l-6.76-24.58a3.67,3.67,0,0,1,4.91-4.37L299.42,52a3.7,3.7,0,0,0,3.4-.33l21.28-14A3.67,3.67,0,0,1,329.78,41Z" />
+      <path d="M417.36,201.59l-22.93,11.14a3.65,3.65,0,0,0-2,2.74l-3.83,25.2a3.66,3.66,0,0,1-6.26,2L364.64,224.3a3.63,3.63,0,0,0-3.23-1.07l-25.15,4.15a3.67,3.67,0,0,1-3.83-5.35l12-22.48a3.64,3.64,0,0,0,0-3.41L332.73,173.5a3.66,3.66,0,0,1,3.9-5.29l25.1,4.46a3.64,3.64,0,0,0,3.25-1l17.9-18.14a3.67,3.67,0,0,1,6.24,2.07l3.51,25.25a3.65,3.65,0,0,0,2,2.77L417.4,195A3.66,3.66,0,0,1,417.36,201.59Z" />
+      <path d="M238,150l8.69,26.75a3.66,3.66,0,0,0,3.48,2.53h28.13a3.67,3.67,0,0,1,2.16,6.63l-22.76,16.54a3.67,3.67,0,0,0-1.33,4.1l8.69,26.75a3.67,3.67,0,0,1-5.64,4.1l-22.76-16.54a3.66,3.66,0,0,0-4.3,0l-22.76,16.54a3.67,3.67,0,0,1-5.64-4.1l8.69-26.75a3.67,3.67,0,0,0-1.33-4.1l-22.76-16.54a3.67,3.67,0,0,1,2.16-6.63h28.13a3.66,3.66,0,0,0,3.48-2.53L231,150A3.67,3.67,0,0,1,238,150Z" />
+    </svg>
+  )
+}

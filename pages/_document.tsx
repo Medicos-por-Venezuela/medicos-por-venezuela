@@ -32,6 +32,29 @@ export default function Document() {
   return (
     <Html lang="es">
       <Head>
+        {/* La fuente de marca, precargada. Sin esto el navegador no sabe que existe hasta haber
+            descargado y parseado `globals.css`, que es donde vive el `@font-face`: son dos viajes
+            de red en cadena antes de poder pintar el titular con su tipografía real.
+            Medido con Lighthouse el 2026-08-29: el LCP móvil era texto con 1271 ms de
+            `elementRenderDelay`, y esa cadena es la razón. El `@font-face` ya trae
+            `font-display: swap`, así que el texto se pinta antes con la fuente de sistema; el
+            preload es lo que acorta el salto entre esa versión y la definitiva.
+
+            Solo la redonda. La itálica (`nunito-sans-variable-italic.woff2`) la usa únicamente el
+            tagline de la marca, más abajo: precargarla sería gastar otros 30 KB de la ruta crítica
+            en algo que no se ve en el primer pantallazo.
+
+            `crossOrigin` es obligatorio aunque el fichero sea del mismo origen: las fuentes se
+            piden siempre en modo CORS, y sin el atributo el navegador descarga el fichero DOS
+            veces —una por el preload y otra por el @font-face— en vez de reutilizarlo. */}
+        <link
+          rel="preload"
+          href="/brand/nunito-sans-variable.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
+
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />

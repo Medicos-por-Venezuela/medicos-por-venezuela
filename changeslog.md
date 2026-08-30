@@ -5,6 +5,87 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-08-29
+
+- **Rendimiento móvil: el LCP del home baja 877 ms y la puntuación sube de 90 a 96** — medianas de
+  tres pasadas de Lighthouse 13.4.1 por escenario sobre el build de producción, perfil móvil con
+  `throttling-method=simulate` (baseline 90/91/90, con los arreglos 96/96/96). En producción
+  PageSpeed marcaba 99 en escritorio y **80 en móvil**; de ahí salió esta tanda.
+  - **La marca de agua del hero era el elemento LCP en móvil.** Un `<Image>` de `next/image`
+    apuntando a `/brand/iso-navy.svg`, decorativo, `aria-hidden` y al **4 % de opacidad**. Como
+    `next/image` marca sus imágenes con `loading="lazy"`, el navegador ni siquiera empezaba a
+    pedirlo: medido contra producción, **1113,9 ms de `resourceLoadDelay`** dentro de un LCP de
+    5160 ms. La métrica con la que Google juzga cuándo "aparece" la página estaba midiendo un
+    adorno invisible.
+  - **Por qué solo en móvil:** en escritorio la foto del hero sí cabe en el viewport y es unas 40
+    veces más grande, así que gana ella y el LCP es contenido real. En móvil la foto se queda
+    fuera del fold —solo asoma una franja de ~40 px— y el adorno pasaba a ser lo mayor pintado.
+    Esa es la explicación de la brecha 99/80, no una diferencia de peso ni de responsividad.
+  - **Arreglo:** la marca de agua pasa a ser un `<svg>` en línea (`components/home/MarcaAgua.tsx`,
+    generado desde el SVG de marca). Un SVG en línea **no es candidato a LCP** —el algoritmo solo
+    mira `<img>`, `<image>`, el póster de un `<video>` y los fondos CSS—, así que desaparece del
+    cálculo y el LCP pasa a ser texto. De paso se ahorra una petición.
+    Descartado añadirle `priority` al `<Image>`: arregla el retraso con una línea, pero deja el
+    LCP anclado a una decoración para siempre.
+  - **La fuente de marca no se precargaba.** Con el LCP ya en texto, la fase dominante pasó a ser
+    `elementRenderDelay`: **1271 ms**. El `@font-face` vive en `globals.css`, así que el navegador
+    no sabía que la fuente existía hasta haber descargado y parseado el CSS — dos viajes de red en
+    cadena. Se añade un `<link rel="preload">` en `_document.tsx` para la redonda (la itálica no:
+    solo la usa el tagline, y precargarla gastaría otros 30 KB de la ruta crítica). El
+    `elementRenderDelay` cae a **187 ms**. `crossOrigin` es obligatorio aunque el fichero sea del
+    mismo origen: sin él la fuente se descarga dos veces.
+  - Archivos: `components/home/MarcaAgua.tsx` (nuevo), `components/home/Hero.tsx`,
+    `pages/_document.tsx`.
+
+- **Las reglas de caché de `next.config.js` no llegaban a producción** — medido con `curl` contra
+  el sitio desplegado: `/brand/*.woff2`, `/og-image.png` y `/img/*.webp` salían con
+  `Cache-Control: max-age=5, stale-while-revalidate`, el valor por defecto de Amplify, y no el
+  `max-age=604800` que pide el `headers()` del `next.config.js`. Amplify sirve los ficheros de
+  `public/` desde su propia capa de CDN, sin pasar por el runtime que aplica `headers()`. Solo
+  `/_next/static/*` salía bien (`max-age=31536000, immutable`), porque Amplify lo trata como caso
+  especial — por eso el fallo pasaba desapercibido.
+  - **El efecto:** cinco segundos de caché es, en la práctica, ninguna. La fuente variable
+    (28,8 KB), los diez retratos y la imagen del hero se revalidaban en **cada navegación**, en un
+    sitio cuyo público entra desde Venezuela y por móvil.
+  - **Arreglo:** `customHttp.yml` en la raíz, que es el mecanismo que Amplify sí lee. Replica las
+    mismas reglas; no se toca `next.config.js`, que sigue siendo correcto en local y en cualquier
+    otro proveedor.
+  - **No afecta a la puntuación de PageSpeed** (mide carga en frío); sí a las visitas repetidas y
+    al promedio de campo de CrUX a 28 días. **Pendiente de verificar con `curl -I` tras el
+    despliegue.**
+
+- **fix(seo): `/panel-medico`, `/mi-caso` y `/elegir-rol` se servían sin `noindex` ni `<title>`** —
+  las tres están en el `Disallow` de `robots.txt`, cuyo comentario afirma que además llevan
+  `noindex` en su propio `<head>`. No era cierto para estas tres: su `<head>` real solo traía
+  `charset`, `viewport` y `theme-color`.
+  - **La causa:** el `<Seo>` estaba dentro del árbol que se devuelve **después** del `return`
+    temprano del estado de carga. En el servidor ese estado inicial siempre es "cargando", así que
+    el HTML que recibe un crawler era siempre esa pantalla, con el `<head>` vacío y un **200**.
+    Estas rutas no tienen gate en servidor: el control de acceso llega tras la hidratación.
+  - **Por qué importa:** `Disallow` pide que no se rastree, pero una URL enlazada desde fuera puede
+    acabar indexada igualmente —Google la lista sin descripción—, y el `noindex` solo funciona si
+    Google puede entrar a leerlo. Es exactamente la doble señal que el comentario de `robots.txt`
+    dice cubrir.
+  - **Arreglo:** el `<Seo …noindex />` se declara antes de los `return` tempranos y se emite en
+    todas las ramas. Verificado sobre el HTML prerenderizado: las tres rutas ya salen con
+    `noindex` y con su `<title>`.
+  - Archivos: `pages/panel-medico.tsx`, `pages/mi-caso.tsx`, `pages/elegir-rol.tsx`.
+
+- **Auditoría SEO completa del dominio de producción** — siete especialistas en paralelo
+  (técnico, rendimiento, contenido/E-E-A-T, schema, sitemap, GEO y visual). Informes y capturas
+  fuera del repo, en `medicosporvenezuela.org-audit/`. El hallazgo estructural que **no** se
+  arregla desde el código queda anotado abajo.
+  - **Canonicalización apex vs www.** `medicosporvenezuela.org` responde **302** (temporal) hacia
+    `www.medicosporvenezuela.org`, que es quien sirve el 200. Pero `SITIO` en `lib/schema.ts` es el
+    apex, y de ahí salen la canónica, `og:url`, los `@id` del JSON-LD y las cuatro URLs del
+    `sitemap.xml`: **cada URL que el sitio declara como oficial es una que redirige**. En Search
+    Console las cuatro saldrían como "Página con redirección".
+    El comentario de `lib/analytics.ts` da por hecho lo contrario ("si hoy redirige al apex"); la
+    analítica se salva solo porque `www` está en `DOMINIOS_PRODUCCION`.
+    **Decisión: el apex es el host canónico.** El código ya es consistente con eso y no se toca;
+    el arreglo es en la consola de Amplify — apex sirve 200 y `www` redirige con **301**. Hasta
+    entonces, no dar de alta el sitemap en Search Console.
+
 ## 2026-08-28
 
 - **fix(home): en móvil la rejilla de Especialistas no aparecía nunca** — se quedaba en

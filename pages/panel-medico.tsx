@@ -401,13 +401,30 @@ export default function PanelMedico() {
     router.push('/')
   }
 
+  // El `noindex` se declara ANTES del return temprano de carga, y no solo dentro del arbol final.
+  // En el servidor el estado inicial es siempre "cargando", asi que el HTML que recibe un crawler
+  // es SIEMPRE esa pantalla. Con el <Seo> unicamente en la rama de abajo, esa respuesta salia con
+  // el <head> vacio: sin `noindex`, sin `<title>` y con un 200. El `Disallow` de robots.txt pide
+  // que no se rastree, pero una URL enlazada desde fuera puede acabar indexada igualmente --el
+  // propio comentario de robots.txt explica por que hacen falta las dos senales-- y estas rutas
+  // no tienen gate en servidor: responden 200 y el control de acceso llega tras la hidratacion.
+  // Las otras dos ramas de esta pagina (credencial pendiente y panel completo) traen su propio
+  // <Seo> con su titulo especifico; esta solo necesitaba el suyo.
   if (loading) {
     return (
-      <main className="page">
-        <div className="container">
-          <div className="card">Cargando...</div>
-        </div>
-      </main>
+      <>
+        <Seo
+          titulo="Panel médico — Médicos por Venezuela"
+          descripcion={'Cola de pacientes en espera, tus casos y los contadores del día.'}
+          ruta="/panel-medico"
+          noindex
+        />
+        <main className="page">
+          <div className="container">
+            <div className="card">Cargando...</div>
+          </div>
+        </main>
+      </>
     )
   }
 
