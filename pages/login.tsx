@@ -125,6 +125,13 @@ export default function Login() {
             <button className="btn btn-primary btn-full" onClick={login} disabled={loading}>
               {loading ? 'Entrando...' : 'Entrar'}
             </button>
+            {/* El sitio no tenia recuperacion de contrasena: ni este enlace, ni pagina que
+                recibiera el correo. Quien olvidaba la clave se quedaba fuera sin salida. */}
+            <p style={{ textAlign: 'center', margin: 0 }}>
+              <Link href="/auth/recuperar" className="link-button">
+                ¿Olvidaste tu contraseña?
+              </Link>
+            </p>
             <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>o</div>
             <GoogleButton onClick={loginWithGoogle} disabled={loading} />
             <p style={{ textAlign: 'center', color: '#64748b', margin: 0 }}>

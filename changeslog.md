@@ -7,6 +7,40 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-08-30
 
+- **feat(auth): recuperación de contraseña — no existía** — un usuario que olvidaba la clave se
+  quedaba fuera sin salida. No había enlace en `/login` ni página que recibiera el enlace del
+  correo, así que un correo de recuperación aterrizaba en la raíz del sitio (el `Site URL`) y ahí
+  no pasaba nada: el cliente se crea con `detectSessionInUrl: false`, y la portada ni siquiera
+  mira el `#access_token` que trae el enlace. Reportado en producción.
+  - **`/auth/recuperar` (nueva)** contiene las **dos mitades** del flujo, no dos rutas: son la
+    misma conversación partida por un correo. Sin token en el fragmento pide el email; con token,
+    crea la sesión y pide la contraseña nueva.
+  - **No se distingue si el correo existe.** Se pasa a "revisa tu correo" pase lo que pase,
+    también si Supabase devolvió error: un mensaje distinto según si la cuenta existe convierte la
+    pantalla en un detector de qué personas tienen cuenta aquí, que en un sitio de salud es justo
+    lo que no puede filtrarse. Supabase tampoco lo distingue, por lo mismo.
+  - **Cuentas de Google:** no tienen contraseña que recuperar, así que el formulario lo dice. **No
+    se detecta automáticamente** a propósito — comprobarlo exigiría responder distinto según el
+    correo escrito, que es la fuga que evita el punto anterior.
+  - **El fragmento se borra de la barra de direcciones** en cuanto la sesión está creada. Los
+    tokens ya no hacen falta ahí, y mientras sigan en la URL viajan a donde se copie el enlace y
+    quedan en el historial. El `refresh_token` no caduca en una hora como el de acceso.
+  - **Red de seguridad en `_app.tsx`:** un correo enviado sin `redirectTo` —los del panel de
+    Supabase— aterriza en la raíz. Se reenvía a `/auth/recuperar` conservando el fragmento, con
+    `location.replace` y no con el router de Next: el router puede perder el hash, y `replace` no
+    deja la URL con el token en el historial. Solo actúa sobre `type=recovery`; el resto de tokens
+    son cosa de `/auth/callback`.
+  - `/auth/recuperar` hereda el `Disallow: /auth/` del robots.txt y lleva su `noindex`.
+  - Archivos: `pages/auth/recuperar.tsx` (nuevo), `pages/login.tsx`, `pages/_app.tsx`, `CLAUDE.md`.
+
+- **Nota de infraestructura (fuera del repo): el login con Google estaba roto en el apex.** La
+  lista de Redirect URLs de Supabase solo tenía `https://www.medicosporvenezuela.org/**`, y el
+  host canónico pasó a ser el apex. Como `lib/auth.ts` construye el `redirectTo` con
+  `window.location.origin`, quien entraba por el apex generaba una URL no autorizada; al
+  descartarla, Supabase cae al `Site URL` y el usuario vuelve a la home con los tokens en el
+  fragmento, que nadie recoge. Reportado por una médica que no podía entrar. **Se arregla añadiendo
+  `https://medicosporvenezuela.org/**` a la lista**, sin desplegar nada.
+
 - **El HTML no se cacheaba en el borde: PageSpeed movil oscilaba entre 80 y 100** — la primera
   tanda de caché cubrió `/brand/**`, `/img/**` y los estáticos de la raíz, pero **dejó fuera el
   documento HTML**, que es la primera petición y bloquea todo lo demás.
