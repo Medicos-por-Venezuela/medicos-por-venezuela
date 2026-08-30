@@ -117,6 +117,10 @@ Recover via `mem_search(query: "{topic_key}", project: "medicos-por-venezuela")`
   finalized immediately, OAuth signups stay `role_chosen = false`.
 - **Prereq:** Supabase → Auth → Email "Confirm email" must be **OFF** (instant access + same-session
   patient insert), the Google provider enabled, and `/auth/callback` in the redirect allow-list.
+  **The allow-list is per host and the canonical host is now the apex** (`https://medicosporvenezuela.org/**`):
+  it only had `www`, and `lib/auth.ts` builds `redirectTo` from `window.location.origin`, so Google
+  sign-in from the apex sent users back to the Site URL without a session. `/auth/recuperar` needs
+  to be reachable under the same allow-listed host.
 - The legacy `doctor_applications` table has been **retired/dropped**.
 
 ### Las dos columnas `verified` (no las confundas)
@@ -218,6 +222,10 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `/panel-medico/perfil` — doctor self-service profile (view/edit; FastAPI `GET`/`PATCH /doctors/me`);
   also where a `source:"user"` (Google) doctor completes their cédula + professional type to be verified
 - `/auth/callback` — OAuth redirect handler (routes by role / role_chosen)
+- `/auth/recuperar` — password recovery, **both halves in one route**: with no token in the URL
+  fragment it asks for the email (`resetPasswordForEmail`); with one, it sets the session and asks
+  for the new password (`updateUser`). Google accounts have no password here, so the request form
+  says so instead of trying to detect it — detecting it would leak which emails have an account
 - `/admin` (+ `/admin/login` alias) — legacy admin entrance, redirects to `/login` (still `noindex`)
 - `/admin/dashboard` — admin dashboard (metrics, doctor revoke, case oversight)
 

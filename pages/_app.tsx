@@ -31,6 +31,25 @@ export default function App({ Component, pageProps }: AppProps) {
     return () => router.events.off('routeChangeComplete', alCambiarDeRuta)
   })
 
+  // Un correo de recuperación enviado SIN `redirectTo` —los que se mandan desde el panel de
+  // Supabase, por ejemplo— aterriza en el `Site URL`, que es la raíz del sitio. Ahí el token no
+  // lo recoge nadie: el cliente se crea con `detectSessionInUrl: false` y la portada no mira el
+  // fragmento, así que el usuario ve la home y se queda igual de fuera. Fue exactamente el
+  // síntoma reportado.
+  //
+  // Esto lo reenvía a la página que sí sabe qué hacer con él, conservando el fragmento. Se hace
+  // con `location.replace` y no con el router de Next por dos razones: el router puede perder el
+  // hash por el camino, y `replace` no deja la URL con el token en el historial.
+  //
+  // Solo actúa sobre `type=recovery`. El resto de tokens en el fragmento son cosa de
+  // `/auth/callback`, que ya los gestiona.
+  useMountEffect(() => {
+    const hash = window.location.hash
+    if (!hash.includes('type=recovery')) return
+    if (window.location.pathname === '/auth/recuperar') return
+    window.location.replace(`/auth/recuperar${hash}`)
+  })
+
   // PresenceProvider ancla la presencia del médico a la SESIÓN (no a una página), con un único
   // canal que persiste entre rutas: así un médico logueado queda "online" en el panel, la consulta
   // o donde navegue, en vez de caerse al salir del panel.
