@@ -5,6 +5,29 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-08-31
+
+- **feat(interconsulta): interconsulta asíncrona para pacientes de consultorio** — hasta ahora la
+  interconsulta solo existía **en vivo**, atada a una consulta activa de la cola y con los dos
+  médicos conectados a la vez. Los pacientes propios del médico —la mayor parte de su práctica—
+  quedaban fuera. Ahora el médico registra a su paciente de consultorio (formulario corto: sin
+  teléfono ni zona, porque el especialista nunca lo contacta), pide una segunda opinión por
+  **especialidad** (se difunde por correo) o a un **médico concreto**, y el primer especialista que
+  la toma recibe el contacto del tratante para hablar por WhatsApp o correo. Cerrar el caso es del
+  **tratante**, nunca del especialista.
+  La bandeja del especialista es **anonimizada**: motivo, notas y rango etario, sin identidad del
+  paciente ni de quien pide. El spec E2E asierta que el nombre del paciente no aparece en la
+  página — es la promesa sobre la que se apoya el feature y no se puede verificar mirando de vez
+  en cuando.
+  Archivos: `lib/doctorPatients.ts`, `lib/interconsultationRequests.ts` (nuevos),
+  `pages/panel-medico/mis-pacientes.tsx`, `pages/panel-medico/interconsultas.tsx` (nuevas),
+  `components/SolicitarInterconsulta.tsx` (nuevo), `lib/doctors.ts` (filtro
+  `for_interconsultation` en el catálogo — Medicina general queda fuera del selector por un flag
+  de la BD, no por comparar el nombre), `lib/notificationPrefs.ts` (dos eventos nuevos),
+  `pages/panel-medico.tsx` (accesos), `e2e/interconsulta-asincrona.spec.ts` +
+  `e2e/global-setup.ts` (doc2 pasa a ser el especialista). Requiere el backend con la Fase 1–5 de
+  `tasks/interconsulta-asincrona`.
+
 ## 2026-08-30
 
 - **feat(auth): recuperación de contraseña — no existía** — un usuario que olvidaba la clave se

@@ -22,9 +22,9 @@
 //
 // AUDITORÍA (2026-08-13): de las 78 cadenas visibles del home, 67 salen del `.docx`. Las que NO,
 // y de dónde vienen — todas viven igualmente en este archivo, no sueltas por los componentes:
-//   · Del PROTOTIPO, no del copy: "24/7" y "Disponible · Confidencial" (la franja de la foto del
-//     hero; el rótulo "Interconsulta en curso" que la acompañaba se retiró el 2026-08-28);
-//     "01/02/03" (numeración de las puertas);
+//   · Del PROTOTIPO, no del copy: "01/02/03" (numeración de las puertas).
+//     La franja de la foto del hero ("24/7" + "Disponible · Confidencial") se retiró entera el
+//     2026-09-01, junto con el rótulo "Interconsulta en curso" que ya se había ido el 2026-08-28;
 //     "Plataforma", "Organización", "Contacto" (títulos de columna del pie) y "Ser voluntario",
 //     "Interconsulta médica" (etiquetas de enlace del pie). "Contacto" e "Interconsulta médica"
 //     no aparecen en el `.docx` **en absoluto**; el resto solo dentro de otras frases.
@@ -107,8 +107,6 @@ export const HERO = {
   fotoAlt:
     'Una médica con bata blanca y estetoscopio atiende una consulta desde su computadora portátil ' +
     'en un consultorio.',
-  fotoDato: '24/7',
-  fotoDatoPie: 'Disponible · Confidencial',
   // Tres métricas, no cuatro: las del prototipo. Las dos primeras se piden al backend en vivo, de
   // ahí que aquí solo vaya la CLAVE y no el número: la cifra la pone el componente con `useCifras`,
   // para que el hero y la banda de Impacto no puedan decir cosas distintas. "100%" es una promesa
@@ -124,7 +122,9 @@ export const HERO = {
 // del médico venezolano pasa a ser la 01 y se renombra a "Soy médico, necesito apoyo clínico"; el
 // paciente baja a la 02. Las descripciones son ahora frases completas, no fragmentos.
 export const PUERTAS = {
-  pie: 'Disponible 24/7 · Confidencial · Sin costo',
+  // Sin "Disponible 24/7" (retirado el 2026-09-01, junto con la franja del hero): una red de
+  // médicos voluntarios no puede sostener esa promesa. Lo que queda sí es cierto siempre.
+  pie: 'Confidencial · Sin costo',
   tarjetas: [
     {
       numero: '01',

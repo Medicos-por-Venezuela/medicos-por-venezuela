@@ -512,6 +512,20 @@ export default function PanelMedico() {
               >
                 Mi agenda
               </button>
+              {/* Interconsulta ASÍNCRONA (pacientes de consultorio). Distinta de la interconsulta
+                  en vivo que se asigna desde el Pool durante una consulta de la cola. */}
+              <button
+                className="btn btn-outline"
+                onClick={() => router.push('/panel-medico/mis-pacientes')}
+              >
+                Mis pacientes
+              </button>
+              <button
+                className="btn btn-outline"
+                onClick={() => router.push('/panel-medico/interconsultas')}
+              >
+                Interconsultas
+              </button>
               {showProfileButton && (
                 <button
                   className="btn btn-outline"

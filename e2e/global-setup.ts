@@ -127,10 +127,16 @@ async function saveSession(email: string, baseURL: string, file: string): Promis
   writeFileSync(path.join(ROOT, file), JSON.stringify(storageState))
 }
 
+// Especialidad de los E2E de interconsulta. Se fija por NOMBRE para que el spec pueda elegir la
+// misma en el selector: el id es un UUID distinto en cada entorno.
+export const ESPECIALIDAD_E2E = 'Cardiología'
+
 function cleanupTestData(): void {
   // Borra consultas/pacientes de corridas E2E previas para que cada corrida arranque limpia
   // (si no, se acumulan cards iguales y el localizador strict de Playwright falla).
   const sql = [
+    // Las solicitudes de interconsulta primero: referencian a los pacientes de prueba.
+    `delete from public.interconsultation_requests where patient_id in (select id from public.patients where full_name like 'E2E Paciente%');`,
     `delete from public.consultations where patient_id in (select id from public.patients where full_name like 'E2E Paciente%');`,
     `delete from public.patients where full_name like 'E2E Paciente%';`
   ].join(' ')
@@ -157,6 +163,19 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
     { stdio: 'pipe' }
   )
   await saveSession('e2e-admin@example.com', baseURL, 'e2e/.auth/admin.json')
+
+  // Interconsulta asíncrona: doc2 es el ESPECIALISTA. Necesita `users.specialty_id` — sin él no
+  // le llega ninguna difusión ni ve nada en su bandeja (el backend filtra por especialidad).
+  // doc1 se deja SIN especialidad a propósito: es el médico tratante, y así se comprueba de paso
+  // que la bandeja de un médico sin especialidad no muestra los casos de otros.
+  const doc2Uid = await ensureAuthUser('e2e-doc2@example.com')
+  execSync(
+    `docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c ` +
+      `"update public.users set specialty_id = (select id from public.specialties ` +
+      `where name = '${ESPECIALIDAD_E2E}' and deleted_at is null limit 1), ` +
+      `specialty = '${ESPECIALIDAD_E2E}' where id='${doc2Uid}';"`,
+    { stdio: 'pipe' }
+  )
 
   // DUAL multi-rol: rol legacy 'doctor' + super_admin ADICIONAL en user_roles (RBAC). Reproduce
   // el caso real "primero doctor, luego se le agrega super_admin": el acceso admin debe salir
