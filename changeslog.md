@@ -5,6 +5,21 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-01
+
+- **feat(analytics): evento de conversión al solicitar una consulta** — GA4 solo enviaba
+  pageviews (`gtag('config')` y nada más), así que no había forma de demostrar que un clic
+  terminara en una consulta solicitada. Ahora se dispara `generate_lead` —el nombre recomendado
+  por GA4, que Google Ads reconoce sin configuración extra— en el único punto donde el caso ya
+  existe en la cola, no al enviar el formulario: si el alta falla, no hubo conversión que contar.
+  **Sin datos de la persona ni de su caso**: este es un sitio médico y GA4 identifica al
+  visitante, así que un parámetro como la especialidad convertiría el evento en "este visitante
+  pidió Psiquiatría". El helper no-opea fuera de producción y si `gtag` no cargó, y nunca lanza:
+  una analítica que reviente no puede tumbar un registro de paciente. El spec E2E asierta lo
+  contrario de lo que hace en producción —que desde local no sale NINGUNA petición a Google—,
+  que es la fuga que nadie notaría si alguien quitara el guard por dominio.
+  Archivos: `lib/analytics.ts`, `pages/registro-paciente.tsx`, `e2e/registro-paciente.spec.ts`.
+
 ## 2026-08-31
 
 - **feat(interconsulta): interconsulta asíncrona para pacientes de consultorio** — hasta ahora la
@@ -27,6 +42,7 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   `pages/panel-medico.tsx` (accesos), `e2e/interconsulta-asincrona.spec.ts` +
   `e2e/global-setup.ts` (doc2 pasa a ser el especialista). Requiere el backend con la Fase 1–5 de
   `tasks/interconsulta-asincrona`.
+
 
 ## 2026-08-30
 

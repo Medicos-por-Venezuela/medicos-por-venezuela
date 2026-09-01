@@ -11,6 +11,7 @@ import { fetchAffectedZoneCatalog } from '../lib/api'
 import { fetchSpecialties, type SpecialtyResponse } from '../lib/doctors'
 import { createConsultation, createPatient, ensureVideoRoom, ApiError } from '../lib/patients'
 import { useMountEffect } from '../lib/hooks'
+import { trackSolicitudDeConsulta } from '../lib/analytics'
 import CedulaField from '../components/CedulaField'
 import PhoneField from '../components/PhoneField'
 
@@ -399,6 +400,11 @@ export default function RegistroPaciente() {
       } catch (e) {
         console.error('No se pudo iniciar la videoconsulta:', e)
       }
+
+      // Conversión. Va aquí y no en el submit: el caso ya está en la cola, que es lo único que
+      // cuenta como "solicitud realizada". Sin datos de la persona ni de su caso (ver
+      // lib/analytics.ts). No-op fuera de producción y si gtag no cargó; nunca lanza.
+      trackSolicitudDeConsulta()
 
       const params = new URLSearchParams({ nombre: patientName })
       if (room) params.set('room', room)
