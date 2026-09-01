@@ -7,18 +7,26 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-09-01
 
-- **feat(analytics): evento de conversión al solicitar una consulta** — GA4 solo enviaba
-  pageviews (`gtag('config')` y nada más), así que no había forma de demostrar que un clic
-  terminara en una consulta solicitada. Ahora se dispara `generate_lead` —el nombre recomendado
-  por GA4, que Google Ads reconoce sin configuración extra— en el único punto donde el caso ya
-  existe en la cola, no al enviar el formulario: si el alta falla, no hubo conversión que contar.
+- **feat(analytics): eventos de conversión en los dos registros** — GA4 solo enviaba pageviews
+  (`gtag('config')` y nada más), así que no había forma de demostrar que un clic terminara en
+  algo. Ahora hay dos conversiones, con los nombres que GA4 recomienda para que Google Ads las
+  reconozca sin configuración extra: `generate_lead` cuando una persona solicita una consulta, y
+  `sign_up` cuando un médico completa su registro. Nombres distintos a propósito: son dos cosas
+  de valor muy distinto —quien pide atención y quien se ofrece a darla— y así se cuentan por
+  separado en vez de sumarse en un total que no dice nada.
+  Las dos se disparan donde el registro YA existe en el backend, no al enviar el formulario: si
+  el alta falla no hubo conversión que contar, y ese caso existe (en el de médico, el `catch`
+  cierra la sesión justo por eso).
   **Sin datos de la persona ni de su caso**: este es un sitio médico y GA4 identifica al
   visitante, así que un parámetro como la especialidad convertiría el evento en "este visitante
   pidió Psiquiatría". El helper no-opea fuera de producción y si `gtag` no cargó, y nunca lanza:
-  una analítica que reviente no puede tumbar un registro de paciente. El spec E2E asierta lo
-  contrario de lo que hace en producción —que desde local no sale NINGUNA petición a Google—,
-  que es la fuga que nadie notaría si alguien quitara el guard por dominio.
-  Archivos: `lib/analytics.ts`, `pages/registro-paciente.tsx`, `e2e/registro-paciente.spec.ts`.
+  una analítica que reviente no puede tumbar un registro de paciente.
+  El spec E2E de `/registro-paciente` asierta lo contrario de lo que hace en producción —que
+  desde local no sale NINGUNA petición a Google—, que es la fuga que nadie notaría si alguien
+  quitara el guard por dominio. **`/registro-medico` no tiene spec E2E de alta**, así que su
+  evento está verificado por tipos y lint, no por una prueba que lo ejecute.
+  Archivos: `lib/analytics.ts`, `pages/registro-paciente.tsx`, `pages/registro-medico.tsx`,
+  `e2e/registro-paciente.spec.ts`.
 
 ## 2026-08-31
 
@@ -42,7 +50,6 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   `pages/panel-medico.tsx` (accesos), `e2e/interconsulta-asincrona.spec.ts` +
   `e2e/global-setup.ts` (doc2 pasa a ser el especialista). Requiere el backend con la Fase 1–5 de
   `tasks/interconsulta-asincrona`.
-
 
 ## 2026-08-30
 
