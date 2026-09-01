@@ -31,6 +31,14 @@ export const EVENT_LABELS: Record<string, { label: string; desc: string }> = {
   referral_received: {
     label: 'Te refieren una cita',
     desc: 'Cuando otro médico te agenda un paciente como especialista.'
+  },
+  interconsultation_request_broadcast: {
+    label: 'Buscan tu especialidad',
+    desc: 'Cuando un colega pide una segunda opinión de tu especialidad para un caso suyo.'
+  },
+  interconsultation_request_taken: {
+    label: 'Tomaron tu caso',
+    desc: 'Cuando un especialista toma la interconsulta que pediste.'
   }
 }
 

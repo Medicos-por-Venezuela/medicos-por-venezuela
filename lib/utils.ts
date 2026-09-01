@@ -3,6 +3,35 @@ export function minutesSince(value?: string | null) {
   return Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60000))
 }
 
+/**
+ * Tiempo transcurrido, legible: "45 min", "1 hora", "10 horas", "1 día", "1 día 8 horas".
+ *
+ * Las tarjetas del panel imprimían los minutos crudos, así que un caso de la noche anterior
+ * decía "hace 1024 min" — un número que hay que dividir mentalmente para saber si es de hace
+ * un rato o de ayer. La unidad tiene que cambiar con la magnitud.
+ *
+ * Se corta en dos unidades a propósito: días y horas bastan para decidir a quién atender, y
+ * "1 día 8 horas 12 min" no cabe en una tarjeta. Los minutos solo aparecen por debajo de la
+ * hora, que es donde importan.
+ *
+ * NO reemplaza a `minutesSince`: esa sigue siendo el número para comparar (el KPI de
+ * "sin atender +20 min" filtra con ella). Esto es solo presentación.
+ */
+export function tiempoTranscurrido(value?: string | null): string {
+  const totalMin = minutesSince(value)
+  if (totalMin < 60) return `${totalMin} min`
+
+  const totalHoras = Math.floor(totalMin / 60)
+  if (totalHoras < 24) return `${totalHoras} ${totalHoras === 1 ? 'hora' : 'horas'}`
+
+  const dias = Math.floor(totalHoras / 24)
+  const horas = totalHoras % 24
+  const etiquetaDias = `${dias} ${dias === 1 ? 'día' : 'días'}`
+  // Las horas se omiten cuando son cero: "2 días" se lee mejor que "2 días 0 horas".
+  if (horas === 0) return etiquetaDias
+  return `${etiquetaDias} ${horas} ${horas === 1 ? 'hora' : 'horas'}`
+}
+
 // Roles con permisos de administración, y los que pueden entrar al panel médico. Viven aquí
 // (y no en cada página) para que la lista sea una sola: duplicarla es cómo un rol nuevo entra
 // en un guard y se olvida en el otro.

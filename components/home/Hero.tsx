@@ -1,5 +1,7 @@
 // Hero del home. Split a dos columnas: a la izquierda el mensaje (eyebrow, titular, subtítulo,
-// dos CTA y tres métricas), a la derecha la foto con la franja "24/7 · Disponible · Confidencial".
+// dos CTA y tres métricas), a la derecha la foto. La franja "24/7 · Disponible · Confidencial"
+// que la cruzaba se retiró el 2026-09-01: prometía disponibilidad permanente que la red de
+// voluntarios no puede sostener.
 // Medidas tomadas del prototipo de The Climb. El rótulo "Interconsulta en curso" que el prototipo
 // ponía sobre la esquina de la foto se retiró el 2026-08-28.
 //
@@ -15,8 +17,8 @@
 // regla scopeada de styled-jsx solo gana en las propiedades que declara; el resto cae al global del
 // mismo nombre. Esta sección se llamaba `.hero` y `.badge`, que ya existían en `globals.css`, y
 // heredaba en silencio `padding: 40px 24px`, `border-radius: 24px` y `color: white` del uno y
-// `border-radius: 999px` del otro. Las demás clases de aquí (`columna`, `rejilla`, `franja`,
-// `filete`) se libraron por estar en español. Así que: nombres en español, y antes de bautizar una
+// `border-radius: 999px` del otro. Las demás clases de aquí (`columna`, `rejilla`, `filete`)
+// se libraron por estar en español. Así que: nombres en español, y antes de bautizar una
 // clase, comprobar que no exista ya (`grep -n "^\.nombre" styles/globals.css`).
 
 import Image from 'next/image'
@@ -85,10 +87,6 @@ export default function Hero() {
                  Next serviría la variante grande también en el móvil. */
               sizes="(max-width: 900px) 100vw, 50vw"
             />
-          </div>
-          <div className="franja">
-            <span className="dato">{HERO.fotoDato}</span>
-            <span className="dato-pie">{HERO.fotoDatoPie}</span>
           </div>
         </div>
       </div>
@@ -272,31 +270,6 @@ export default function Hero() {
             transform: none;
           }
         }
-        .franja {
-          position: absolute;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: linear-gradient(to top, rgba(0, 0, 0, 0.65), transparent);
-          padding: 56px 24px 20px;
-          display: flex;
-          align-items: baseline;
-          gap: 10px;
-        }
-        .dato {
-          font-size: 20px;
-          font-weight: 900;
-          color: var(--h-white);
-          line-height: 1;
-        }
-        .dato-pie {
-          font-size: 11px;
-          color: rgba(255, 255, 255, 0.75);
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-        }
-
         /* Por debajo de 900 px las columnas se apilan: el padding del prototipo (64 px) dejaría
            el texto en una tira estrecha en un móvil de 360. */
         @media (max-width: 900px) {

@@ -1,0 +1,23 @@
+# Finales de línea: LF en el repositorio Y en el árbol de trabajo, en todos los sistemas.
+#
+# Sin este archivo, en Windows manda `core.autocrlf=true` (el default del instalador de Git):
+# el checkout entrega CRLF, Prettier —cuyo `endOfLine` por defecto es `lf`— marca cada archivo
+# como mal formateado, `pnpm format` los reescribe a LF, y el siguiente checkout, rebase o
+# cambio de rama los vuelve a CRLF. `pnpm format:check` falla una y otra vez sin que nadie
+# haya tocado el formato.
+#
+# El CI nunca lo vio porque corre en Linux, donde el checkout ya da LF: era un fallo local y
+# solo en Windows, que es peor que uno de CI — nadie lo puede reproducir en el runner.
+#
+# `eol=lf` es lo que arregla el bucle: fija el árbol de trabajo, no solo lo que se guarda.
+* text=auto eol=lf
+
+# Binarios: sin conversión, o se corrompen.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webp binary
+*.ico  binary
+*.pdf  binary
+*.woff binary
+*.woff2 binary

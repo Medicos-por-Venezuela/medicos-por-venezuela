@@ -13,7 +13,7 @@
 // coincide con la apertura del modal.
 import { useMountEffect } from '../../lib/hooks'
 import { ConsultationMonitorItem } from '../../lib/consultations'
-import { STATUS_LABELS, minutesSince } from '../../lib/utils'
+import { STATUS_LABELS, tiempoTranscurrido } from '../../lib/utils'
 
 type Props = {
   open: boolean
@@ -132,7 +132,7 @@ function Dialog({
                     <td>{STATUS_LABELS[c.status] || c.status}</td>
                     <td>{c.assigned_doctor_name || '— sin asignar —'}</td>
                     <td>{c.patient_name || '—'}</td>
-                    <td>{minutesSince(c.opened_at || c.started_at || c.queued_at)} min</td>
+                    <td>{tiempoTranscurrido(c.opened_at || c.started_at || c.queued_at)}</td>
                     <td>{c.chief_complaint || '—'}</td>
                   </tr>
                 ))

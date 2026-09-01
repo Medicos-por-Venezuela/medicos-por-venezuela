@@ -14,6 +14,7 @@ import {
   type SpecialtyResponse
 } from '../lib/doctors'
 import { useMountEffect } from '../lib/hooks'
+import { trackAltaDeMedico } from '../lib/analytics'
 
 // Consolida en un solo paso lo que antes estaba dividido entre este archivo (cuenta) y
 // /elegir-rol (especialidad/país/whatsapp), según el diagrama de secuencia + wireframe
@@ -252,6 +253,11 @@ export default function RegistroMedico() {
         country_of_residence: paisReside || null,
         website
       })
+      // Conversión. Aquí y no tras el signUp de Supabase: una cuenta creada cuyo alta en el
+      // backend falló no es un médico registrado, y ese caso existe (lo maneja el catch de
+      // abajo cerrando la sesión). Sin datos de la persona (ver lib/analytics.ts).
+      trackAltaDeMedico()
+
       // Diagrama de secuencia del ticket: tras el 201 se redirige directo al board (panel-medico),
       // no se pide un login manual aparte — signUp() ya dejó una sesión activa.
       await router.push('/panel-medico')

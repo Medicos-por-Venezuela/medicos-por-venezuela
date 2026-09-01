@@ -20,6 +20,10 @@ export interface SpecialtyResponse {
   // (Psicología). Usar el flag y no la cadena es lo que evita que renombrarla rompa el registro.
   is_mental_health: boolean
   mental_health_only: boolean
+  // ¿Se puede PEDIR en una interconsulta asíncrona? Medicina general viene en `false`: pedirle
+  // ayuda a otro general no es una interconsulta. Mismo criterio que los flags de arriba — la
+  // regla vive en el catálogo, no en comparar el nombre.
+  available_for_interconsultation: boolean
   created_at: string
   updated_at: string
   deleted_at: string | null
@@ -96,9 +100,14 @@ export async function fetchProfessionalTypes(): Promise<ProfessionalTypeResponse
 }
 
 // GET /api/v1/specialties — público, catálogo para el selector de especialidad.
-export async function fetchSpecialties(): Promise<SpecialtyResponse[]> {
+//
+// `forInterconsultation` deja solo las que se pueden pedir en una interconsulta (excluye
+// Medicina general). El filtro lo aplica el BACKEND desde la columna del catálogo: no se filtra
+// acá por nombre, que es justo lo que rompería un rename.
+export async function fetchSpecialties(forInterconsultation = false): Promise<SpecialtyResponse[]> {
+  const qs = forInterconsultation ? '?for_interconsultation=true&limit=100' : ''
   return getJson<SpecialtyResponse[]>(
-    '/api/v1/specialties',
+    `/api/v1/specialties${qs}`,
     'No se pudo cargar el catálogo de especialidades'
   )
 }

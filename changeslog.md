@@ -5,6 +5,69 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-01
+
+- **fix(panel-medico): el tiempo transcurrido cambia de unidad según la magnitud** — las
+  tarjetas imprimían los minutos crudos, así que un caso de la noche anterior decía "hace 1024
+  min": un número que hay que dividir mentalmente para saber si es de hace un rato o de ayer.
+  Ahora `tiempoTranscurrido` devuelve "45 min", "10 horas" o "1 día 8 horas" según corresponda,
+  y se usa en las tarjetas del panel, el detalle de la consulta y el monitor del admin.
+  Se corta en dos unidades a propósito: días y horas bastan para decidir a quién atender, y
+  "1 día 8 horas 12 min" no cabe en una tarjeta. `minutesSince` se conserva porque sigue siendo
+  el número que compara el KPI de "sin atender +20 min" — esto es solo presentación.
+  Spec E2E nuevo que envejece una consulta 32 h en la base y asierta el formato de días, con
+  una aserción negativa sobre los minutos crudos: si alguien vuelve a imprimirlos, se pone rojo.
+  Archivos: `lib/utils.ts`, `pages/panel-medico.tsx`, `pages/panel-medico/consulta/[id].tsx`,
+  `components/admin/ConsultationsMonitorModal.tsx`, `e2e/tiempo-transcurrido.spec.ts` (nuevo).
+
+- **refactor(panel-medico): el alta de paciente de consultorio pasa a un modal** — la página
+  `/panel-medico/mis-pacientes` abría con el formulario de alta ocupando la primera pantalla, y
+  la lista —que es a lo que se entra— quedaba debajo del pliegue. Ahora la página es la lista,
+  con un botón "+ Registrar paciente" que abre el formulario en un modal
+  (`components/RegistrarPacienteModal.tsx`, mismo patrón que `SolicitarInterconsulta`). El
+  formulario no cambió: los mismos campos, el mismo orden y las mismas validaciones. La página
+  baja de 330 a 200 líneas y pierde tres estados que ahora viven junto al formulario.
+  El spec E2E asierta que el formulario **no** está a la vista al entrar: si volviera a quedar
+  embebido, se pone rojo.
+  Archivos: `components/RegistrarPacienteModal.tsx` (nuevo),
+  `pages/panel-medico/mis-pacientes.tsx`, `e2e/interconsulta-asincrona.spec.ts`.
+
+- **feat(analytics): evento de conversión al solicitar una consulta** — GA4 solo enviaba
+  pageviews (`gtag('config')` y nada más), así que no había forma de demostrar que un clic
+  terminara en una consulta solicitada. Ahora se dispara `generate_lead` —el nombre recomendado
+  por GA4, que Google Ads reconoce sin configuración extra— en el único punto donde el caso ya
+  existe en la cola, no al enviar el formulario: si el alta falla, no hubo conversión que contar.
+  **Sin datos de la persona ni de su caso**: este es un sitio médico y GA4 identifica al
+  visitante, así que un parámetro como la especialidad convertiría el evento en "este visitante
+  pidió Psiquiatría". El helper no-opea fuera de producción y si `gtag` no cargó, y nunca lanza:
+  una analítica que reviente no puede tumbar un registro de paciente. El spec E2E asierta lo
+  contrario de lo que hace en producción —que desde local no sale NINGUNA petición a Google—,
+  que es la fuga que nadie notaría si alguien quitara el guard por dominio.
+  Archivos: `lib/analytics.ts`, `pages/registro-paciente.tsx`, `e2e/registro-paciente.spec.ts`.
+
+## 2026-08-31
+
+- **feat(interconsulta): interconsulta asíncrona para pacientes de consultorio** — hasta ahora la
+  interconsulta solo existía **en vivo**, atada a una consulta activa de la cola y con los dos
+  médicos conectados a la vez. Los pacientes propios del médico —la mayor parte de su práctica—
+  quedaban fuera. Ahora el médico registra a su paciente de consultorio (formulario corto: sin
+  teléfono ni zona, porque el especialista nunca lo contacta), pide una segunda opinión por
+  **especialidad** (se difunde por correo) o a un **médico concreto**, y el primer especialista que
+  la toma recibe el contacto del tratante para hablar por WhatsApp o correo. Cerrar el caso es del
+  **tratante**, nunca del especialista.
+  La bandeja del especialista es **anonimizada**: motivo, notas y rango etario, sin identidad del
+  paciente ni de quien pide. El spec E2E asierta que el nombre del paciente no aparece en la
+  página — es la promesa sobre la que se apoya el feature y no se puede verificar mirando de vez
+  en cuando.
+  Archivos: `lib/doctorPatients.ts`, `lib/interconsultationRequests.ts` (nuevos),
+  `pages/panel-medico/mis-pacientes.tsx`, `pages/panel-medico/interconsultas.tsx` (nuevas),
+  `components/SolicitarInterconsulta.tsx` (nuevo), `lib/doctors.ts` (filtro
+  `for_interconsultation` en el catálogo — Medicina general queda fuera del selector por un flag
+  de la BD, no por comparar el nombre), `lib/notificationPrefs.ts` (dos eventos nuevos),
+  `pages/panel-medico.tsx` (accesos), `e2e/interconsulta-asincrona.spec.ts` +
+  `e2e/global-setup.ts` (doc2 pasa a ser el especialista). Requiere el backend con la Fase 1–5 de
+  `tasks/interconsulta-asincrona`.
+
 ## 2026-08-30
 
 - **feat(auth): recuperación de contraseña — no existía** — un usuario que olvidaba la clave se
@@ -25,11 +88,19 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   - **El fragmento se borra de la barra de direcciones** en cuanto la sesión está creada. Los
     tokens ya no hacen falta ahí, y mientras sigan en la URL viajan a donde se copie el enlace y
     quedan en el historial. El `refresh_token` no caduca en una hora como el de acceso.
-  - **Red de seguridad en `_app.tsx`:** un correo enviado sin `redirectTo` —los del panel de
-    Supabase— aterriza en la raíz. Se reenvía a `/auth/recuperar` conservando el fragmento, con
-    `location.replace` y no con el router de Next: el router puede perder el hash, y `replace` no
-    deja la URL con el token en el historial. Solo actúa sobre `type=recovery`; el resto de tokens
-    son cosa de `/auth/callback`.
+  - **Red de seguridad en `_app.tsx`, para las DOS mitades de auth.** Supabase devuelve los tokens
+    en el fragmento de la URL; cuando el `redirect_to` no está en la lista de Redirect URLs del
+    proyecto, los descarta y cae al `Site URL`, la raíz. Y en la raíz no los recoge nadie, porque
+    el cliente lleva `detectSessionInUrl: false`. El usuario ve la home, sin sesión, y reintenta.
+    Ha pasado con las dos: los correos de recuperación del panel de Supabase van sin `redirectTo`
+    y aterrizan siempre ahí, y el login con Google lo hacía porque la lista solo tenía el host
+    `www`. Síntoma reportado: **«tuve que darle dos veces a entrar con Google»**.
+    Ahora un fragmento con `type=recovery` se reenvía a `/auth/recuperar` y cualquier otro con
+    `access_token` a `/auth/callback`, conservando el fragmento. Con `location.replace` y no con
+    el router de Next: el router puede perder el hash, y `replace` no deja la URL con el token en
+    el historial. Es defensa en profundidad, **no el arreglo** —lo que toca arreglar es la lista
+    de Redirect URLs—, pero un fallo de configuración no debería dejar a nadie fuera sin
+    explicación. Un fragmento con `error=` y sin token sigue sin hacer nada, igual que antes.
   - `/auth/recuperar` hereda el `Disallow: /auth/` del robots.txt y lleva su `noindex`.
   - Archivos: `pages/auth/recuperar.tsx` (nuevo), `pages/login.tsx`, `pages/_app.tsx`, `CLAUDE.md`.
 

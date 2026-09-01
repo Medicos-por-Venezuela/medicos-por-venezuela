@@ -30,7 +30,7 @@ import {
   STATUS_LABELS,
   isAdminRole,
   isPanelRole,
-  minutesSince,
+  tiempoTranscurrido,
   statusBadgeClass
 } from '../../../lib/utils'
 import { browserRoomUrl } from '../../../lib/jitsi'
@@ -632,7 +632,7 @@ export default function ConsultaDetalle() {
               </button>
               <h1 style={{ margin: '8px 0 0' }}>Detalle de consulta</h1>
               <p style={{ margin: 0, color: '#64748b' }}>
-                Caso {consultation.code} · hace {minutesSince(consultation.created_at)} min
+                Caso {consultation.code} · hace {tiempoTranscurrido(consultation.created_at)}
               </p>
             </div>
             <span className={`badge ${statusBadgeClass(consultation.status)}`}>
