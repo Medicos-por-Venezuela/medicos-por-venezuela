@@ -72,3 +72,43 @@ declare global {
     dataLayer?: unknown[]
   }
 }
+
+// --- Eventos de conversión ---
+
+/**
+ * Envía un evento a GA4. No-op fuera de producción y si `gtag` no existe.
+ *
+ * **Nunca le pases datos personales ni de salud.** No es solo la política de Google: este es un
+ * sitio médico, y el par "quién" + "qué le pasa" es justo lo que no puede salir de aquí. GA4
+ * asigna un identificador de cliente a cada visitante, así que un parámetro como la especialidad
+ * pedida convertiría el evento en "este visitante solicitó Psiquiatría". Los parámetros de estos
+ * eventos describen el FLUJO (de dónde vino la conversión), nunca a la persona ni su caso.
+ *
+ * Tres razones para que no lance nunca: `gtag` puede no existir (bloqueador de anuncios, script
+ * caído, fuera de producción), y una analítica que reviente no puede tumbar un registro de
+ * paciente. Medir es secundario; atender no.
+ */
+export function trackEvent(nombre: string, params?: Record<string, string | number>): void {
+  if (!esProduccion()) return
+  const gtag = typeof window === 'undefined' ? undefined : window.gtag
+  if (!gtag) return
+  try {
+    gtag('event', nombre, params)
+  } catch {
+    // Silencio a propósito: ver arriba.
+  }
+}
+
+/**
+ * Conversión: una persona completó el registro y su caso quedó EN LA COLA.
+ *
+ * `generate_lead` es el nombre recomendado por GA4 para esto; usarlo (en vez de uno inventado)
+ * hace que Google Ads lo reconozca como conversión sin configuración extra — relevante si algún
+ * día se postula a Google Ad Grants, donde hay que demostrar que los clics terminan en algo.
+ *
+ * Se dispara en el ÚNICO punto donde la consulta ya existe en el backend, no al enviar el
+ * formulario: si el alta falla, no hubo conversión que contar.
+ */
+export function trackSolicitudDeConsulta(): void {
+  trackEvent('generate_lead', { method: 'registro-paciente' })
+}

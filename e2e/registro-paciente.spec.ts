@@ -10,6 +10,13 @@ import { test, expect } from '@playwright/test'
 test('registro adulto por UI: formulario → signup → sala de espera con videoconsulta', async ({
   page
 }) => {
+  // Ninguna petición a Google debe salir de local: el guard de lib/analytics.ts comprueba el
+  // DOMINIO, y localhost no lo cumple. Se registran para asertarlo al final.
+  const aGoogle: string[] = []
+  page.on('request', (r) => {
+    if (/googletagmanager\.com|google-analytics\.com/.test(r.url())) aGoogle.push(r.url())
+  })
+
   await page.goto('/registro-paciente')
 
   await page.getByPlaceholder('Ej. 12345678').fill('99990034') // CedulaField emite "V-99990034"
@@ -39,4 +46,11 @@ test('registro adulto por UI: formulario → signup → sala de espera con video
   await page.waitForURL(/\/sala-espera\?/)
   await expect(page.getByRole('button', { name: 'Entrar a la videoconsulta' })).toBeVisible()
   await expect(page.getByText(/contactarte por WhatsApp/)).toBeVisible()
+
+  // La conversión `generate_lead` se dispara aquí en PRODUCCIÓN. Lo que se puede comprobar en
+  // local es lo contrario, que es lo que protege este assert: que no se filtre analítica desde
+  // local ni desde la URL de previsualización. Si alguien quita el guard por dominio, esto se
+  // pone rojo — y esa fuga, sin test, no la nota nadie.
+  expect(aGoogle, `no debe salir analítica desde local: ${aGoogle.join(', ')}`).toHaveLength(0)
+  expect(await page.evaluate(() => typeof window.gtag)).toBe('undefined')
 })
