@@ -5,6 +5,7 @@ import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import ConfirmDialog from '../../components/admin/ConfirmDialog'
+import CedulaField from '../../components/CedulaField'
 import {
   archiveDoctorPatient,
   createDoctorPatient,
@@ -13,10 +14,15 @@ import {
 } from '../../lib/doctorPatients'
 import SolicitarInterconsulta from '../../components/SolicitarInterconsulta'
 
-// Mismos rangos que usa el resto del sitio para `age_range`.
-const RANGOS_EDAD = ['0-11', '12-17', '18-29', '30-39', '40-49', '50-59', '60-69', '70+']
-
-const VACIO = { full_name: '', age_range: '', cedula: '', allergies: '', description: '' }
+// Este formulario replica el de /registro-paciente en campos, orden y comportamiento: mismo
+// `CedulaField`, edad como NÚMERO (que es lo que guarda `age_range` allí, no un rango), alergia
+// como interruptor con detalle, y el consentimiento como aviso destacado. Un médico que ya usó
+// el registro público no debería tener que aprender otro formulario.
+//
+// Lo que NO se replica, a propósito: WhatsApp, zona y especialidad. El paciente de consultorio
+// no entra a la cola y nadie de la plataforma lo contacta; la especialidad se elige después, al
+// pedir la interconsulta.
+const VACIO = { full_name: '', edad: '', cedula: '', allergies: '', description: '' }
 
 export default function MisPacientes() {
   const router = useRouter()
@@ -26,6 +32,8 @@ export default function MisPacientes() {
   const [form, setForm] = useState({ ...VACIO })
   // El consentimiento es una atestación del médico: arranca apagado a propósito.
   const [consent, setConsent] = useState(false)
+  // Interruptor de alergia, igual que /registro-paciente: evita el 'ninguna'/'no' escrito a mano.
+  const [hasAllergy, setHasAllergy] = useState(false)
   const [guardando, setGuardando] = useState(false)
   // Un estado de error por fuente: el fallo de la lista se recupera recargando, el del formulario
   // corrigiendo y reenviando, y el de archivar reintentando esa acción. Compartir uno solo haría
@@ -72,9 +80,11 @@ export default function MisPacientes() {
       const creado = await createDoctorPatient(
         {
           full_name: form.full_name.trim(),
-          age_range: form.age_range || null,
+          // `age_range` guarda la edad tal cual, igual que /registro-paciente (`age_range: edad`).
+          age_range: form.edad.trim() || null,
           cedula: form.cedula.trim() || null,
-          allergies: form.allergies.trim() || null,
+          // Sin el interruptor activo no se manda nada, aunque haya quedado texto escrito.
+          allergies: (hasAllergy && form.allergies.trim()) || null,
           description: form.description.trim() || null,
           consent
         },
@@ -84,6 +94,7 @@ export default function MisPacientes() {
       setPacientes((prev) => [creado, ...prev])
       setForm({ ...VACIO })
       setConsent(false)
+      setHasAllergy(false)
       setAviso(`${creado.full_name} quedó registrado. Ya puedes pedir una interconsulta.`)
     } catch (e) {
       setErrorForm(e instanceof Error ? e.message : 'No se pudo registrar el paciente.')
@@ -147,73 +158,110 @@ export default function MisPacientes() {
               </div>
             )}
             <form onSubmit={registrar}>
-              <label htmlFor="full_name">Nombre completo *</label>
-              <input
-                id="full_name"
-                required
-                minLength={2}
-                value={form.full_name}
-                onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-              />
-
-              <label htmlFor="age_range">Rango de edad</label>
-              <select
-                id="age_range"
-                value={form.age_range}
-                onChange={(e) => setForm({ ...form, age_range: e.target.value })}
-              >
-                <option value="">Sin especificar</option>
-                {RANGOS_EDAD.map((r) => (
-                  <option key={r} value={r}>
-                    {r} años
-                  </option>
-                ))}
-              </select>
-
-              <label htmlFor="cedula">Cédula (opcional)</label>
-              <input
-                id="cedula"
+              <CedulaField
+                label="Cédula / DNI"
                 value={form.cedula}
-                onChange={(e) => setForm({ ...form, cedula: e.target.value })}
+                onChange={(v) => setForm((f) => ({ ...f, cedula: v }))}
               />
 
-              <label htmlFor="allergies">Alergias (opcional)</label>
-              <input
-                id="allergies"
-                value={form.allergies}
-                onChange={(e) => setForm({ ...form, allergies: e.target.value })}
-              />
+              <div>
+                <label className="label" htmlFor="full_name">
+                  Nombre completo *
+                </label>
+                <input
+                  id="full_name"
+                  required
+                  minLength={2}
+                  value={form.full_name}
+                  onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                  placeholder="Ej. María González"
+                />
+              </div>
 
-              <label htmlFor="description">Antecedentes (opcional)</label>
-              <textarea
-                id="description"
-                rows={3}
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-              />
+              <div>
+                <label className="label" htmlFor="edad">
+                  Edad *
+                </label>
+                <input
+                  id="edad"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={120}
+                  required
+                  value={form.edad}
+                  onChange={(e) => setForm({ ...form, edad: e.target.value })}
+                  placeholder="Ej. 34"
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={hasAllergy}
+                    onChange={(e) => setHasAllergy(e.target.checked)}
+                    style={{ width: 'auto' }}
+                  />
+                  ¿Tiene alguna alergia?
+                </label>
+                {hasAllergy && (
+                  <div style={{ marginTop: 10 }}>
+                    <label className="label" htmlFor="allergies">
+                      ¿A qué es alérgico? *
+                    </label>
+                    <input
+                      id="allergies"
+                      value={form.allergies}
+                      onChange={(e) => setForm({ ...form, allergies: e.target.value })}
+                      placeholder="Ej. Penicilina"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="label" htmlFor="description">
+                  Descripción breve *
+                </label>
+                <textarea
+                  id="description"
+                  rows={4}
+                  required
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  placeholder="Describe en pocas palabras qué le ocurre y si ya está tomando algún medicamento."
+                />
+              </div>
 
               <label
-                style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 12 }}
-                htmlFor="consent"
+                className="notice notice-warning"
+                style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}
               >
                 <input
-                  id="consent"
                   type="checkbox"
                   checked={consent}
                   onChange={(e) => setConsent(e.target.checked)}
-                  style={{ width: 'auto', marginTop: 4 }}
+                  style={{ width: 'auto', marginTop: 5 }}
                 />
                 <span>
-                  Declaro que mi paciente autorizó compartir su caso con un especialista de Médicos
-                  por Venezuela. *
+                  Declaro que mi paciente autorizó compartir esta información con un especialista de
+                  Médicos por Venezuela para obtener una segunda opinión. Entiendo que el
+                  especialista no verá su identidad ni sus datos de contacto.
                 </span>
               </label>
 
               <button
                 className="btn btn-primary btn-full"
                 type="submit"
-                style={{ marginTop: 14 }}
-                disabled={guardando || !consent || form.full_name.trim().length < 2}
+                disabled={
+                  guardando ||
+                  !consent ||
+                  form.full_name.trim().length < 2 ||
+                  !form.edad.trim() ||
+                  !form.description.trim() ||
+                  (hasAllergy && !form.allergies.trim())
+                }
               >
                 {guardando ? 'Registrando...' : 'Registrar paciente'}
               </button>

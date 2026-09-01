@@ -24,10 +24,14 @@ test.describe('Interconsulta asíncrona', () => {
 
     await page.goto('/panel-medico/mis-pacientes')
 
-    // Alta: el formulario NO pide teléfono ni zona afectada — es el punto del feature.
-    await expect(page.getByLabel('Teléfono')).toHaveCount(0)
+    // El formulario replica /registro-paciente, MENOS WhatsApp y zona: este paciente no entra a
+    // la cola y nadie de la plataforma lo contacta. Que esos campos NO estén es el feature.
+    await expect(page.getByLabel('WhatsApp')).toHaveCount(0)
+    await expect(page.getByLabel('Zona')).toHaveCount(0)
+
     await page.getByLabel('Nombre completo *').fill(PACIENTE)
-    await page.getByLabel('Rango de edad').selectOption('60-69')
+    await page.getByLabel('Edad *').fill('64')
+    await page.getByLabel('Descripción breve *').fill('Refiere dolor toracico desde hace dias.')
     await page.getByLabel(/Declaro que mi paciente autorizó/).check()
     await page.getByRole('button', { name: 'Registrar paciente' }).click()
 
@@ -66,7 +70,7 @@ test.describe('Interconsulta asíncrona', () => {
     // El nombre del paciente NO puede estar en ninguna parte de la página.
     await expect(page.locator('body')).not.toContainText(PACIENTE)
     // Sí ve lo que necesita para decidir.
-    await expect(caso).toContainText('60-69 años')
+    await expect(caso).toContainText('64 años')
     await expect(caso).toContainText(ESPECIALIDAD_E2E)
 
     await caso.getByRole('button', { name: 'Tomar este caso' }).click()
