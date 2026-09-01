@@ -19,6 +19,7 @@ import {
   // claim). Aquí solo queda `matchesConsultation`, que es una preferencia de orden, no un permiso.
   matchesConsultation,
   minutesSince,
+  tiempoTranscurrido,
   statusBadgeClass
 } from '../lib/utils'
 import { browserRoomUrl } from '../lib/jitsi'
@@ -793,7 +794,7 @@ function ConsultationCard({
           <div style={{ color: '#64748b', fontSize: 13 }}>
             {c.patients?.affected_zone}
             {c.patients?.age_range ? ` · Edad ${c.patients.age_range}` : ''} · hace{' '}
-            {minutesSince(c.created_at)} min
+            {tiempoTranscurrido(c.created_at)}
           </div>
           <div style={{ marginTop: 4 }}>
             {inRoom ? (
