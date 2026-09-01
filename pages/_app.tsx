@@ -31,23 +31,44 @@ export default function App({ Component, pageProps }: AppProps) {
     return () => router.events.off('routeChangeComplete', alCambiarDeRuta)
   })
 
-  // Un correo de recuperación enviado SIN `redirectTo` —los que se mandan desde el panel de
-  // Supabase, por ejemplo— aterriza en el `Site URL`, que es la raíz del sitio. Ahí el token no
-  // lo recoge nadie: el cliente se crea con `detectSessionInUrl: false` y la portada no mira el
-  // fragmento, así que el usuario ve la home y se queda igual de fuera. Fue exactamente el
-  // síntoma reportado.
+  // RED DE SEGURIDAD: un token de sesión que aterriza donde nadie lo recoge.
   //
-  // Esto lo reenvía a la página que sí sabe qué hacer con él, conservando el fragmento. Se hace
-  // con `location.replace` y no con el router de Next por dos razones: el router puede perder el
-  // hash por el camino, y `replace` no deja la URL con el token en el historial.
+  // Supabase devuelve los tokens en el FRAGMENTO de la URL. Cuando el `redirect_to` que pide la
+  // app no está en la lista de Redirect URLs del proyecto, Supabase lo descarta y cae al
+  // `Site URL`, que es la raíz del sitio. Y en la raíz no pasa nada: el cliente se crea con
+  // `detectSessionInUrl: false` (ver `lib/supabase.ts`), así que la portada ni siquiera mira el
+  // fragmento. El usuario ve la home, sin sesión, y vuelve a intentarlo.
   //
-  // Solo actúa sobre `type=recovery`. El resto de tokens en el fragmento son cosa de
-  // `/auth/callback`, que ya los gestiona.
+  // Ha pasado con las dos mitades de auth, por el mismo motivo:
+  //   · Recuperación de contraseña: los correos enviados desde el panel de Supabase van sin
+  //     `redirectTo`, así que SIEMPRE aterrizan en la raíz.
+  //   · Login con Google: la lista solo tenía el host `www` cuando el sitio pasó a servirse desde
+  //     el apex, y `lib/auth.ts` construye el `redirectTo` con `window.location.origin`. Sintoma
+  //     reportado: "tuve que darle dos veces a entrar con Google".
+  //
+  // Esto reenvía el fragmento a la página que sí sabe qué hacer con él. Es defensa en profundidad,
+  // no el arreglo: lo que toca arreglar es la lista de Redirect URLs. Pero un fallo de
+  // configuración no debería dejar a un usuario fuera sin explicación.
+  //
+  // Con `location.replace` y no con el router de Next, por dos razones: el router puede perder el
+  // hash por el camino, y `replace` no deja la URL con el token en el historial del navegador.
+  //
+  // Un fragmento con `error=` y sin token no se reenvía: sigue sin hacer nada, igual que hoy.
   useMountEffect(() => {
     const hash = window.location.hash
-    if (!hash.includes('type=recovery')) return
-    if (window.location.pathname === '/auth/recuperar') return
-    window.location.replace(`/auth/recuperar${hash}`)
+    if (!hash) return
+
+    // Un token de recuperación va a la página que pide la contraseña nueva; cualquier otro token
+    // de sesión —el de Google— va a la callback, que es quien sabe canjearlo y rutear por rol.
+    const destino = hash.includes('type=recovery')
+      ? '/auth/recuperar'
+      : hash.includes('access_token=')
+        ? '/auth/callback'
+        : null
+
+    if (!destino) return
+    if (window.location.pathname === destino) return
+    window.location.replace(`${destino}${hash}`)
   })
 
   // PresenceProvider ancla la presencia del médico a la SESIÓN (no a una página), con un único
