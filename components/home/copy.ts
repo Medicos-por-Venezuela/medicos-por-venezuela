@@ -122,7 +122,9 @@ export const HERO = {
 // del médico venezolano pasa a ser la 01 y se renombra a "Soy médico, necesito apoyo clínico"; el
 // paciente baja a la 02. Las descripciones son ahora frases completas, no fragmentos.
 export const PUERTAS = {
-  pie: 'Disponible 24/7 · Confidencial · Sin costo',
+  // Sin "Disponible 24/7" (retirado el 2026-09-01, junto con la franja del hero): una red de
+  // médicos voluntarios no puede sostener esa promesa. Lo que queda sí es cierto siempre.
+  pie: 'Confidencial · Sin costo',
   tarjetas: [
     {
       numero: '01',

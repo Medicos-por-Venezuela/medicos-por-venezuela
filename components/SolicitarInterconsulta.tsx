@@ -168,7 +168,9 @@ export default function SolicitarInterconsulta({ paciente, token, onClose, onCre
             </label>
           </fieldset>
 
-          <label htmlFor="specialty">Especialidad *</label>
+          <label className="label" htmlFor="specialty">
+            Especialidad *
+          </label>
           <select
             id="specialty"
             required
@@ -188,29 +190,44 @@ export default function SolicitarInterconsulta({ paciente, token, onClose, onCre
 
           {mode === 'doctor' && (
             <>
-              <label htmlFor="doctor">Médico *</label>
-              <select
-                id="doctor"
-                required
-                value={targetDoctorId}
-                onChange={(e) => setTargetDoctorId(e.target.value)}
-                disabled={!specialtyId}
-              >
-                <option value="">
-                  {specialtyId ? 'Elige un médico' : 'Elige primero la especialidad'}
-                </option>
-                {medicosVisibles
-                  .filter((m) => m.user_id)
-                  .map((m) => (
-                    <option key={m.id} value={m.user_id as string}>
-                      {m.full_name}
-                    </option>
-                  ))}
-              </select>
+              <label className="label" htmlFor="doctor">
+                Médico *
+              </label>
+              {/* Un desplegable deshabilitado con un texto gris dentro no explica nada: parece
+                  roto. Mientras falte la especialidad se dice qué hacer, con el mismo aviso que
+                  usa el resto del sitio; el desplegable solo aparece cuando ya sirve. */}
+              {!specialtyId ? (
+                <div className="notice notice-info" id="doctor" role="status">
+                  Elige primero una <strong>especialidad</strong> para ver sus médicos.
+                </div>
+              ) : medicosVisibles.length === 0 ? (
+                <div className="notice notice-warning" role="status">
+                  No hay médicos registrados en esa especialidad. Puedes pedirla{' '}
+                  <strong>a toda la especialidad</strong> y quedará esperando, o elegir otra.
+                </div>
+              ) : (
+                <select
+                  id="doctor"
+                  required
+                  value={targetDoctorId}
+                  onChange={(e) => setTargetDoctorId(e.target.value)}
+                >
+                  <option value="">Elige un médico</option>
+                  {medicosVisibles
+                    .filter((m) => m.user_id)
+                    .map((m) => (
+                      <option key={m.id} value={m.user_id as string}>
+                        {m.full_name}
+                      </option>
+                    ))}
+                </select>
+              )}
             </>
           )}
 
-          <label htmlFor="chief_complaint">Motivo de la consulta *</label>
+          <label className="label" htmlFor="chief_complaint">
+            Motivo de la consulta *
+          </label>
           <textarea
             id="chief_complaint"
             required
@@ -222,7 +239,9 @@ export default function SolicitarInterconsulta({ paciente, token, onClose, onCre
             onChange={(e) => setChiefComplaint(e.target.value)}
           />
 
-          <label htmlFor="clinical_notes">Notas y estudios (opcional)</label>
+          <label className="label" htmlFor="clinical_notes">
+            Notas y estudios (opcional)
+          </label>
           <textarea
             id="clinical_notes"
             rows={3}
