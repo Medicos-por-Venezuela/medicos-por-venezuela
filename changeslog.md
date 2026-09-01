@@ -7,6 +7,19 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-09-01
 
+- **fix(panel-medico): el tiempo transcurrido cambia de unidad según la magnitud** — las
+  tarjetas imprimían los minutos crudos, así que un caso de la noche anterior decía "hace 1024
+  min": un número que hay que dividir mentalmente para saber si es de hace un rato o de ayer.
+  Ahora `tiempoTranscurrido` devuelve "45 min", "10 horas" o "1 día 8 horas" según corresponda,
+  y se usa en las tarjetas del panel, el detalle de la consulta y el monitor del admin.
+  Se corta en dos unidades a propósito: días y horas bastan para decidir a quién atender, y
+  "1 día 8 horas 12 min" no cabe en una tarjeta. `minutesSince` se conserva porque sigue siendo
+  el número que compara el KPI de "sin atender +20 min" — esto es solo presentación.
+  Spec E2E nuevo que envejece una consulta 32 h en la base y asierta el formato de días, con
+  una aserción negativa sobre los minutos crudos: si alguien vuelve a imprimirlos, se pone rojo.
+  Archivos: `lib/utils.ts`, `pages/panel-medico.tsx`, `pages/panel-medico/consulta/[id].tsx`,
+  `components/admin/ConsultationsMonitorModal.tsx`, `e2e/tiempo-transcurrido.spec.ts` (nuevo).
+
 - **refactor(panel-medico): el alta de paciente de consultorio pasa a un modal** — la página
   `/panel-medico/mis-pacientes` abría con el formulario de alta ocupando la primera pantalla, y
   la lista —que es a lo que se entra— quedaba debajo del pliegue. Ahora la página es la lista,
