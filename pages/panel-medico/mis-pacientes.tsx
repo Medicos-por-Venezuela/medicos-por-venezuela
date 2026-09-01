@@ -1,50 +1,35 @@
 // Pacientes de CONSULTORIO del médico: los que registra él mismo para pedir una interconsulta.
 // No entran a la cola pública ni tienen cuenta. Ver .knowledge/interconsultas.md del backend.
+//
+// La página es la LISTA. El alta vive en un modal (`RegistrarPacienteModal`) porque embebida
+// ocupaba toda la primera pantalla y empujaba a los pacientes debajo del pliegue — se entra aquí
+// a ver los pacientes, no a dar de alta uno, que es lo ocasional.
 import Seo from '../../components/Seo'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import ConfirmDialog from '../../components/admin/ConfirmDialog'
-import CedulaField from '../../components/CedulaField'
+import RegistrarPacienteModal from '../../components/RegistrarPacienteModal'
+import SolicitarInterconsulta from '../../components/SolicitarInterconsulta'
 import {
   archiveDoctorPatient,
-  createDoctorPatient,
   fetchMyDoctorPatients,
   type DoctorPatient
 } from '../../lib/doctorPatients'
-import SolicitarInterconsulta from '../../components/SolicitarInterconsulta'
-
-// Este formulario replica el de /registro-paciente en campos, orden y comportamiento: mismo
-// `CedulaField`, edad como NÚMERO (que es lo que guarda `age_range` allí, no un rango), alergia
-// como interruptor con detalle, y el consentimiento como aviso destacado. Un médico que ya usó
-// el registro público no debería tener que aprender otro formulario.
-//
-// Lo que NO se replica, a propósito: WhatsApp, zona y especialidad. El paciente de consultorio
-// no entra a la cola y nadie de la plataforma lo contacta; la especialidad se elige después, al
-// pedir la interconsulta.
-const VACIO = { full_name: '', edad: '', cedula: '', allergies: '', description: '' }
 
 export default function MisPacientes() {
   const router = useRouter()
   const [token, setToken] = useState('')
   const [loading, setLoading] = useState(true)
   const [pacientes, setPacientes] = useState<DoctorPatient[]>([])
-  const [form, setForm] = useState({ ...VACIO })
-  // El consentimiento es una atestación del médico: arranca apagado a propósito.
-  const [consent, setConsent] = useState(false)
-  // Interruptor de alergia, igual que /registro-paciente: evita el 'ninguna'/'no' escrito a mano.
-  const [hasAllergy, setHasAllergy] = useState(false)
-  const [guardando, setGuardando] = useState(false)
-  // Un estado de error por fuente: el fallo de la lista se recupera recargando, el del formulario
-  // corrigiendo y reenviando, y el de archivar reintentando esa acción. Compartir uno solo haría
-  // que el `setError('')` de cualquiera borrase el aviso de otro.
+  // Un estado de error por fuente: el fallo de la lista se recupera recargando y el de archivar
+  // reintentando esa acción. El del formulario vive dentro del modal, junto al formulario.
   const [errorCarga, setErrorCarga] = useState('')
-  const [errorForm, setErrorForm] = useState('')
   const [errorAccion, setErrorAccion] = useState('')
   const [aviso, setAviso] = useState('')
-  // Paciente sobre el que se está pidiendo interconsulta (null = ninguno).
+  // Modales abiertos (null / false = cerrado).
+  const [registrando, setRegistrando] = useState(false)
   const [pidiendoPara, setPidiendoPara] = useState<DoctorPatient | null>(null)
-  // Paciente pendiente de confirmar archivado (null = no hay confirmación abierta).
   const [porArchivar, setPorArchivar] = useState<DoctorPatient | null>(null)
   const [archivando, setArchivando] = useState(false)
 
@@ -68,38 +53,6 @@ export default function MisPacientes() {
       setErrorCarga(e instanceof Error ? e.message : 'No se pudieron cargar tus pacientes.')
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function registrar(e: React.FormEvent) {
-    e.preventDefault()
-    setErrorForm('')
-    setAviso('')
-    setGuardando(true)
-    try {
-      const creado = await createDoctorPatient(
-        {
-          full_name: form.full_name.trim(),
-          // `age_range` guarda la edad tal cual, igual que /registro-paciente (`age_range: edad`).
-          age_range: form.edad.trim() || null,
-          cedula: form.cedula.trim() || null,
-          // Sin el interruptor activo no se manda nada, aunque haya quedado texto escrito.
-          allergies: (hasAllergy && form.allergies.trim()) || null,
-          description: form.description.trim() || null,
-          consent
-        },
-        token
-      )
-      // Functional update: entre el await y este setState pudo cambiar la lista.
-      setPacientes((prev) => [creado, ...prev])
-      setForm({ ...VACIO })
-      setConsent(false)
-      setHasAllergy(false)
-      setAviso(`${creado.full_name} quedó registrado. Ya puedes pedir una interconsulta.`)
-    } catch (e) {
-      setErrorForm(e instanceof Error ? e.message : 'No se pudo registrar el paciente.')
-    } finally {
-      setGuardando(false)
     }
   }
 
@@ -133,10 +86,23 @@ export default function MisPacientes() {
             ← Volver al panel médico
           </button>
 
-          <h1>Mis pacientes de consultorio</h1>
-          <p style={{ color: '#64748b', marginTop: -8 }}>
-            Registra aquí a los pacientes que atiendes por fuera de la plataforma, para pedir una
-            segunda opinión sobre su caso. No entran a la cola pública ni reciben notificaciones.
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 12,
+              flexWrap: 'wrap'
+            }}
+          >
+            <h1 style={{ marginBottom: 0 }}>Mis pacientes de consultorio</h1>
+            <button className="btn btn-primary" onClick={() => setRegistrando(true)}>
+              + Registrar paciente
+            </button>
+          </div>
+          <p style={{ color: '#64748b' }}>
+            Los pacientes que atiendes por fuera de la plataforma, para pedir una segunda opinión
+            sobre su caso. No entran a la cola pública ni reciben notificaciones.
           </p>
 
           {aviso && (
@@ -150,128 +116,6 @@ export default function MisPacientes() {
             </div>
           )}
 
-          <section className="card" style={{ marginBottom: 20 }}>
-            <h2 style={{ marginTop: 0 }}>Registrar un paciente</h2>
-            {errorForm && (
-              <div className="notice notice-error" style={{ marginBottom: 12 }}>
-                {errorForm}
-              </div>
-            )}
-            <form onSubmit={registrar}>
-              <CedulaField
-                label="Cédula / DNI"
-                value={form.cedula}
-                onChange={(v) => setForm((f) => ({ ...f, cedula: v }))}
-              />
-
-              <div>
-                <label className="label" htmlFor="full_name">
-                  Nombre completo *
-                </label>
-                <input
-                  id="full_name"
-                  required
-                  minLength={2}
-                  value={form.full_name}
-                  onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                  placeholder="Ej. María González"
-                />
-              </div>
-
-              <div>
-                <label className="label" htmlFor="edad">
-                  Edad *
-                </label>
-                <input
-                  id="edad"
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  max={120}
-                  required
-                  value={form.edad}
-                  onChange={(e) => setForm({ ...form, edad: e.target.value })}
-                  placeholder="Ej. 34"
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={hasAllergy}
-                    onChange={(e) => setHasAllergy(e.target.checked)}
-                    style={{ width: 'auto' }}
-                  />
-                  ¿Tiene alguna alergia?
-                </label>
-                {hasAllergy && (
-                  <div style={{ marginTop: 10 }}>
-                    <label className="label" htmlFor="allergies">
-                      ¿A qué es alérgico? *
-                    </label>
-                    <input
-                      id="allergies"
-                      value={form.allergies}
-                      onChange={(e) => setForm({ ...form, allergies: e.target.value })}
-                      placeholder="Ej. Penicilina"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="label" htmlFor="description">
-                  Descripción breve *
-                </label>
-                <textarea
-                  id="description"
-                  rows={4}
-                  required
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  placeholder="Describe en pocas palabras qué le ocurre y si ya está tomando algún medicamento."
-                />
-              </div>
-
-              <label
-                className="notice notice-warning"
-                style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}
-              >
-                <input
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(e) => setConsent(e.target.checked)}
-                  style={{ width: 'auto', marginTop: 5 }}
-                />
-                <span>
-                  Declaro que mi paciente autorizó compartir esta información con un especialista de
-                  Médicos por Venezuela para obtener una segunda opinión. Entiendo que el
-                  especialista no verá su identidad ni sus datos de contacto.
-                </span>
-              </label>
-
-              <button
-                className="btn btn-primary btn-full"
-                type="submit"
-                disabled={
-                  guardando ||
-                  !consent ||
-                  form.full_name.trim().length < 2 ||
-                  !form.edad.trim() ||
-                  !form.description.trim() ||
-                  (hasAllergy && !form.allergies.trim())
-                }
-              >
-                {guardando ? 'Registrando...' : 'Registrar paciente'}
-              </button>
-            </form>
-            <p style={{ color: '#64748b', fontSize: 13 }}>
-              No pedimos teléfono ni ubicación: el especialista nunca contacta a tu paciente, se
-              comunica contigo.
-            </p>
-          </section>
-
           <section className="card">
             <h2 style={{ marginTop: 0 }}>Tus pacientes ({pacientes.length})</h2>
             {errorCarga && <div className="notice notice-error">{errorCarga}</div>}
@@ -279,7 +123,11 @@ export default function MisPacientes() {
               <p style={{ color: '#64748b' }}>Cargando...</p>
             ) : pacientes.length === 0 ? (
               <p style={{ color: '#64748b' }}>
-                Todavía no registraste ningún paciente de consultorio.
+                Todavía no registraste ningún paciente de consultorio.{' '}
+                <button className="link-button" onClick={() => setRegistrando(true)}>
+                  Registra el primero
+                </button>
+                .
               </p>
             ) : (
               <div className="grid">
@@ -306,6 +154,19 @@ export default function MisPacientes() {
           </section>
         </div>
       </main>
+
+      {registrando && (
+        <RegistrarPacienteModal
+          token={token}
+          onClose={() => setRegistrando(false)}
+          onCreated={(creado) => {
+            // Functional update: entre el await del modal y este setState pudo cambiar la lista.
+            setPacientes((prev) => [creado, ...prev])
+            setRegistrando(false)
+            setAviso(`${creado.full_name} quedó registrado. Ya puedes pedir una interconsulta.`)
+          }}
+        />
+      )}
 
       {pidiendoPara && (
         <SolicitarInterconsulta

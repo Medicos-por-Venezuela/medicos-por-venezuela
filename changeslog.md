@@ -7,6 +7,18 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-09-01
 
+- **refactor(panel-medico): el alta de paciente de consultorio pasa a un modal** — la página
+  `/panel-medico/mis-pacientes` abría con el formulario de alta ocupando la primera pantalla, y
+  la lista —que es a lo que se entra— quedaba debajo del pliegue. Ahora la página es la lista,
+  con un botón "+ Registrar paciente" que abre el formulario en un modal
+  (`components/RegistrarPacienteModal.tsx`, mismo patrón que `SolicitarInterconsulta`). El
+  formulario no cambió: los mismos campos, el mismo orden y las mismas validaciones. La página
+  baja de 330 a 200 líneas y pierde tres estados que ahora viven junto al formulario.
+  El spec E2E asierta que el formulario **no** está a la vista al entrar: si volviera a quedar
+  embebido, se pone rojo.
+  Archivos: `components/RegistrarPacienteModal.tsx` (nuevo),
+  `pages/panel-medico/mis-pacientes.tsx`, `e2e/interconsulta-asincrona.spec.ts`.
+
 - **feat(analytics): evento de conversión al solicitar una consulta** — GA4 solo enviaba
   pageviews (`gtag('config')` y nada más), así que no había forma de demostrar que un clic
   terminara en una consulta solicitada. Ahora se dispara `generate_lead` —el nombre recomendado
@@ -42,7 +54,6 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   `pages/panel-medico.tsx` (accesos), `e2e/interconsulta-asincrona.spec.ts` +
   `e2e/global-setup.ts` (doc2 pasa a ser el especialista). Requiere el backend con la Fase 1–5 de
   `tasks/interconsulta-asincrona`.
-
 
 ## 2026-08-30
 

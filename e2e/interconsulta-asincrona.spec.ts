@@ -24,16 +24,26 @@ test.describe('Interconsulta asíncrona', () => {
 
     await page.goto('/panel-medico/mis-pacientes')
 
-    // El formulario replica /registro-paciente, MENOS WhatsApp y zona: este paciente no entra a
-    // la cola y nadie de la plataforma lo contacta. Que esos campos NO estén es el feature.
-    await expect(page.getByLabel('WhatsApp')).toHaveCount(0)
-    await expect(page.getByLabel('Zona')).toHaveCount(0)
+    // El alta vive en un modal: la página es la LISTA. Que el formulario NO esté a la vista es
+    // parte del cambio — si volviera a estar embebido, este `toHaveCount(0)` lo caza.
+    await expect(page.getByLabel('Nombre completo *')).toHaveCount(0)
+    await page.getByRole('button', { name: '+ Registrar paciente' }).click()
 
-    await page.getByLabel('Nombre completo *').fill(PACIENTE)
-    await page.getByLabel('Edad *').fill('64')
-    await page.getByLabel('Descripción breve *').fill('Refiere dolor toracico desde hace dias.')
-    await page.getByLabel(/Declaro que mi paciente autorizó/).check()
-    await page.getByRole('button', { name: 'Registrar paciente' }).click()
+    const alta = page.getByRole('dialog', { name: 'Registrar un paciente' })
+    await expect(alta).toBeVisible()
+
+    // Replica /registro-paciente, MENOS WhatsApp y zona: este paciente no entra a la cola y nadie
+    // de la plataforma lo contacta. Que esos campos NO estén es el feature.
+    await expect(alta.getByLabel('WhatsApp')).toHaveCount(0)
+    await expect(alta.getByLabel('Zona')).toHaveCount(0)
+
+    // Todo acotado al diálogo: el encabezado de la página tiene su propio botón
+    // "+ Registrar paciente", y sin acotar el localizador encuentra dos y falla por ambigüedad.
+    await alta.getByLabel('Nombre completo *').fill(PACIENTE)
+    await alta.getByLabel('Edad *').fill('64')
+    await alta.getByLabel('Descripción breve *').fill('Refiere dolor toracico desde hace dias.')
+    await alta.getByLabel(/Declaro que mi paciente autorizó/).check()
+    await alta.getByRole('button', { name: 'Registrar paciente' }).click()
 
     await expect(page.getByText(`${PACIENTE} quedó registrado`)).toBeVisible()
 
