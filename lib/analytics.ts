@@ -112,3 +112,19 @@ export function trackEvent(nombre: string, params?: Record<string, string | numb
 export function trackSolicitudDeConsulta(): void {
   trackEvent('generate_lead', { method: 'registro-paciente' })
 }
+
+/**
+ * Conversión: un médico completó su registro y su ficha ya existe en el backend.
+ *
+ * `sign_up` y no `generate_lead` a propósito: son dos conversiones con valor muy distinto —una
+ * paciente que pide atención y un médico que se ofrece a darla— y con nombres separados GA4 y
+ * Ads las cuentan por separado en vez de sumarlas en un total que no dice nada. Ambos son
+ * nombres recomendados por GA4, así que los dos se reconocen sin configuración extra.
+ *
+ * Se dispara tras el 201 de `createDoctor`, no tras el `signUp` de Supabase: una cuenta creada
+ * cuyo alta en el backend falló no es un médico registrado, y ese caso existe (el catch de al
+ * lado cierra la sesión justo por eso).
+ */
+export function trackAltaDeMedico(): void {
+  trackEvent('sign_up', { method: 'registro-medico' })
+}
