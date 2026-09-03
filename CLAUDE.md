@@ -201,6 +201,7 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `lib/supabase.ts` — Supabase client (reads `NEXT_PUBLIC_*` env vars)
 - `lib/apiClient.ts` — FastAPI REST client (`NEXT_PUBLIC_API_URL`, Supabase JWT as Bearer, `ApiError`)
 - `lib/doctors.ts` — doctor REST endpoints (`/doctors/me` self-profile, specialties catalog)
+- `lib/reports.ts` — reports REST client (preview + `.xlsx` download; super_admin only)
 - `lib/auth.ts` — `signInWithGoogle()` OAuth helper (redirects to `/auth/callback`)
 - `lib/utils.ts` — status labels, specialty list, specialty↔needs matching (`matchesSpecialty`, `canAttend`)
 - `components/` — shared UI (e.g. `GoogleButton.tsx`)
@@ -228,6 +229,13 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
   says so instead of trying to detect it — detecting it would leak which emails have an account
 - `/admin` (+ `/admin/login` alias) — legacy admin entrance, redirects to `/login` (still `noindex`)
 - `/admin/dashboard` — admin dashboard (metrics, doctor revoke, case oversight)
+- `/admin/reportes` — **super_admin only**: filterable listing reports of doctors and patients,
+  exported to Excel. The table is rendered generically from the `columns` the backend sends
+  (`GET /api/v1/reports/{doctors,patients}`), so the preview and the `.xlsx` can never show
+  different columns; the download goes through `lib/reports.ts` (fetch + blob, because the
+  endpoint needs the JWT in a header and an `<a href>` can't send one). An `admin` gets a notice
+  instead of the page and doesn't see the sidebar link — the backend gates it with the
+  `reports.export` permission, seeded for `super_admin` alone, and audits every export
 
 ## Database (Supabase Postgres)
 
