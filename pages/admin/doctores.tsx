@@ -21,15 +21,6 @@ export default function AdminDoctores() {
   // Médicos online en vivo por Realtime Presence (el admin solo observa, no se anuncia).
   const onlineDoctors = useOnlineDoctors()
   const onlineIds = useMemo(() => new Set(onlineDoctors.map((d) => d.id)), [onlineDoctors])
-  // Especialidades de los médicos online, como [especialidad, conteo] desc.
-  const onlineBySpecialty = useMemo(() => {
-    const bySpec: Record<string, number> = {}
-    for (const d of onlineDoctors) {
-      const key = d.specialty || 'Sin especialidad'
-      bySpec[key] = (bySpec[key] || 0) + 1
-    }
-    return Object.entries(bySpec).sort((a, b) => b[1] - a[1])
-  }, [onlineDoctors])
 
   // Users (doctors/admins) table filters
   const [userSearch, setUserSearch] = useState('')
@@ -96,8 +87,6 @@ export default function AdminDoctores() {
     }
   }
 
-  const onlineCount = onlineBySpecialty.reduce((sum, [, n]) => sum + n, 0)
-
   if (loading) return <AdminLoading />
 
   return (
@@ -107,26 +96,6 @@ export default function AdminDoctores() {
           {message}
         </div>
       )}
-
-      <section className="card" style={{ marginBottom: 18 }}>
-        <h2 style={{ marginTop: 0 }}>
-          Especialidades conectadas ahora{' '}
-          <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 14 }}>
-            ({onlineCount} médicos online)
-          </span>
-        </h2>
-        {onlineBySpecialty.length === 0 ? (
-          <p style={{ color: '#64748b' }}>No hay médicos conectados en este momento.</p>
-        ) : (
-          <div className="tag-row">
-            {onlineBySpecialty.map(([spec, n]) => (
-              <span key={spec} className="badge badge-green">
-                {spec}: {n}
-              </span>
-            ))}
-          </div>
-        )}
-      </section>
 
       {/* Aprobación de credenciales (backend: GET /doctors + POST /doctors/{id}/approve). Va antes
           de la tabla de cuentas porque es la acción pendiente: un médico bloqueado por credencial

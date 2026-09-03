@@ -126,6 +126,33 @@ export const patchJson = <T>(
   token?: string
 ): Promise<T> => sendJson<T>('PATCH', path, payload, defaultErrorMessage, token)
 
+// Nombre de archivo que el backend fija en `Content-Disposition`. Devuelve null si la cabecera
+// no llega: en una respuesta cross-origin el navegador solo la deja leer si el backend la pone en
+// `Access-Control-Expose-Headers` (el nuestro lo hace), así que el caller necesita un fallback.
+function filenameFromDisposition(disposition: string | null): string | null {
+  if (!disposition) return null
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)
+  return match ? decodeURIComponent(match[1]) : null
+}
+
+// Descarga binaria autenticada (hoy: los reportes en Excel). No se puede hacer con un <a href>
+// normal porque el endpoint exige el JWT de Supabase en la cabecera `Authorization`, y un enlace
+// no manda cabeceras; de ahí el fetch + Blob.
+export async function getFile(
+  path: string,
+  defaultErrorMessage: string,
+  token?: string
+): Promise<{ blob: Blob; filename: string | null }> {
+  const res = await authedFetch(path, {}, token)
+  // El error de un endpoint de descarga sigue llegando como JSON (`detail`), así que se procesa
+  // con el mismo camino que el resto: el usuario ve "Acota el reporte...", no "error 422".
+  if (!res.ok) await raiseApiError(res, defaultErrorMessage)
+  return {
+    blob: await res.blob(),
+    filename: filenameFromDisposition(res.headers.get('Content-Disposition'))
+  }
+}
+
 export async function deleteJson(
   path: string,
   defaultErrorMessage: string,
