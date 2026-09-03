@@ -7,11 +7,15 @@ import { useRouter } from 'next/router'
 import { ReactNode, useState } from 'react'
 import { adminLogout, Profile } from '../../lib/admin'
 
-const NAV_ITEMS = [
+// `superAdminOnly`: el backend ya lo exige (permiso `reports.export`, sembrado solo para
+// super_admin), así que enseñarle el enlace a un admin sería ofrecerle una página que solo
+// puede darle un aviso de "no tienes acceso".
+const NAV_ITEMS: { href: string; label: string; superAdminOnly?: boolean }[] = [
   { href: '/admin/dashboard', label: 'Dashboard' },
   { href: '/admin/pacientes', label: 'Pacientes' },
   { href: '/admin/doctores', label: 'Doctores' },
   { href: '/admin/usuarios', label: 'Usuarios' },
+  { href: '/admin/reportes', label: 'Reportes', superAdminOnly: true },
   { href: '/admin/zonas-afectadas', label: 'Zonas' },
   { href: '/admin/especialidades', label: 'Especialidades' },
   { href: '/admin/tipos-profesionales', label: 'Tipos de Profesionales' }
@@ -57,7 +61,11 @@ export default function AdminLayout({
         <aside className={`admin-sidebar${menuOpen ? ' admin-sidebar-open' : ''}`}>
           <div className="admin-sidebar-brand">Médicos por Venezuela</div>
           <nav className="admin-nav">
-            {NAV_ITEMS.map((item) => (
+            {NAV_ITEMS.filter(
+              // `profile.role` es el rol admin EFECTIVO (lo resuelve useAdminGuard vía RBAC),
+              // así que esto también acierta con un dual doctor+super_admin.
+              (item) => !item.superAdminOnly || profile?.role === 'super_admin'
+            ).map((item) => (
               <Link
                 key={item.href}
                 href={item.href}

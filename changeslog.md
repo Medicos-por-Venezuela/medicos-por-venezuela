@@ -5,6 +5,34 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-03
+
+- **feat(admin): reportes de médicos y pacientes filtrables y exportables a Excel** — el panel
+  paginaba de 25 en 25 y para armar un informe había que ir copiando páginas a mano. Nueva
+  pantalla `/admin/reportes` con dos reportes (médicos y pacientes), filtros propios de cada uno
+  y un botón que descarga el `.xlsx` con **toda** la población que cumple el filtro, no la
+  página que se está viendo. Los datos y el archivo los genera el backend
+  (`GET /api/v1/reports/{doctors,patients}` + `/export`, repo `api-medicos-por-venezuela`), que
+  además resuelve los nombres (especialidad, tipo profesional, médico que registró al paciente)
+  y las cifras que solo salen de la base (consultas asignadas/cerradas, última consulta y el
+  estado del último caso del paciente).
+  **Solo `super_admin`**: exporta la ficha completa (cédulas, teléfonos, alergias) de miles de
+  personas a un archivo que sale de la plataforma, así que el permiso `reports.export` se
+  siembra para ese único rol; un `admin` no ve el enlace en el menú y, entrando por URL, recibe
+  un aviso en vez de la página. Cada exportación queda en `audit_log`.
+  La tabla se pinta **genéricamente** desde las `columns` que manda el backend, no con un JSX
+  por campo: es lo que garantiza que la vista previa y el Excel no puedan mostrar columnas
+  distintas, y que añadir un dato al reporte no requiera tocar el frontend.
+  Detalles que costaron: la descarga va por `fetch` + blob porque el endpoint pide el JWT en una
+  cabecera y un `<a href>` no manda cabeceras (y el backend tuvo que exponer
+  `Content-Disposition` en CORS para que el navegador pudiera leer el nombre del archivo); y las
+  fechas llegan ya convertidas a hora de Venezuela **sin zona**, así que se formatean como texto
+  y no con `new Date()` — pasarlas por el `Date` del navegador las volvería a desplazar y un
+  admin fuera del país vería horas distintas a las del Excel del mismo reporte.
+  Archivos: `pages/admin/reportes.tsx`, `lib/reports.ts`, `lib/apiClient.ts` (`getFile`),
+  `components/admin/AdminLayout.tsx` (enlace solo para super_admin), `e2e/admin-reportes.spec.ts`,
+  `CLAUDE.md`.
+
 ## 2026-09-01
 
 - **fix(panel-medico): el tiempo transcurrido cambia de unidad según la magnitud** — las

@@ -34,6 +34,10 @@ Thumbs.db
 /blob-report/
 /playwright/.cache/
 /.next-e2e/
+# Build manual fuera de `.next` (CLAUDE.md manda usarlo para no pisar el `.next` de un `next dev`
+# en marcha). ESLint ya lo ignoraba; sin esta línea, seguir esa instrucción deja el build entero
+# listo para commitear.
+/.next-build/
 
 # Material de origen del rediseño del home (agosto 2026): el prototipo de The Climb (10 MB), el
 # .docx del copy, la foto sin tocar (5 MB) y las fuentes en TTF. Es referencia para trabajar, no
