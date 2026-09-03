@@ -32,9 +32,9 @@ test('admin re-rutea un caso cambiando su especialidad (specialty_id)', async ({
   await page.goto('/admin/pacientes')
   await page.getByRole('button', { name: 'E2E Paciente Especialidad' }).first().click()
 
-  const gestionar = page
-    .locator('section.card')
-    .filter({ has: page.getByRole('heading', { name: 'Gestionar caso' }) })
+  // Gestionar caso es un MODAL (antes una tarjeta fija arriba de la página). Se ancla por el
+  // rol dialog y no por `.card`, que es solo la clase de estilo que le toque llevar.
+  const gestionar = page.getByRole('dialog', { name: 'Gestionar caso' })
   const espSelect = gestionar.locator('select').filter({
     has: page.locator('option', { hasText: '— Sin especialidad —' })
   })

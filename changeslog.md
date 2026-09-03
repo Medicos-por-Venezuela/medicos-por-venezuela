@@ -7,6 +7,25 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-09-03
 
+- **refactor(admin): limpieza de los paneles de médicos y pacientes** — se quitan dos bloques que
+  ocupaban la parte alta de la pantalla sin sostener ninguna decisión, y "Gestionar caso" pasa a
+  modal.
+  - `/admin/doctores`: fuera **"Especialidades conectadas ahora"**. El agregado por especialidad
+    (`onlineBySpecialty`/`onlineCount`) se va con ella; `useOnlineDoctors`/`onlineIds` **se
+    quedan**, que es lo que alimenta la columna _Online_ de la tabla de cuentas.
+  - `/admin/pacientes`: fuera **"Derivaciones por especialidad"** (y su `bySpecialty`), que además
+    solo contaba sobre las 200 consultas cargadas, no sobre el total — un desglose que parecía
+    global sin serlo.
+  - `/admin/pacientes`: **"Gestionar caso" ahora es un modal**. Como tarjeta fija ocupaba media
+    pantalla permanentemente para decir "selecciona una consulta", y al elegir una había que subir
+    a buscar el formulario y bajar otra vez a la tabla. El modal se abre sobre la fila que se acaba
+    de tocar, cierra con Escape / clic fuera / Cancelar (no mientras guarda) y devuelve la vista a
+    la lista. El aviso de resultado se pinta **también dentro** del modal: el único caso que lo
+    deja abierto es el fallo al guardar, y ahí el aviso de arriba queda tapado por el overlay.
+  - E2E: `admin-especialidad.spec.ts` se ancla al `role="dialog"` en vez de a `section.card` — la
+    clase de estilo no es contrato, el rol accesible sí.
+  - Ficheros: `pages/admin/doctores.tsx`, `pages/admin/pacientes.tsx`, `e2e/admin-especialidad.spec.ts`.
+
 - **feat(admin): reportes de médicos y pacientes filtrables y exportables a Excel** — el panel
   paginaba de 25 en 25 y para armar un informe había que ir copiando páginas a mano. Nueva
   pantalla `/admin/reportes` con dos reportes (médicos y pacientes), filtros propios de cada uno

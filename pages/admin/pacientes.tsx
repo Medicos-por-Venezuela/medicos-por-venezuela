@@ -66,6 +66,11 @@ export default function AdminPacientes() {
   useEscapeToClose(!!deleteTarget, () => {
     if (!deleting) setDeleteTarget(null)
   })
+  // Guardando no se cierra: perder el formulario a mitad de un PATCH deja al admin sin saber si
+  // el cambio entró.
+  useEscapeToClose(!!selected, () => {
+    if (!savingCase) setSelected(null)
+  })
   // Per-row inline edits of the notes in the cases table (keyed by consultation id).
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
   const [notaAdminDrafts, setNotaAdminDrafts] = useState<Record<string, string>>({})
@@ -158,18 +163,6 @@ export default function AdminPacientes() {
   }
 
   const isSuperAdmin = profile?.role === 'super_admin'
-  // Used only for the "Derivaciones por especialidad" breakdown (over the loaded recent cases).
-  const referred = consultations.filter((c) => c.status === 'referred_to_specialist')
-
-  const bySpecialty = useMemo(() => {
-    const counts: Record<string, number> = {}
-    referred.forEach((c) => {
-      const key = c.referred_specialty || 'Sin especialidad'
-      counts[key] = (counts[key] || 0) + 1
-    })
-    return Object.entries(counts)
-  }, [referred])
-
   const specialtyName = (id: string | null) =>
     (id && specialtyCatalog.find((s) => s.id === id)?.name) || ''
 
@@ -441,190 +434,6 @@ export default function AdminPacientes() {
           {message}
         </div>
       )}
-
-      <div className="grid grid-2" style={{ marginBottom: 18 }}>
-        <section className="card">
-          <h2 style={{ marginTop: 0 }}>Gestionar caso</h2>
-          {!selected ? (
-            <p style={{ color: '#64748b' }}>
-              Selecciona una consulta de la lista para reasignar el médico, cambiar el estado o
-              editar la nota.
-            </p>
-          ) : (
-            <div className="grid">
-              <div>
-                <h3 style={{ marginBottom: 4 }}>{selected.patients?.full_name || 'Paciente'}</h3>
-                <p style={{ marginTop: 0, color: '#64748b' }}>
-                  {selected.code} · {selected.patients?.affected_zone || '-'}
-                </p>
-              </div>
-              <div>
-                <label className="label">Médico asignado</label>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    value={doctorMenuOpen ? doctorQuery : caseDoctorName}
-                    placeholder="Buscar médico por nombre, especialidad o email…"
-                    onFocus={() => {
-                      setDoctorQuery('')
-                      setDoctorMenuOpen(true)
-                    }}
-                    onChange={(e) => setDoctorQuery(e.target.value)}
-                    onBlur={() => setDoctorMenuOpen(false)}
-                  />
-                  {doctorMenuOpen && (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        zIndex: 30,
-                        top: '100%',
-                        left: 0,
-                        right: 0,
-                        marginTop: 4,
-                        background: '#fff',
-                        border: '1px solid var(--border)',
-                        borderRadius: 10,
-                        maxHeight: 240,
-                        overflowY: 'auto',
-                        boxShadow: '0 8px 24px rgba(15,23,42,0.12)'
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onMouseDown={(e) => {
-                          e.preventDefault()
-                          setCaseDoctor('')
-                          setCaseDoctorName('')
-                          setDoctorMenuOpen(false)
-                        }}
-                        style={{
-                          display: 'block',
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '8px 12px',
-                          border: 'none',
-                          background: 'transparent',
-                          color: '#64748b'
-                        }}
-                      >
-                        Sin asignar
-                      </button>
-                      {doctorOptions.map((d) => (
-                        <button
-                          type="button"
-                          key={d.id}
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            setCaseDoctor(d.id)
-                            setCaseDoctorName(`${d.full_name} (${d.specialty || d.role})`)
-                            setDoctorMenuOpen(false)
-                          }}
-                          style={{
-                            display: 'block',
-                            width: '100%',
-                            textAlign: 'left',
-                            padding: '8px 12px',
-                            border: 'none',
-                            background: caseDoctor === d.id ? 'var(--green-light)' : 'transparent'
-                          }}
-                        >
-                          {d.full_name}{' '}
-                          <span style={{ color: '#94a3b8', fontSize: 13 }}>
-                            ({d.specialty || d.role})
-                          </span>
-                        </button>
-                      ))}
-                      {doctorOptions.length === 0 && (
-                        <div style={{ padding: '8px 12px', color: '#94a3b8', fontSize: 13 }}>
-                          {doctorQuery.trim() ? 'Sin resultados' : 'Escribe para buscar…'}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div>
-                <label className="label">Estado</label>
-                <select value={caseStatus} onChange={(e) => setCaseStatus(e.target.value)}>
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABELS[s] || s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label">Especialidad</label>
-                {/* `specialty_id` es la columna con la que la consulta matchea con el médico
-                    (el registro del paciente la setea): cambiarla re-rutea el caso. */}
-                <select
-                  value={caseSpecialtyId}
-                  onChange={(e) => setCaseSpecialtyId(e.target.value)}
-                >
-                  <option value="">— Sin especialidad —</option>
-                  {(caseSpecialtyId && !specialtyCatalog.some((s) => s.id === caseSpecialtyId)
-                    ? [{ id: caseSpecialtyId, name: 'Especialidad inactiva/desconocida' }]
-                    : []
-                  )
-                    .concat(specialtyCatalog)
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-              <div>
-                <label className="label">Nota interna</label>
-                <textarea rows={4} value={caseNote} onChange={(e) => setCaseNote(e.target.value)} />
-              </div>
-              <div className="grid grid-2">
-                <button className="btn btn-primary" onClick={saveCase} disabled={savingCase}>
-                  {savingCase ? 'Guardando...' : 'Guardar cambios'}
-                </button>
-                <button className="btn btn-muted" onClick={() => setSelected(null)}>
-                  Cancelar
-                </button>
-              </div>
-              {isSuperAdmin && (
-                <button
-                  className="btn btn-full"
-                  style={{ background: '#dc2626', color: '#fff' }}
-                  onClick={() => setDeleteTarget(selected)}
-                >
-                  Eliminar paciente y todos sus casos
-                </button>
-              )}
-            </div>
-          )}
-        </section>
-
-        <section className="card">
-          <h2 style={{ marginTop: 0 }}>Derivaciones por especialidad</h2>
-          {bySpecialty.length === 0 ? (
-            <p style={{ color: '#64748b' }}>No hay derivaciones pendientes.</p>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Especialidad</th>
-                  <th>Cantidad</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bySpecialty.map(([s, count]) => (
-                  <tr key={s}>
-                    <td>{s}</td>
-                    <td>{count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 12 }}>
-            Especialidades disponibles para derivar: {specialtyCatalog.length}.
-          </p>
-        </section>
-      </div>
 
       <section className="card">
         <h2 style={{ marginTop: 0 }}>
@@ -1041,6 +850,192 @@ export default function AdminPacientes() {
           </table>
         </div>
       </section>
+
+      {/* Gestionar caso: MODAL, no una tarjeta fija arriba. Como tarjeta ocupaba media pantalla
+          permanentemente para decir "selecciona una consulta", y al elegir una había que subir a
+          buscar el formulario y bajar otra vez a la tabla. El modal aparece sobre la fila que se
+          acaba de tocar y devuelve la vista a la lista al cerrarse. */}
+      {selected && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gestionar-caso-title"
+          onClick={() => !savingCase && setSelected(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.55)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'center',
+            padding: 16,
+            overflowY: 'auto',
+            zIndex: 1000
+          }}
+        >
+          <div
+            className="card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: 720, width: '100%', margin: 'auto' }}
+          >
+            <h2 id="gestionar-caso-title" style={{ marginTop: 0 }}>
+              Gestionar caso
+            </h2>
+            {/* El aviso también DENTRO del modal: como tarjeta se pintaba arriba de la página y se
+                veía, pero tras el overlay queda tapado — y el único caso que deja el modal abierto
+                es justo el fallo al guardar, que es cuando hay que leerlo. */}
+            {message && (
+              <div className="notice notice-info" style={{ marginBottom: 12 }}>
+                {message}
+              </div>
+            )}
+            <div className="grid">
+              <div>
+                <h3 style={{ marginBottom: 4 }}>{selected.patients?.full_name || 'Paciente'}</h3>
+                <p style={{ marginTop: 0, color: '#64748b' }}>
+                  {selected.code} · {selected.patients?.affected_zone || '-'}
+                </p>
+              </div>
+              <div>
+                <label className="label">Médico asignado</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    value={doctorMenuOpen ? doctorQuery : caseDoctorName}
+                    placeholder="Buscar médico por nombre, especialidad o email…"
+                    onFocus={() => {
+                      setDoctorQuery('')
+                      setDoctorMenuOpen(true)
+                    }}
+                    onChange={(e) => setDoctorQuery(e.target.value)}
+                    onBlur={() => setDoctorMenuOpen(false)}
+                  />
+                  {doctorMenuOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        zIndex: 30,
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        marginTop: 4,
+                        background: '#fff',
+                        border: '1px solid var(--border)',
+                        borderRadius: 10,
+                        maxHeight: 240,
+                        overflowY: 'auto',
+                        boxShadow: '0 8px 24px rgba(15,23,42,0.12)'
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          setCaseDoctor('')
+                          setCaseDoctorName('')
+                          setDoctorMenuOpen(false)
+                        }}
+                        style={{
+                          display: 'block',
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: '8px 12px',
+                          border: 'none',
+                          background: 'transparent',
+                          color: '#64748b'
+                        }}
+                      >
+                        Sin asignar
+                      </button>
+                      {doctorOptions.map((d) => (
+                        <button
+                          type="button"
+                          key={d.id}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            setCaseDoctor(d.id)
+                            setCaseDoctorName(`${d.full_name} (${d.specialty || d.role})`)
+                            setDoctorMenuOpen(false)
+                          }}
+                          style={{
+                            display: 'block',
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '8px 12px',
+                            border: 'none',
+                            background: caseDoctor === d.id ? 'var(--green-light)' : 'transparent'
+                          }}
+                        >
+                          {d.full_name}{' '}
+                          <span style={{ color: '#94a3b8', fontSize: 13 }}>
+                            ({d.specialty || d.role})
+                          </span>
+                        </button>
+                      ))}
+                      {doctorOptions.length === 0 && (
+                        <div style={{ padding: '8px 12px', color: '#94a3b8', fontSize: 13 }}>
+                          {doctorQuery.trim() ? 'Sin resultados' : 'Escribe para buscar…'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="label">Estado</label>
+                <select value={caseStatus} onChange={(e) => setCaseStatus(e.target.value)}>
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {STATUS_LABELS[s] || s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label">Especialidad</label>
+                {/* `specialty_id` es la columna con la que la consulta matchea con el médico
+                    (el registro del paciente la setea): cambiarla re-rutea el caso. */}
+                <select
+                  value={caseSpecialtyId}
+                  onChange={(e) => setCaseSpecialtyId(e.target.value)}
+                >
+                  <option value="">— Sin especialidad —</option>
+                  {(caseSpecialtyId && !specialtyCatalog.some((s) => s.id === caseSpecialtyId)
+                    ? [{ id: caseSpecialtyId, name: 'Especialidad inactiva/desconocida' }]
+                    : []
+                  )
+                    .concat(specialtyCatalog)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="label">Nota interna</label>
+                <textarea rows={4} value={caseNote} onChange={(e) => setCaseNote(e.target.value)} />
+              </div>
+              <div className="grid grid-2">
+                <button className="btn btn-primary" onClick={saveCase} disabled={savingCase}>
+                  {savingCase ? 'Guardando...' : 'Guardar cambios'}
+                </button>
+                <button className="btn btn-muted" onClick={() => setSelected(null)}>
+                  Cancelar
+                </button>
+              </div>
+              {isSuperAdmin && (
+                <button
+                  className="btn btn-full"
+                  style={{ background: '#dc2626', color: '#fff' }}
+                  onClick={() => setDeleteTarget(selected)}
+                >
+                  Eliminar paciente y todos sus casos
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {deleteTarget && (
         <div
