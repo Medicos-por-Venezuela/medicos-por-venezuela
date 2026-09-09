@@ -5,6 +5,57 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-09
+
+- **feat(videoconsulta): el paciente puede volver a su sala y el médico ve que entró** — dos
+  reportes encadenados.
+  - **El enlace de la sala vivía SOLO en la pestaña de `/sala-espera`**, la pantalla a la que cae
+    el paciente al registrarse. `/mi-caso` no lo mostraba, así que quien cerró aquella pestaña —o
+    entró, no había nadie todavía y se salió— se quedaba sin forma de volver, y el médico entraba
+    a una sala vacía. Ahora `/mi-caso` trae **“Unirse a la videoconsulta”** en cada consulta con
+    sala y en estado abierto (`waiting`/`in_progress`, los mismos dos que usa el backend).
+  - **El médico no sabía si el paciente había entrado.** La única señal era la presencia por
+    Realtime, que dice si el paciente tiene abierta una pestaña NUESTRA: al abrir Jitsi esa
+    pestaña pasa a segundo plano —en móvil el navegador la suspende y se cae el WebSocket— así
+    que la tarjeta decía “Sin conexión” justo cuando el paciente acababa de entrar a la sala con
+    él. Un indicador que se apaga cuando ocurre lo que anuncia.
+  - `components/EstadoPacienteBadge.tsx` separa las dos señales y las nombra por lo que de verdad
+    saben: **“🎥 Entró a la videollamada · hace X”** (de `entered_call_at`, persistido, sobrevive
+    a que muera la pestaña) y **“● En la página de espera”** (presencia Realtime, antes “● En
+    sala”, que se leía como “está en la videollamada”). Los `title` dicen lo que ninguna de las
+    dos sabe: si sigue DENTRO de la sala ahora mismo.
+  - `pages/entrar-videoconsulta.tsx`: puente del correo “tu médico te está esperando”. Registra la
+    entrada y redirige sola. El correo ya no enlaza a Jitsi directamente porque así el paciente
+    entraba sin que la plataforma se enterara. El registro va por JavaScript a propósito: los
+    escáneres de correo corporativos siguen los enlaces de un mensaje, y un `GET` que marcara la
+    entrada daría “el paciente entró” por culpa de un robot.
+  - El modal de instrucciones sale de `/sala-espera` a `components/AntesDeEntrarModal.tsx` (lo
+    abren dos páginas; nada de diálogos inline copiados) y gana cierre con Escape. `sala-espera`
+    baja de 228 a 145 líneas.
+  - E2E: `e2e/mi-caso-videoconsulta.spec.ts` cubre el flujo entero (registro por UI → abandonar la
+    sala de espera → volver por `/mi-caso` → entrar → el médico lo ve en su panel) y el gating por
+    estado. `paciente-en-linea.spec.ts` se actualiza a la etiqueta nueva.
+  - Ficheros: `pages/mi-caso.tsx`, `pages/entrar-videoconsulta.tsx`, `pages/sala-espera.tsx`,
+    `pages/panel-medico.tsx`, `pages/panel-medico/consulta/[id].tsx`,
+    `components/EstadoPacienteBadge.tsx`, `components/AntesDeEntrarModal.tsx`,
+    `lib/consultations.ts`, `lib/patients.ts`.
+- **feat(marca): logotipo blanco en PNG para el banner de los correos** — todos los correos que
+  manda la API pasan a llevar un banner navy (`#18202b`) con el logotipo. El banner necesita una
+  imagen que el correo pueda mostrar, y el SVG del sitio no sirve: **Gmail, Outlook y Yahoo
+  descartan un `<img>` que apunte a un SVG**, así que la cabecera saldría con el icono de imagen
+  rota justo en el sitio donde se mira primero.
+  - `scripts/build-logo-raster.mjs` pasa a generar **dos** mapas de bits desde los SVG de marca:
+    el de siempre para JSON-LD/Open Graph (navy sobre blanco) y el nuevo
+    `public/brand/logo-white-email.png` (400×153, blanco **aplanado sobre el navy**).
+  - Aplanado y no transparente a propósito, el mismo criterio que ya tenía el otro: hay clientes
+    de correo que pintan su propio fondo detrás de un PNG transparente, y ahí un logotipo blanco
+    desaparece. Con el fondo dentro de la imagen, el banner se ve igual pase lo que pase.
+  - ⚠️ **Hay que desplegarlo**: el correo apunta a
+    `medicosporvenezuela.org/brand/logo-white-email.png`. Hasta que ese archivo esté servido, el
+    banner llega vacío (navy con el texto alternativo).
+  - La maquetación y el envío viven en el repo de la API (`src/services/mail_layout.py`).
+  - Ficheros: `scripts/build-logo-raster.mjs`, `public/brand/logo-white-email.png`.
+
 ## 2026-09-04
 
 - **feat(admin): reporte de consultas exportable a Excel** — el modal "Consultas en progreso"

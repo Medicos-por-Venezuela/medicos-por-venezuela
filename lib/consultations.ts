@@ -62,6 +62,10 @@ export interface MyConsultation {
   referred_specialty: string | null
   created_at: string
   scheduled_at: string | null
+  // La sala de la videoconsulta. El backend ya la mandaba en esta vista (el paciente solo ve las
+  // suyas, scopeadas por `patients.user_id`); lo que faltaba era pedirla aquí. Es el único enlace
+  // permanente a la sala: el de `/sala-espera` vive en aquella pestaña y se pierde al cerrarla.
+  video_room_url: string | null
 }
 export async function fetchMyConsultations(token: string): Promise<MyConsultation[]> {
   return getJson<MyConsultation[]>(
@@ -104,6 +108,10 @@ export interface PanelConsultation {
   opened_at: string | null
   closed_at: string | null
   patient_last_seen_at: string | null
+  // Cuándo pulsó el paciente para entrar a la videollamada. Es la única señal DURADERA de que
+  // llegó: la presencia por Realtime se apaga en cuanto esta pestaña pasa a segundo plano, que
+  // es justo lo que ocurre al abrir la sala desde un móvil (ver EstadoPacienteBadge).
+  entered_call_at: string | null
   created_at: string
   patient: PanelPatient | null
 }

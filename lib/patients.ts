@@ -112,15 +112,19 @@ export async function ensureVideoRoom(
 
 // POST /api/v1/consultations/{id}/entered-call — idempotente: marca que el paciente entró a la
 // videollamada (entered_call_at, una sola vez). Reemplaza la RPC mark_patient_entered_call.
+// El `sessionToken` es la vía del paciente CON cuenta que vuelve por /mi-caso: el token de sala
+// se entregó una sola vez, en la URL de la sala de espera, y caduca a las 24 h. El backend acepta
+// su sesión como credencial para SU propia consulta (ver require_consultation_token).
 export async function markEnteredCall(
   consultationId: string,
-  roomToken?: string
+  roomToken?: string,
+  sessionToken?: string
 ): Promise<ConsultationResponse> {
   return postJson<ConsultationResponse>(
     `/api/v1/consultations/${consultationId}/entered-call`,
     {},
     'No se pudo registrar la entrada a la videollamada',
-    undefined,
+    sessionToken,
     roomHeaders(roomToken)
   )
 }
