@@ -5,6 +5,26 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-04
+
+- **feat(admin): reporte de consultas exportable a Excel** — el modal "Consultas en progreso"
+  del dashboard solo se podía mirar. Ahora esa misma tabla es un reporte: tercera pestaña en
+  `/admin/reportes` y un botón **Exportar a Excel** dentro del propio modal (solo `super_admin`).
+  Las cinco primeras columnas son, en orden, las del modal; detrás van las que una hoja de
+  cálculo necesita (código, teléfono, zona, fechas, seguimiento del admin).
+  - El Excel **no se arma con lo que hay en pantalla**: se pide al backend con el mismo filtro.
+    El modal pagina de 100 en 100 por estado, así que exportar lo visible daría un archivo
+    silenciosamente recortado.
+  - Los controles de filtro salen de `reportes.tsx` a `components/admin/ReportFilterControls.tsx`
+    (movimiento puro, hecho antes de añadir el tercer caso): la página baja de 560 a ~415 líneas
+    y deja de crecer con cada reporte nuevo.
+  - `ReportFilters` declara `status` aparte del intersection: significa cosas distintas por
+    reporte (un código en médicos, una lista en consultas) y sin sacarlo TypeScript infería
+    `string & string[]`, un tipo que nada satisface.
+  - Ficheros: `pages/admin/reportes.tsx`, `components/admin/ReportFilterControls.tsx`,
+    `components/admin/ConsultationsMonitorModal.tsx`, `pages/admin/dashboard.tsx`,
+    `lib/reports.ts`.
+
 ## 2026-09-03
 
 - **refactor(admin): limpieza de los paneles de médicos y pacientes** — se quitan dos bloques que

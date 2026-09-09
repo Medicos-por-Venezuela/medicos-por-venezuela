@@ -7,9 +7,10 @@
 // que añadir un dato al reporte no requiera tocar esta página.
 import { useEffect, useMemo, useState } from 'react'
 import AdminLayout, { AdminLoading } from '../../components/admin/AdminLayout'
+import ReportFilterControls from '../../components/admin/ReportFilterControls'
 import { fetchAffectedZoneCatalog } from '../../lib/api'
 import { ApiError } from '../../lib/apiClient'
-import { getAccessToken, useAdminGuard } from '../../lib/admin'
+import { getAccessToken, IN_PROGRESS_STATUSES, useAdminGuard } from '../../lib/admin'
 import {
   fetchProfessionalTypes,
   fetchSpecialties,
@@ -20,6 +21,7 @@ import {
   downloadReport,
   fetchReportPreview,
   ReportFilters,
+  filterText,
   ReportKind,
   ReportPreview
 } from '../../lib/reports'
@@ -37,22 +39,19 @@ const KINDS: { key: ReportKind; label: string; hint: string }[] = [
     key: 'patients',
     label: 'Pacientes',
     hint: 'Ficha, origen (cola pública o consultorio), consentimiento y estado de sus casos.'
+  },
+  {
+    key: 'consultations',
+    label: 'Consultas',
+    hint: 'La tabla del monitor del dashboard (estado, médico, paciente, tiempo y motivo), con el contacto y las fechas que hacen falta en una hoja de cálculo.'
   }
 ]
 
-// Los motivos de bloqueo del backend (`services/doctors._blocked_reason`), con la etiqueta que
-// ve el admin. Mismo criterio que el gate real de acceso de los médicos.
-const BLOCKED_REASONS: [string, string][] = [
-  ['sin_ficha', 'Sin ficha de médico'],
-  ['de_baja', 'Ficha de baja o expulsada'],
-  ['sin_cedula', 'Sin cédula'],
-  ['sin_licencia', 'Sin licencia'],
-  ['no_verificado', 'Credencial no verificada']
-]
-
-// Los rangos que ofrece el registro de pacientes. Se escriben tal cual en `patients.age_range`,
-// así que el filtro es por igualdad exacta contra estos valores.
-const AGE_RANGES = ['0-11', '12-17', '18-29', '30-39', '40-49', '50-59', '60-69', '70+']
+// Filtros con los que abre cada reporte. Consultas arranca en el set del monitor para que el
+// informe salga siendo exactamente esa tabla; desde ahí se puede ampliar a todos los estados.
+const DEFAULT_FILTERS: Partial<Record<ReportKind, ReportFilters>> = {
+  consultations: { status: [...IN_PROGRESS_STATUSES] }
+}
 
 // Las fechas llegan del backend YA convertidas a hora de Venezuela y SIN zona (un ISO naive,
 // p. ej. "2026-09-03T14:30:00"). Se formatean como texto a propósito: pasarlas por `new Date()`
@@ -121,14 +120,22 @@ export default function AdminReportes() {
   // usuario no puede ver ni quitar en el formulario nuevo.
   function switchKind(next: ReportKind) {
     setKind(next)
-    setFilters({})
+    setFilters(DEFAULT_FILTERS[next] ?? {})
     setSearchDraft('')
     setPage(0)
     setPreview(null)
     setExported('')
   }
 
+  // 'en_progreso' no es un estado de la base: es el nombre del PRESET que agrupa los seis del
+  // monitor. Se traduce aquí, en el único punto por el que pasan todos los cambios de filtro,
+  // para que ni el control ni el cliente HTTP tengan que conocer esa equivalencia.
   function setFilter(key: keyof ReportFilters, value: string) {
+    if (key === 'status' && value === 'en_progreso') {
+      setPage(0)
+      setFilters((prev) => ({ ...prev, status: [...IN_PROGRESS_STATUSES] }))
+      return
+    }
     setFilters((prev) => {
       // Devolver `prev` cuando nada cambia no es una micro-optimización: `filters` es una
       // dependencia del efecto que carga la vista previa, así que un objeto nuevo con el mismo
@@ -243,166 +250,14 @@ export default function AdminReportes() {
             onChange={(e) => setSearchDraft(e.target.value)}
           />
 
-          {kind === 'doctors' ? (
-            <>
-              <select
-                style={{ flex: '0 1 170px' }}
-                value={filters.status ?? ''}
-                onChange={(e) => setFilter('status', e.target.value)}
-                aria-label="Estado de la ficha"
-              >
-                <option value="">Todos los estados</option>
-                <option value="1">Activos</option>
-                <option value="0">De baja</option>
-                <option value="2">Expulsados</option>
-              </select>
-              <select
-                style={{ flex: '0 1 200px' }}
-                value={filters.can_practice ?? ''}
-                onChange={(e) => setFilter('can_practice', e.target.value)}
-                aria-label="Habilitación para atender"
-              >
-                <option value="">Habilitados y bloqueados</option>
-                <option value="true">Solo habilitados para atender</option>
-                <option value="false">Solo bloqueados</option>
-              </select>
-              <select
-                style={{ flex: '0 1 200px' }}
-                value={filters.blocked_reason ?? ''}
-                onChange={(e) => setFilter('blocked_reason', e.target.value)}
-                aria-label="Motivo de bloqueo"
-              >
-                <option value="">Cualquier motivo de bloqueo</option>
-                {BLOCKED_REASONS.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              <select
-                style={{ flex: '0 1 190px' }}
-                value={filters.verified ?? ''}
-                onChange={(e) => setFilter('verified', e.target.value)}
-                aria-label="Credencial verificada"
-              >
-                <option value="">Credencial: cualquiera</option>
-                <option value="true">Credencial verificada</option>
-                <option value="false">Credencial sin verificar</option>
-              </select>
-              <select
-                style={{ flex: '0 1 190px' }}
-                value={filters.specialty_id ?? ''}
-                onChange={(e) => setFilter('specialty_id', e.target.value)}
-                aria-label="Especialidad"
-              >
-                <option value="">Todas las especialidades</option>
-                {specialties.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                style={{ flex: '0 1 190px' }}
-                value={filters.professional_type_id ?? ''}
-                onChange={(e) => setFilter('professional_type_id', e.target.value)}
-                aria-label="Tipo profesional"
-              >
-                <option value="">Todos los tipos</option>
-                {types.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </>
-          ) : (
-            <>
-              <select
-                style={{ flex: '0 1 210px' }}
-                value={filters.origin ?? ''}
-                onChange={(e) => setFilter('origin', e.target.value)}
-                aria-label="Origen del paciente"
-              >
-                <option value="">Todos los orígenes</option>
-                <option value="publica">Cola pública</option>
-                <option value="consultorio">Consultorio (alta por médico)</option>
-              </select>
-              <select
-                style={{ flex: '0 1 190px' }}
-                value={filters.affected_zone ?? ''}
-                onChange={(e) => setFilter('affected_zone', e.target.value)}
-                aria-label="Zona afectada"
-              >
-                <option value="">Todas las zonas</option>
-                {zones.map((z) => (
-                  <option key={z} value={z}>
-                    {z}
-                  </option>
-                ))}
-              </select>
-              <select
-                style={{ flex: '0 1 160px' }}
-                value={filters.age_range ?? ''}
-                onChange={(e) => setFilter('age_range', e.target.value)}
-                aria-label="Rango de edad"
-              >
-                <option value="">Todas las edades</option>
-                {AGE_RANGES.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
-                ))}
-              </select>
-              <select
-                style={{ flex: '0 1 200px' }}
-                value={filters.has_consultations ?? ''}
-                onChange={(e) => setFilter('has_consultations', e.target.value)}
-                aria-label="Tiene consultas"
-              >
-                <option value="">Con y sin consultas</option>
-                <option value="true">Solo con consultas</option>
-                <option value="false">Solo sin ninguna consulta</option>
-              </select>
-              <select
-                style={{ flex: '0 1 180px' }}
-                value={filters.has_account ?? ''}
-                onChange={(e) => setFilter('has_account', e.target.value)}
-                aria-label="Tiene cuenta"
-              >
-                <option value="">Con y sin cuenta</option>
-                <option value="true">Solo con cuenta</option>
-                <option value="false">Solo sin cuenta</option>
-              </select>
-              <select
-                style={{ flex: '0 1 180px' }}
-                value={filters.consent ?? ''}
-                onChange={(e) => setFilter('consent', e.target.value)}
-                aria-label="Consentimiento"
-              >
-                <option value="">Consentimiento: cualquiera</option>
-                <option value="true">Con consentimiento</option>
-                <option value="false">Sin consentimiento</option>
-              </select>
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  flex: '0 1 200px',
-                  fontSize: 14,
-                  color: '#334155'
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={filters.include_archived === 'true'}
-                  onChange={(e) => setFilter('include_archived', e.target.checked ? 'true' : '')}
-                />
-                Incluir archivados
-              </label>
-            </>
-          )}
+          <ReportFilterControls
+            kind={kind}
+            filters={filters}
+            setFilter={setFilter}
+            specialties={specialties}
+            types={types}
+            zones={zones}
+          />
 
           <input
             type="date"

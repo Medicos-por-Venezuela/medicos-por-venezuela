@@ -103,6 +103,7 @@ export default function AdminDashboard() {
         items={monitorItems}
         loading={monitorLoading}
         error={monitorError}
+        canExport={profile?.role === 'super_admin'}
       />
     </AdminLayout>
   )
