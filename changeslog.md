@@ -39,6 +39,22 @@ Each entry: date, a short summary of what changed and why, and the key files/are
     `pages/panel-medico.tsx`, `pages/panel-medico/consulta/[id].tsx`,
     `components/EstadoPacienteBadge.tsx`, `components/AntesDeEntrarModal.tsx`,
     `lib/consultations.ts`, `lib/patients.ts`.
+- **feat(marca): logotipo blanco en PNG para el banner de los correos** — todos los correos que
+  manda la API pasan a llevar un banner navy (`#18202b`) con el logotipo. El banner necesita una
+  imagen que el correo pueda mostrar, y el SVG del sitio no sirve: **Gmail, Outlook y Yahoo
+  descartan un `<img>` que apunte a un SVG**, así que la cabecera saldría con el icono de imagen
+  rota justo en el sitio donde se mira primero.
+  - `scripts/build-logo-raster.mjs` pasa a generar **dos** mapas de bits desde los SVG de marca:
+    el de siempre para JSON-LD/Open Graph (navy sobre blanco) y el nuevo
+    `public/brand/logo-white-email.png` (400×153, blanco **aplanado sobre el navy**).
+  - Aplanado y no transparente a propósito, el mismo criterio que ya tenía el otro: hay clientes
+    de correo que pintan su propio fondo detrás de un PNG transparente, y ahí un logotipo blanco
+    desaparece. Con el fondo dentro de la imagen, el banner se ve igual pase lo que pase.
+  - ⚠️ **Hay que desplegarlo**: el correo apunta a
+    `medicosporvenezuela.org/brand/logo-white-email.png`. Hasta que ese archivo esté servido, el
+    banner llega vacío (navy con el texto alternativo).
+  - La maquetación y el envío viven en el repo de la API (`src/services/mail_layout.py`).
+  - Ficheros: `scripts/build-logo-raster.mjs`, `public/brand/logo-white-email.png`.
 
 ## 2026-09-04
 
