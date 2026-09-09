@@ -1,4 +1,5 @@
 import Seo from '../components/Seo'
+import AntesDeEntrarModal from '../components/AntesDeEntrarModal'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useRef, useState } from 'react'
@@ -134,95 +135,11 @@ export default function SalaEspera() {
         </div>
       </main>
 
-      {showWarning && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="warning-title"
-          onClick={() => setShowWarning(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.55)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            zIndex: 1000
-          }}
-        >
-          <div
-            className="card"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              maxWidth: 440,
-              width: '100%',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              position: 'relative'
-            }}
-          >
-            <button
-              type="button"
-              aria-label="Cerrar"
-              onClick={() => setShowWarning(false)}
-              style={{
-                position: 'absolute',
-                top: 12,
-                right: 12,
-                border: 'none',
-                background: 'transparent',
-                fontSize: 22,
-                lineHeight: 1,
-                cursor: 'pointer',
-                color: '#64748b'
-              }}
-            >
-              ✕
-            </button>
-            <h2 id="warning-title" style={{ marginTop: 0, paddingRight: 24 }}>
-              Antes de entrar a la videoconsulta
-            </h2>
-            <ul style={{ margin: '0 0 16px', paddingLeft: 18, lineHeight: 1.6 }}>
-              <li style={{ color: '#dc2626', fontWeight: 700 }}>
-                Escribe tu nombre completo cuando la videollamada te lo pida.
-              </li>
-              <li style={{ color: '#dc2626', fontWeight: 700 }}>
-                No cierres la videollamada: espera ahí a que tu médico se conecte (puede tardar
-                varios minutos).
-              </li>
-              <li>
-                Al abrir el enlace, elige <strong>“Continuar en el navegador”</strong> (no necesitas
-                descargar la app).
-              </li>
-              <li>
-                Pulsa <strong>“Permitir”</strong> cuando te pida cámara y micrófono.
-              </li>
-              <li>Mantén también esta página abierta en otra pestaña.</li>
-            </ul>
-            <div style={{ margin: '0 0 16px', textAlign: 'center' }}>
-              <p style={{ margin: '0 0 8px', fontWeight: 700 }}>
-                Si te aparece esta pantalla, toca{' '}
-                <span style={{ color: '#dc2626' }}>«Unirse en el navegador»</span>:
-              </p>
-              <img
-                src="/instruccion-jitsi.png"
-                alt="Pantalla de Jitsi: toca «Unirse en el navegador» para continuar sin descargar la app"
-                style={{
-                  width: '100%',
-                  maxWidth: 260,
-                  height: 'auto',
-                  borderRadius: 8,
-                  border: '1px solid #e5e7eb'
-                }}
-              />
-            </div>
-            <button className="btn btn-primary btn-full" onClick={openRoom}>
-              Entendido, entrar a la videoconsulta
-            </button>
-          </div>
-        </div>
-      )}
+      <AntesDeEntrarModal
+        open={showWarning}
+        onCancel={() => setShowWarning(false)}
+        onConfirm={openRoom}
+      />
     </>
   )
 }

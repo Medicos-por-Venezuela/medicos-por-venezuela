@@ -3,23 +3,25 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchMyConsultations, fetchMyProfile } from '../lib/consultations'
-import { fetchMyPatients } from '../lib/patients'
+import { fetchMyConsultations, fetchMyProfile, MyConsultation } from '../lib/consultations'
+import { fetchMyPatients, markEnteredCall } from '../lib/patients'
 import { resolvePostLoginRoute } from '../lib/postLogin'
 import { STATUS_LABELS } from '../lib/utils'
 import { requestNotifyPermission, scheduleLocalReminders } from '../lib/nativeNotifications'
 import CalendarSync from '../components/CalendarSync'
+import AntesDeEntrarModal from '../components/AntesDeEntrarModal'
 import { downloadIcs } from '../lib/calendar'
+import { browserRoomUrl } from '../lib/jitsi'
+import { trackPatientInRoom } from '../lib/patientPresence'
 
-type Consultation = {
-  id: string
-  code: string
-  status: string
-  category: string | null
-  chief_complaint: string | null
-  referred_specialty: string | null
-  created_at: string
-  scheduled_at: string | null
+// Estados en los que entrar a la sala todavía significa algo. Son los MISMOS dos que usa el
+// backend para decidir si cuenta la entrada del paciente (`_HEARTBEAT_OPEN_STATUSES` en
+// services/consultations.py): un caso cerrado o derivado conserva su `video_room_url` en la base,
+// y ofrecer ahí un botón mandaría al paciente a una sala a la que no va a entrar nadie.
+const SALA_ABIERTA = new Set(['waiting', 'in_progress'])
+
+function puedeEntrarASala(c: MyConsultation): boolean {
+  return Boolean(c.video_room_url) && SALA_ABIERTA.has(c.status)
 }
 
 export default function MiCaso() {
@@ -27,12 +29,54 @@ export default function MiCaso() {
   const [loading, setLoading] = useState(true)
   const [authed, setAuthed] = useState(false)
   const [patientName, setPatientName] = useState('')
-  const [consultations, setConsultations] = useState<Consultation[]>([])
+  const [consultations, setConsultations] = useState<MyConsultation[]>([])
+  // La consulta cuya sala pidió abrir (mientras el modal de instrucciones está arriba).
+  const [salaPendiente, setSalaPendiente] = useState<MyConsultation | null>(null)
+  // La consulta cuya sala ya abrió. Mientras esta página siga abierta, se anuncia al médico que
+  // el paciente está en sala (mismo criterio que `/sala-espera`, que anuncia mientras ELLA está
+  // abierta y no mientras lo está la pestaña de Jitsi — que no hay forma de vigilar).
+  const [enSala, setEnSala] = useState('')
 
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Presencia en vivo por Realtime (sin BD ni polling): es lo que pinta el badge "● En sala" en
+  // el panel del médico. Sin esto, un paciente que entra desde aquí en vez de desde la sala de
+  // espera le aparecería al médico como "○ Sin conexión" estando dentro de la sala.
+  useEffect(() => {
+    if (!enSala) return
+    return trackPatientInRoom(enSala)
+  }, [enSala])
+
+  // Abre la sala. Va DENTRO del clic de "Entendido" del modal para que `window.open` siga siendo
+  // parte de un gesto del usuario; fuera de él, el navegador lo bloquea como pop-up.
+  function abrirSala() {
+    const consulta = salaPendiente
+    setSalaPendiente(null)
+    if (!consulta?.video_room_url) return
+    setEnSala(consulta.id)
+    // La ventana se abre PRIMERO y sin esperar a nada: en cuanto haya un `await` de por medio,
+    // el navegador deja de considerar esto un gesto del usuario y bloquea el pop-up.
+    window.open(browserRoomUrl(consulta.video_room_url), '_blank', 'noopener,noreferrer')
+    // Y después se registra que entró. Es lo que el médico ve en su panel ("entró a la
+    // videollamada"): la presencia por Realtime se cae en cuanto esta pestaña pasa a segundo
+    // plano, que es exactamente lo que ocurre al abrir la sala desde un móvil. Fire-and-forget:
+    // que no se registre no puede impedir que el paciente entre a su consulta.
+    marcarEntrada(consulta.id)
+  }
+
+  async function marcarEntrada(consultationId: string) {
+    try {
+      const { data } = await supabase.auth.getSession()
+      // Sin token de sala: aquí el paciente llega con su sesión, y el backend la acepta como
+      // credencial para SU propia consulta (require_consultation_token).
+      await markEnteredCall(consultationId, undefined, data.session?.access_token)
+    } catch (e) {
+      console.error('No se pudo registrar la entrada a la videollamada:', e)
+    }
+  }
 
   // Recordatorio nativo ~30 min antes de las citas agendadas del paciente (solo con la pestaña
   // abierta; el email del backend es el canal confiable). Re-programa al cambiar sus consultas.
@@ -207,6 +251,25 @@ export default function MiCaso() {
                       <span className="badge badge-blue">Derivado a {c.referred_specialty}</span>
                     </p>
                   )}
+                  {/* El enlace PERMANENTE a la sala. El de `/sala-espera` vive en aquella pestaña
+                      y se pierde al cerrarla; hasta ahora, quien la cerraba no tenía forma de
+                      volver a entrar y el médico se encontraba una sala vacía. */}
+                  {puedeEntrarASala(c) && (
+                    <>
+                      <button
+                        className="btn btn-primary btn-full"
+                        style={{ marginTop: 4 }}
+                        onClick={() => setSalaPendiente(c)}
+                      >
+                        Unirse a la videoconsulta
+                      </button>
+                      <p style={{ color: '#64748b', fontSize: 13, margin: '8px 0 0' }}>
+                        {c.status === 'in_progress'
+                          ? 'Un médico ya tomó tu caso y entra por esta misma sala.'
+                          : 'Todavía estás en cola: puedes entrar y esperar dentro de la sala.'}
+                      </p>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -217,6 +280,12 @@ export default function MiCaso() {
           </div>
         </div>
       </main>
+
+      <AntesDeEntrarModal
+        open={salaPendiente !== null}
+        onCancel={() => setSalaPendiente(null)}
+        onConfirm={abrirSala}
+      />
     </>
   )
 }
