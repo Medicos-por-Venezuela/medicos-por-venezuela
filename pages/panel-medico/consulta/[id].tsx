@@ -41,6 +41,7 @@ import {
   type NotificationPrefs
 } from '../../../lib/notificationPrefs'
 import { usePatientsInRoom } from '../../../lib/patientPresence'
+import EstadoPacienteBadge from '../../../components/EstadoPacienteBadge'
 
 type Patient = {
   id: string
@@ -68,6 +69,10 @@ type Consultation = {
   internal_note: string | null
   video_room_url: string | null
   patient_last_seen_at: string | null
+  // Cuándo pulsó el paciente para entrar a la videollamada. Es la única señal DURADERA de que
+  // llegó: la presencia por Realtime se apaga en cuanto esta pestaña pasa a segundo plano, que
+  // es justo lo que ocurre al abrir la sala desde un móvil (ver EstadoPacienteBadge).
+  entered_call_at: string | null
   assigned_doctor_id: string | null
   attended_via_whatsapp: boolean
   patients: Patient | null
@@ -749,13 +754,10 @@ export default function ConsultaDetalle() {
                 Email (opcional): {consultation.patients?.email || '—'}
               </p>
               <div style={{ marginTop: 10 }}>
-                {patientsInRoom.has(consultation.id) ? (
-                  <span className="badge badge-green">● En sala</span>
-                ) : (
-                  <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>
-                    ○ Sin conexión
-                  </span>
-                )}
+                <EstadoPacienteBadge
+                  enteredCallAt={consultation.entered_call_at}
+                  inRoom={patientsInRoom.has(consultation.id)}
+                />
               </div>
               <div className="tag-row" style={{ marginTop: 12 }}>
                 {consultation.patients?.needs_tags?.map((t) => (

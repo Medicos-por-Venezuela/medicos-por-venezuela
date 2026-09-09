@@ -15,8 +15,14 @@ function accessToken(file: string): string {
 }
 
 // Verifica la presencia del paciente por Realtime Presence (reemplaza el heartbeat): un paciente en
-// su sala de espera se anuncia, y el médico que atiende su consulta lo ve "● En sala" EN VIVO, desde
-// otra sesión, sin recargar ni heartbeat.
+// su sala de espera se anuncia, y el médico que atiende su consulta lo ve EN VIVO, desde otra
+// sesión, sin recargar ni heartbeat.
+//
+// La etiqueta dice "En la página de espera" y ya no "En sala": es lo único que esta señal sabe
+// —que tiene abierta una pestaña NUESTRA— y leerla como "está en la videollamada" era el
+// malentendido que hacía que el médico viera "Sin conexión" justo cuando el paciente acababa de
+// entrar a Jitsi (esa pestaña pasa a segundo plano y se cae el WebSocket). Que el paciente entró
+// de verdad lo dice `entered_call_at`, otra señal y otro badge — ver EstadoPacienteBadge.
 test('paciente conectado en sala → el médico lo ve en línea (Realtime Presence)', async ({
   browser
 }) => {
@@ -55,8 +61,8 @@ test('paciente conectado en sala → el médico lo ve en línea (Realtime Presen
   await patientPage.goto(`/sala-espera?cid=${cid}&nombre=Test&room=r&code=ABC`)
   await expect(patientPage.getByRole('heading', { name: /Gracias/ })).toBeVisible()
 
-  // El médico lo ve "● En sala" EN VIVO (Realtime Presence), sin recargar.
-  await expect(doctorPage.getByText('● En sala')).toBeVisible({ timeout: 15000 })
+  // El médico lo ve EN VIVO (Realtime Presence), sin recargar.
+  await expect(doctorPage.getByText('● En la página de espera')).toBeVisible({ timeout: 15000 })
 
   // Y al cerrar la pestaña del paciente, Presence lo da de baja → vuelve a "Sin conexión".
   await patientCtx.close()

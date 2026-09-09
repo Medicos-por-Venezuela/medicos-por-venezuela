@@ -30,6 +30,7 @@ import {
 } from '../lib/interconsultations'
 import { ensureVideoRoom } from '../lib/patients'
 import { usePatientsInRoom } from '../lib/patientPresence'
+import EstadoPacienteBadge from '../components/EstadoPacienteBadge'
 import { fetchMyPermissions } from '../lib/users'
 
 type Patient = {
@@ -69,11 +70,12 @@ type Consultation = {
   patients: Patient | null
 }
 
-// La presencia del paciente "en sala" se lee por Realtime Presence (usePatientsInRoom), no por
-// heartbeat/patient_last_seen_at: `patientsInRoom.has(c.id)`.
+// Dónde está el paciente: dos señales distintas que pinta `EstadoPacienteBadge`. La presencia
+// (usePatientsInRoom, Realtime) dice si tiene abierta la página; `entered_call_at` dice si pulsó
+// para entrar a la videollamada. Ver el porqué de las dos en ese componente.
 
-// El backend (fetchPanel) devuelve el paciente como `patient` y omite campos que la cola no
-// muestra (entered_call_at, internal_note). Lo adaptamos al tipo Consultation que usa el panel.
+// El backend (fetchPanel) devuelve el paciente como `patient` y omite las notas internas, que la
+// cola no muestra. Lo adaptamos al tipo Consultation que usa el panel.
 function toConsultationRow(c: PanelConsultation): Consultation {
   return {
     id: c.id,
@@ -84,7 +86,7 @@ function toConsultationRow(c: PanelConsultation): Consultation {
     specialty: c.specialty,
     chief_complaint: c.chief_complaint,
     created_at: c.created_at,
-    entered_call_at: null,
+    entered_call_at: c.entered_call_at,
     opened_at: c.opened_at,
     closed_at: c.closed_at,
     referred_specialty: c.referred_specialty,
@@ -797,13 +799,7 @@ function ConsultationCard({
             {tiempoTranscurrido(c.created_at)}
           </div>
           <div style={{ marginTop: 4 }}>
-            {inRoom ? (
-              <span className="badge badge-green">● En sala</span>
-            ) : (
-              <span className="badge" style={{ background: '#e2e8f0', color: '#64748b' }}>
-                ○ Sin conexión
-              </span>
-            )}
+            <EstadoPacienteBadge enteredCallAt={c.entered_call_at} inRoom={inRoom} />
           </div>
         </div>
         <span className={`badge ${statusBadgeClass(c.status)}`}>
