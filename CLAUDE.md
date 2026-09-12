@@ -202,6 +202,7 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `lib/apiClient.ts` — FastAPI REST client (`NEXT_PUBLIC_API_URL`, Supabase JWT as Bearer, `ApiError`)
 - `lib/doctors.ts` — doctor REST endpoints (`/doctors/me` self-profile, specialties catalog)
 - `lib/reports.ts` — reports REST client (preview + `.xlsx` download; super_admin only)
+- `lib/marketing.ts` — marketing surveys REST client (public submit + super_admin list/`.xlsx`)
 - `lib/auth.ts` — `signInWithGoogle()` OAuth helper (redirects to `/auth/callback`)
 - `lib/utils.ts` — status labels, specialty list, specialty↔needs matching (`matchesSpecialty`, `canAttend`)
 - `components/` — shared UI (e.g. `GoogleButton.tsx`)
@@ -236,6 +237,17 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
   endpoint needs the JWT in a header and an `<a href>` can't send one). An `admin` gets a notice
   instead of the page and doesn't see the sidebar link — the backend gates it with the
   `reports.export` permission, seeded for `super_admin` alone, and audits every export
+- `/encuesta/psicologos`, `/encuesta/especialistas`, `/encuesta/medicos-generales` — **public**
+  marketing surveys (`noindex`, disallowed in robots) reached from mass emails sent with Kit. The
+  link carries the recipient's email (`?email={{ subscriber.email_address }}`), shown read-only;
+  without it the field becomes editable. One component for the three
+  (`components/marketing/EncuestaForm.tsx`, copy and option codes in `encuestas.ts`); submits to
+  `POST /api/v1/marketing/surveys/{slug}/responses`, and answering again with the same email
+  replaces the previous answer. The email is **not verified**, and it's stripped from what GA4
+  receives (`PARAMS_PRIVADOS` in `lib/analytics.ts`), since `page_location` carries the query
+- `/admin/marketing` — **super_admin only** (`marketing.read`): one tab per survey (Psicólogos,
+  Especialistas, Médico General) with the responses list, email/date filters, `.xlsx` export and
+  the ready-to-paste Kit link. Reuses Reportes' generic table (`components/admin/ReportTable.tsx`)
 
 ## Database (Supabase Postgres)
 

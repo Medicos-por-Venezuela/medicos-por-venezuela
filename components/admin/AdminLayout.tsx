@@ -7,15 +7,16 @@ import { useRouter } from 'next/router'
 import { ReactNode, useState } from 'react'
 import { adminLogout, Profile } from '../../lib/admin'
 
-// `superAdminOnly`: el backend ya lo exige (permiso `reports.export`, sembrado solo para
-// super_admin), así que enseñarle el enlace a un admin sería ofrecerle una página que solo
-// puede darle un aviso de "no tienes acceso".
+// `superAdminOnly`: el backend ya lo exige (permisos `reports.export` y `marketing.read`,
+// sembrados solo para super_admin), así que enseñarle el enlace a un admin sería ofrecerle una
+// página que solo puede darle un aviso de "no tienes acceso".
 const NAV_ITEMS: { href: string; label: string; superAdminOnly?: boolean }[] = [
   { href: '/admin/dashboard', label: 'Dashboard' },
   { href: '/admin/pacientes', label: 'Pacientes' },
   { href: '/admin/doctores', label: 'Doctores' },
   { href: '/admin/usuarios', label: 'Usuarios' },
   { href: '/admin/reportes', label: 'Reportes', superAdminOnly: true },
+  { href: '/admin/marketing', label: 'Marketing', superAdminOnly: true },
   { href: '/admin/zonas-afectadas', label: 'Zonas' },
   { href: '/admin/especialidades', label: 'Especialidades' },
   { href: '/admin/tipos-profesionales', label: 'Tipos de Profesionales' }

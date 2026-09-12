@@ -17,5 +17,6 @@ Disallow: /sala-espera
 Disallow: /elegir-rol
 Disallow: /login
 Disallow: /login-medico
+Disallow: /encuesta
 
 Sitemap: https://medicosporvenezuela.org/sitemap.xml

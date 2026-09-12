@@ -31,6 +31,26 @@ export const CONDICION_PRODUCCION =
   `location.protocol === 'https:' && ` +
   `${JSON.stringify(DOMINIOS_PRODUCCION)}.indexOf(location.hostname) !== -1`
 
+// Parámetros de la URL que NUNCA deben llegar a Google.
+//
+// GA4 manda en cada vista la URL completa de la página (`page_location`), query incluida, y las
+// encuestas de marketing se abren con el correo del médico en el enlace
+// (`/encuesta/psicologos?email=…`, lo pone la herramienta de envío masivo). Sin quitarlo, cada
+// visita le entregaría a Google el correo de una persona identificable — y es justo lo que
+// `trackEvent` promete no hacer.
+//
+// Tiene que resolverse AQUÍ, en lo que se le manda a gtag, y no en la página: el snippet de
+// `_document` envía la primera vista antes de que exista ningún componente capaz de limpiar la URL.
+export const PARAMS_PRIVADOS = ['email']
+
+// La URL sin los parámetros privados. Versión para la aplicación (ver `pages/_app.tsx`); el snippet
+// de abajo lleva la misma lógica en línea.
+export function urlSinParamsPrivados(url: string): URL {
+  const limpia = new URL(url, window.location.origin)
+  for (const param of PARAMS_PRIVADOS) limpia.searchParams.delete(param)
+  return limpia
+}
+
 // Versión para el código de la aplicación (ver `pages/_app.tsx`). Devuelve false en el servidor.
 export function esProduccion(): boolean {
   if (typeof window === 'undefined') return false
@@ -48,6 +68,8 @@ export function esProduccion(): boolean {
 //      `window.`. El snippet de Google, tal cual, deja `dataLayer` y la variable del <script> como
 //      globales sueltas: en una página que ya carga Supabase y Realtime, no hace falta añadir dos
 //      nombres más al espacio global para que alguien los pise sin darse cuenta.
+//   3. `page_location` va explícito y sin `PARAMS_PRIVADOS` (ver arriba). Solo se quitan esos: el
+//      resto de la query se conserva, porque de ahí lee GA4 los `utm_*` de las campañas.
 //
 // `gtag.js` lee `window.dataLayer` por su nombre, así que encapsularlo no le afecta.
 export const SNIPPET_GA = `
@@ -61,7 +83,9 @@ export const SNIPPET_GA = `
   function gtag() { window.dataLayer.push(arguments); }
   window.gtag = gtag;
   gtag('js', new Date());
-  gtag('config', '${GA_ID}');
+  var ubicacion = new URL(location.href);
+  ${JSON.stringify(PARAMS_PRIVADOS)}.forEach(function (p) { ubicacion.searchParams.delete(p); });
+  gtag('config', '${GA_ID}', { page_location: ubicacion.href });
 })();
 `.trim()
 

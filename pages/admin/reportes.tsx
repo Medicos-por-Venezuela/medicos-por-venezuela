@@ -3,11 +3,12 @@
 // ese único rol; acá se refleja para no ofrecer un botón que va a dar 403).
 //
 // La tabla se pinta de forma GENÉRICA desde las `columns` que manda el backend, no con un JSX
-// por campo: es lo que garantiza que la vista previa y el .xlsx tengan las mismas columnas, y
-// que añadir un dato al reporte no requiera tocar esta página.
+// por campo (ver components/admin/ReportTable.tsx): es lo que garantiza que la vista previa y el
+// .xlsx tengan las mismas columnas, y que añadir un dato al reporte no requiera tocar esta página.
 import { useEffect, useMemo, useState } from 'react'
 import AdminLayout, { AdminLoading } from '../../components/admin/AdminLayout'
 import ReportFilterControls from '../../components/admin/ReportFilterControls'
+import ReportTable from '../../components/admin/ReportTable'
 import { fetchAffectedZoneCatalog } from '../../lib/api'
 import { ApiError } from '../../lib/apiClient'
 import { getAccessToken, IN_PROGRESS_STATUSES, useAdminGuard } from '../../lib/admin'
@@ -51,23 +52,6 @@ const KINDS: { key: ReportKind; label: string; hint: string }[] = [
 // informe salga siendo exactamente esa tabla; desde ahí se puede ampliar a todos los estados.
 const DEFAULT_FILTERS: Partial<Record<ReportKind, ReportFilters>> = {
   consultations: { status: [...IN_PROGRESS_STATUSES] }
-}
-
-// Las fechas llegan del backend YA convertidas a hora de Venezuela y SIN zona (un ISO naive,
-// p. ej. "2026-09-03T14:30:00"). Se formatean como texto a propósito: pasarlas por `new Date()`
-// haría que el navegador las interprete como hora local del equipo y volviera a desplazarlas —
-// un admin en España vería +6 horas sobre la hora que dice el Excel del mismo reporte.
-function fmtNaive(value: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value)
-  if (!m) return value
-  const [, y, mo, d, hh, mm] = m
-  return `${d}/${mo}/${y} ${hh}:${mm}`
-}
-
-function cellText(value: string | number | null | undefined, kind: 'text' | 'datetime'): string {
-  if (value === null || value === undefined || value === '') return '—'
-  if (kind === 'datetime' && typeof value === 'string') return fmtNaive(value)
-  return String(value)
 }
 
 export default function AdminReportes() {
@@ -200,7 +184,6 @@ export default function AdminReportes() {
 
   const total = preview?.total ?? 0
   const activeFilters = preview?.filters ?? []
-  const columns = preview?.columns ?? []
   const kindMeta = useMemo(() => KINDS.find((k) => k.key === kind)!, [kind])
 
   if (loading) return <AdminLoading />
@@ -342,73 +325,15 @@ export default function AdminReportes() {
           </div>
         )}
 
-        <div style={{ overflowX: 'auto' }}>
-          <table className="table">
-            <thead>
-              <tr>
-                {columns.map((c) => (
-                  <th key={c.key} style={{ whiteSpace: 'nowrap' }}>
-                    {c.header}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {!preview || preview.rows.length === 0 ? (
-                <tr>
-                  <td colSpan={Math.max(columns.length, 1)} style={{ color: '#64748b' }}>
-                    {previewLoading ? 'Cargando...' : 'Ningún registro coincide con estos filtros.'}
-                  </td>
-                </tr>
-              ) : (
-                preview.rows.map((row, i) => (
-                  <tr key={String(row.doctor_id || row.patient_id || i)}>
-                    {columns.map((c) => (
-                      <td key={c.key} style={{ whiteSpace: 'nowrap' }}>
-                        {cellText(row[c.key], c.kind)}
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            gap: 8,
-            marginTop: 12,
-            flexWrap: 'wrap'
-          }}
-        >
-          <span style={{ color: '#64748b', fontSize: 13 }}>
-            {total === 0
-              ? 'Sin resultados'
-              : `Mostrando ${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, total)} de ${total}`}
-          </span>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              type="button"
-              className="btn btn-muted"
-              disabled={page === 0 || previewLoading}
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-            >
-              Anterior
-            </button>
-            <button
-              type="button"
-              className="btn btn-muted"
-              disabled={(page + 1) * PAGE_SIZE >= total || previewLoading}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Siguiente
-            </button>
-          </div>
-        </div>
+        <ReportTable
+          preview={preview}
+          loading={previewLoading}
+          page={page}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
+          emptyText="Ningún registro coincide con estos filtros."
+          rowKey={(row, i) => String(row.doctor_id || row.patient_id || i)}
+        />
       </section>
     </AdminLayout>
   )
