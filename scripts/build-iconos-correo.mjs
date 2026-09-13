@@ -19,6 +19,9 @@
 //     cualquier fondo. El recuadro, si se quiere, lo pinta el HTML: una celda de 36 px con
 //     `background-color` y `border-radius`. Ojo con los sueltos sobre blanco: su gris es claro.
 //
+// Corazón, escudo y persona (del correo de médicos generales, `MPV_correo_medicos_generales_*.html`)
+// salen solo sin fondo: son sueltos en `--ink-soft` y llegaron cuando los correos ya iban en claro.
+//
 // Son archivos distintos, no una sustitución: `/img/**` se cachea una semana, y el proxy de
 // imágenes de Gmail guarda su propia copia, así que cambiar el contenido bajo la misma URL seguiría
 // mostrando el viejo. Y un correo ya enviado no debe cambiar de aspecto.
@@ -56,7 +59,12 @@ const TRAZOS = {
     'l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1' +
     ' 8 8v.5z"/>',
   check:
-    '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>'
+    '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+  corazon:
+    '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1' +
+    'a5.5 5.5 0 0 0 0-7.8z"/>',
+  escudo: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>',
+  persona: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>'
 }
 
 function icono(trazos, { x, y, lado, color }) {
@@ -119,7 +127,10 @@ const SALIDAS = [
     svg: sinFondo(TRAZOS.candado, INK_SOFT)
   },
   { destino: 'public/img/icono-mensaje-sin-fondo.png', svg: sinFondo(TRAZOS.mensaje, INK_SOFT) },
-  { destino: 'public/img/icono-check-sin-fondo.png', svg: sinFondo(TRAZOS.check, INK_SOFT) }
+  { destino: 'public/img/icono-check-sin-fondo.png', svg: sinFondo(TRAZOS.check, INK_SOFT) },
+  { destino: 'public/img/icono-corazon-sin-fondo.png', svg: sinFondo(TRAZOS.corazon, INK_SOFT) },
+  { destino: 'public/img/icono-escudo-sin-fondo.png', svg: sinFondo(TRAZOS.escudo, INK_SOFT) },
+  { destino: 'public/img/icono-persona-sin-fondo.png', svg: sinFondo(TRAZOS.persona, INK_SOFT) }
 ]
 
 function resolverSharp() {
