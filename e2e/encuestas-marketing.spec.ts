@@ -117,6 +117,9 @@ test('psicólogo: sin correo en el enlace, el campo es editable y la ubicación 
   await page.getByLabel('Tarde', { exact: true }).check()
   await page.getByLabel('Sábado', { exact: true }).check()
   await page.getByLabel('Más de 6 horas a la semana').check()
+  // El campo de texto de la ubicación está a la vista desde el principio, como en el diseño: no
+  // espera a que se elija "Otra".
+  await expect(page.getByLabel('Tu país o zona horaria')).toBeVisible()
   await page.getByLabel('¿Dónde estás?').selectOption({ label: 'Otra (se la indico abajo)' })
   await page.getByLabel('Tu país o zona horaria').fill('Japón (GMT+9)')
   await page.getByRole('button', ENVIAR).click()
