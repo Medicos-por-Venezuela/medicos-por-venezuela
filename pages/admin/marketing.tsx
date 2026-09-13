@@ -1,15 +1,15 @@
 // /admin/marketing — las respuestas de las encuestas de marketing: una pestaña por encuesta
 // (Psicólogos, Especialistas, Médico General) con el total de respuestas en su nombre, búsqueda
-// por correo, rango de fechas y exportación a Excel, y una pestaña de Gráficos para decidir con
-// las respuestas agregadas.
+// por correo, rango de fechas y exportación a Excel, y una pestaña de Gráficos con el tablero de la
+// campaña (embudo de Kit a la respuesta, respuestas en el tiempo y qué respondieron).
 //
 // Solo super_admin: el backend lo exige con el permiso `marketing.read`, sembrado para ese único
 // rol, y aquí se refleja para no ofrecer una página que solo puede dar 403 (mismo criterio que
 // /admin/reportes, cuya tabla genérica reutiliza).
 import { useEffect, useState } from 'react'
 import AdminLayout, { AdminLoading } from '../../components/admin/AdminLayout'
+import MarketingDashboard from '../../components/admin/marketing/MarketingDashboard'
 import ReportTable from '../../components/admin/ReportTable'
-import SurveyCharts from '../../components/admin/SurveyCharts'
 import { getAccessToken, useAdminGuard } from '../../lib/admin'
 import { ApiError } from '../../lib/apiClient'
 import {
@@ -20,6 +20,7 @@ import {
   SurveySlug
 } from '../../lib/marketing'
 import type { ReportPreview } from '../../lib/reports'
+import { useFilterState } from '../../lib/useFilterState'
 
 const PAGE_SIZE = 25
 
@@ -43,7 +44,7 @@ const SURVEY_TABS: { slug: SurveySlug; label: string; hint: string }[] = [
 
 const CHARTS_TAB = 'graficos'
 const CHARTS_HINT =
-  'Las respuestas agregadas para decidir: cuándo hay cobertura, cuántas horas ofrecen, cómo quieren participar y desde dónde se conectan.'
+  'Para decidir con la campaña: del correo de Kit a la respuesta, cuándo llegan las respuestas y qué respondieron.'
 
 type Tab = SurveySlug | typeof CHARTS_TAB
 
@@ -52,10 +53,14 @@ export default function AdminMarketing() {
   const isSuperAdmin = profile?.role === 'super_admin'
 
   const [tab, setTab] = useState<Tab>('psicologos')
-  // La última encuesta abierta: la lista la usa, y los gráficos abren con ella.
+  // La última encuesta abierta, la que enseña la lista al volver desde Gráficos.
   const [survey, setSurvey] = useState<SurveySlug>('psicologos')
   const [totals, setTotals] = useState<Partial<Record<SurveySlug, number>>>({})
-  const [filters, setFilters] = useState<SurveyResponseFilters>({})
+  const {
+    filters,
+    setFilter: setFilterValue,
+    clearFilters: clearFilterValues
+  } = useFilterState<SurveyResponseFilters>()
   const [searchDraft, setSearchDraft] = useState('')
   const [page, setPage] = useState(0)
   const [preview, setPreview] = useState<ReportPreview | null>(null)
@@ -69,9 +74,12 @@ export default function AdminMarketing() {
 
   // `search` con debounce para no lanzar una consulta por tecla.
   useEffect(() => {
-    const t = setTimeout(() => setFilter('search', searchDraft), 300)
+    const t = setTimeout(() => {
+      setFilterValue('search', searchDraft)
+      setPage(0)
+    }, 300)
     return () => clearTimeout(t)
-  }, [searchDraft])
+  }, [searchDraft, setFilterValue])
 
   // El número de cada pestaña, sin filtros. Si falla, las pestañas salen sin número: no bloquea
   // nada, así que no merece un aviso que tape la lista.
@@ -92,15 +100,7 @@ export default function AdminMarketing() {
   }, [isSuperAdmin])
 
   function setFilter(key: keyof SurveyResponseFilters, value: string) {
-    setFilters((prev) => {
-      // Devolver `prev` si nada cambia: `filters` es dependencia de la carga, y un objeto nuevo
-      // con el mismo contenido volvería a pedir la lista (el debounce llama aquí al montar).
-      if ((prev[key] ?? '') === value) return prev
-      const next = { ...prev }
-      if (value === '') delete next[key]
-      else next[key] = value
-      return next
-    })
+    setFilterValue(key, value)
     setPage(0)
   }
 
@@ -117,7 +117,7 @@ export default function AdminMarketing() {
   }
 
   function clearFilters() {
-    setFilters({})
+    clearFilterValues()
     setSearchDraft('')
     setPage(0)
   }
@@ -197,7 +197,12 @@ export default function AdminMarketing() {
   return (
     <AdminLayout title="Marketing" profile={profile}>
       <section className="card" style={{ marginBottom: 18 }}>
-        <div className="tag-row" role="tablist" aria-label="Encuestas" style={{ marginBottom: 12 }}>
+        <div
+          className="tag-row"
+          role="tablist"
+          aria-label="Secciones de Marketing"
+          style={{ marginBottom: 12 }}
+        >
           {tabs.map((t) => (
             <button
               key={t.slug}
@@ -220,7 +225,7 @@ export default function AdminMarketing() {
 
       <div role="tabpanel" id="panel-marketing" aria-labelledby={`tab-${tab}`}>
         {tab === CHARTS_TAB ? (
-          <SurveyCharts surveys={SURVEY_TABS} initialSurvey={survey} />
+          <MarketingDashboard />
         ) : (
           <>
             <section className="card" style={{ marginBottom: 18 }}>

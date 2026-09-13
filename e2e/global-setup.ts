@@ -66,8 +66,11 @@ async function ensureAuthUser(email: string): Promise<string> {
     email_confirm: true
   })
   if (created.data?.user) return created.data.user.id
-  // Ya existía: lo buscamos y le fijamos la contraseña conocida.
-  const list = await admin.auth.admin.listUsers()
+  // Ya existía: lo buscamos y le fijamos la contraseña conocida. `perPage` explícito: por defecto
+  // `listUsers()` trae solo los primeros 50, y con la suite del backend creando usuarios en el
+  // Supabase local, las cuentas de prueba quedaban fuera de esa primera página y el setup fallaba
+  // con "No pude crear ni encontrar".
+  const list = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
   if (list.error) {
     throw new Error(`No pude listar los usuarios de auth: ${list.error.message}`)
   }

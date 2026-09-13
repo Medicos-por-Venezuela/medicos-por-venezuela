@@ -142,6 +142,55 @@ export interface SurveyStatsFilters {
   answered_to?: string
 }
 
+export interface MarketingCampaign {
+  id: number // id del envío en Kit
+  subject: string
+  sent_at: string // ISO en UTC
+  recipients: number
+  opened: number // personas que lo abrieron
+  clicked: number // personas que hicieron clic, no clics totales
+  unsubscribed: number
+}
+
+// El embudo de una encuesta. Espejo de `SurveyPerformanceResponse` en el backend. Las métricas de
+// Kit vienen en `null` cuando no hay datos de Kit o la encuesta no tiene envíos: no es un 0.
+export interface SurveyPerformance {
+  survey: SurveySlug
+  campaigns: MarketingCampaign[]
+  recipients: number | null
+  opened: number | null
+  clicked: number | null
+  unsubscribed: number | null
+  responses: number // todas las guardadas
+  responses_after_send: number | null // las llegadas desde el primer envío: numerador de la tasa
+  first_sent_at: string | null
+}
+
+export type KitStatus = 'ok' | 'not_configured' | 'unavailable'
+
+export interface MarketingPerformance {
+  kit_status: KitStatus
+  kit_fetched_at: string | null
+  surveys: SurveyPerformance[]
+  timeline: {
+    granularity: 'hour' | 'day'
+    buckets: string[] // inicio de cada tramo, ISO en UTC
+    responses: Record<SurveySlug, number[]> // respuestas NUEVAS por tramo
+  }
+}
+
+// `refresh` pide a la API que vuelva a consultar a Kit en vez de reutilizar sus métricas.
+export function fetchMarketingPerformance(
+  refresh: boolean,
+  token: string
+): Promise<MarketingPerformance> {
+  return getJson<MarketingPerformance>(
+    `/api/v1/marketing/performance${refresh ? '?refresh=true' : ''}`,
+    'No se pudo cargar el rendimiento de la campaña',
+    token
+  )
+}
+
 export function fetchSurveyStats(
   survey: SurveySlug,
   filters: SurveyStatsFilters,

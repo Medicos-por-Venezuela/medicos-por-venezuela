@@ -248,11 +248,17 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `/admin/marketing` — **super_admin only** (`marketing.read`): one tab per survey (Psicólogos,
   Especialistas, Médico General), each labelled with its response count from
   `GET /marketing/surveys`, with the responses list, email/date filters and `.xlsx` export — it
-  reuses Reportes' generic table (`components/admin/ReportTable.tsx`). A fourth tab, **Gráficos**
-  (`components/admin/SurveyCharts.tsx`, `GET /marketing/surveys/{slug}/stats`), shows decision
-  aggregates per survey: a day × moment availability heatmap, participation roles, weekly hours
-  (with a minimum-hours total) and location, filterable by date and by role. Plain HTML/CSS, no
-  chart library
+  reuses Reportes' generic table (`components/admin/ReportTable.tsx`). A fourth tab, **Gráficos**,
+  is the campaign dashboard (`components/admin/marketing/`), scoped to all surveys or one:
+  - **Embudo de la campaña** (`GET /marketing/performance`): sent → opened → clicked → responded,
+    joining Kit broadcast metrics with the platform's responses. The backend reads Kit with
+    `KIT_API_KEY`; without it, or with Kit down, only the responses show. Every rate states its
+    denominator, and the response rate only counts responses after the first send.
+  - **Respuestas desde el envío**: a cumulative SVG time series with send markers, keyboard
+    navigable.
+  - **Qué respondieron** (`GET /marketing/surveys/{slug}/stats`): day × moment heatmap (fixed,
+    contrast-checked levels), roles, weekly hours and location, filterable by date and role.
+  - Plain HTML/CSS/SVG, no chart library.
 
 ## Database (Supabase Postgres)
 
