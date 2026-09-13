@@ -7,6 +7,17 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-09-12
 
+- **chore(correos): logotipo, foto cuadrada e íconos sin fondo para el correo de psicólogos** — lo
+  que le faltaba al correo de Kit para verse bien en Gmail y Outlook:
+  - `img/logo-correo-marketing.png` (260×100, para mostrarse a 130 px): el SVG no se ve en Gmail ni
+    Outlook, y el PNG del banner está aplanado sobre otro navy (`#18202b`), que dejaría un recuadro
+    sobre la cabecera `#14213D`. Sale de `build-logo-raster.mjs`, como los otros.
+  - `img/luis-psicologo-cuadrada.jpg` (224×224, para 112 px): la tarjeta la muestra cuadrada, y
+    `object-fit` no existe en Gmail ni Outlook, así que la foto salía aplastada. Recorte de 480×480
+    desde y=90 del original (cabeza completa), sin metadatos.
+  - `img/icono-*-sin-fondo.png` (72×72, con transparencia): los íconos aplanados se veían como
+    cuadros oscuros en el correo de fondo blanco. Mismos trazos y colores; archivos nuevos y no
+    reemplazo, porque `/img/**` se cachea una semana y el proxy de Gmail guarda su copia.
 - **chore(correos): íconos PNG del correo de la campaña** — los cinco íconos del diseño
   `MPV_correo_psicologos_3.html` (buscar y usuarios con recuadro; candado abierto, mensaje y check
   sueltos), rasterizados con `scripts/build-iconos-correo.mjs` desde sus mismos SVG, colores y
