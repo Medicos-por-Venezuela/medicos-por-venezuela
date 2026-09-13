@@ -11,12 +11,21 @@
 //   · Sueltos (`.feats svg`): ícono de 20 px en `--ink-soft`. Van dentro de `.trust` (fondo
 //     `--card-bg`).
 //
-// Sin transparencia, por el mismo motivo que el logotipo: cada PNG se aplana sobre el fondo en el
-// que va en el diseño. Un trazo gris claro con fondo transparente desaparece en los clientes que
-// ponen blanco detrás, y las esquinas redondeadas del recuadro quedarían con un halo blanco.
+// Y cada ícono sale en dos versiones:
+//   · Aplanada (`icono-*.png`): sin transparencia, como el logotipo. El PNG trae pintados el fondo
+//     de su bloque y el recuadro, así que dentro de ese bloque se ve idéntico incluso en Outlook,
+//     que no redondea esquinas. Fuera de él (sobre blanco, p. ej.) se ve como un cuadro oscuro.
+//   · Sin fondo (`icono-*-sin-fondo.png`): solo el trazo, sobre transparencia, para ponerlo sobre
+//     cualquier fondo. El recuadro, si se quiere, lo pinta el HTML: una celda de 36 px con
+//     `background-color` y `border-radius`. Ojo con los sueltos sobre blanco: su gris es claro.
 //
-// Al doble del tamaño al que se muestran (como el logotipo del banner), para que no se vean
-// borrosos en pantallas 2x. En el correo se usan con su tamaño real, p. ej.
+// Son archivos distintos, no una sustitución: `/img/**` se cachea una semana, y el proxy de
+// imágenes de Gmail guarda su propia copia, así que cambiar el contenido bajo la misma URL seguiría
+// mostrando el viejo. Y un correo ya enviado no debe cambiar de aspecto.
+//
+// Más resolución que la de pantalla, para que no se vean borrosos en pantallas 2x. Las aplanadas,
+// al doble de su tamaño (72 y 40 px); las sin fondo, a 72 px, que sirven igual a 18, 20 o 36. En el
+// correo se usan con su tamaño real, p. ej.
 // `<img src="https://medicosporvenezuela.org/img/icono-buscar.png" width="36" height="36" alt="">`.
 //
 // Uso:  node scripts/build-iconos-correo.mjs
@@ -83,6 +92,16 @@ function suelto(trazos) {
   )
 }
 
+// Solo el trazo, a lienzo completo y con transparencia alrededor.
+function sinFondo(trazos, color) {
+  const lado = 72
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${lado}" height="${lado}" viewBox="0 0 24 24" ` +
+    `fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" ` +
+    `stroke-linejoin="round">${trazos}</svg>`
+  )
+}
+
 const SALIDAS = [
   { destino: 'public/img/icono-buscar.png', svg: conRecuadro(TRAZOS.buscar), fondo: CARD_ALT_BG },
   {
@@ -92,7 +111,15 @@ const SALIDAS = [
   },
   { destino: 'public/img/icono-candado-abierto.png', svg: suelto(TRAZOS.candado), fondo: CARD_BG },
   { destino: 'public/img/icono-mensaje.png', svg: suelto(TRAZOS.mensaje), fondo: CARD_BG },
-  { destino: 'public/img/icono-check.png', svg: suelto(TRAZOS.check), fondo: CARD_BG }
+  { destino: 'public/img/icono-check.png', svg: suelto(TRAZOS.check), fondo: CARD_BG },
+  { destino: 'public/img/icono-buscar-sin-fondo.png', svg: sinFondo(TRAZOS.buscar, ACCENT) },
+  { destino: 'public/img/icono-usuarios-sin-fondo.png', svg: sinFondo(TRAZOS.usuarios, ACCENT) },
+  {
+    destino: 'public/img/icono-candado-abierto-sin-fondo.png',
+    svg: sinFondo(TRAZOS.candado, INK_SOFT)
+  },
+  { destino: 'public/img/icono-mensaje-sin-fondo.png', svg: sinFondo(TRAZOS.mensaje, INK_SOFT) },
+  { destino: 'public/img/icono-check-sin-fondo.png', svg: sinFondo(TRAZOS.check, INK_SOFT) }
 ]
 
 function resolverSharp() {
@@ -115,10 +142,9 @@ if (!sharp) {
 }
 
 for (const { destino, svg, fondo } of SALIDAS) {
-  const info = await sharp(Buffer.from(svg))
-    .flatten({ background: fondo })
-    .png({ compressionLevel: 9 })
-    .toFile(destino)
+  let imagen = sharp(Buffer.from(svg))
+  if (fondo) imagen = imagen.flatten({ background: fondo })
+  const info = await imagen.png({ compressionLevel: 9 }).toFile(destino)
 
   console.log(`${destino}  ${info.width}x${info.height}  ${(info.size / 1024).toFixed(1)} KB`)
 }

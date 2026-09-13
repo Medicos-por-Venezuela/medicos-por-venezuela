@@ -41,6 +41,15 @@ const SALIDAS = [
     destino: 'public/brand/logo-white-email.png',
     ancho: 400,
     fondo: NAVY
+  },
+  {
+    // Cabecera de los correos de la campaña de marketing (Kit). Su franja va en `#14213D`, el azul
+    // de las encuestas, y no en el navy del banner de arriba: con aquel PNG se vería un recuadro
+    // gris alrededor del logotipo. Se muestra a 130 px de ancho; se genera al doble.
+    origen: 'public/brand/logo-white.svg',
+    destino: 'public/img/logo-correo-marketing.png',
+    ancho: 260,
+    fondo: '#14213D'
   }
 ]
 
