@@ -1,6 +1,7 @@
-// /admin/marketing — las respuestas de las encuestas de marketing, una pestaña por encuesta
-// (Psicólogos, Especialistas, Médico General), con búsqueda por correo, rango de fechas y
-// exportación a Excel.
+// /admin/marketing — las respuestas de las encuestas de marketing: una pestaña por encuesta
+// (Psicólogos, Especialistas, Médico General) con el total de respuestas en su nombre, búsqueda
+// por correo, rango de fechas y exportación a Excel, y una pestaña de Gráficos para decidir con
+// las respuestas agregadas.
 //
 // Solo super_admin: el backend lo exige con el permiso `marketing.read`, sembrado para ese único
 // rol, y aquí se refleja para no ofrecer una página que solo puede dar 403 (mismo criterio que
@@ -8,11 +9,13 @@
 import { useEffect, useState } from 'react'
 import AdminLayout, { AdminLoading } from '../../components/admin/AdminLayout'
 import ReportTable from '../../components/admin/ReportTable'
+import SurveyCharts from '../../components/admin/SurveyCharts'
 import { getAccessToken, useAdminGuard } from '../../lib/admin'
 import { ApiError } from '../../lib/apiClient'
 import {
   downloadSurveyResponses,
   fetchSurveyResponses,
+  fetchSurveyTotals,
   SurveyResponseFilters,
   SurveySlug
 } from '../../lib/marketing'
@@ -20,7 +23,7 @@ import type { ReportPreview } from '../../lib/reports'
 
 const PAGE_SIZE = 25
 
-const TABS: { slug: SurveySlug; label: string; hint: string }[] = [
+const SURVEY_TABS: { slug: SurveySlug; label: string; hint: string }[] = [
   {
     slug: 'psicologos',
     label: 'Psicólogos',
@@ -38,15 +41,20 @@ const TABS: { slug: SurveySlug; label: string; hint: string }[] = [
   }
 ]
 
-// Variable de Kit que se reemplaza por el correo de cada destinatario. Si el envío masivo se hace
-// con otra herramienta, cambia la sintaxis de la variable, no el resto del enlace.
-const KIT_EMAIL_VARIABLE = '{{ subscriber.email_address }}'
+const CHARTS_TAB = 'graficos'
+const CHARTS_HINT =
+  'Las respuestas agregadas para decidir: cuándo hay cobertura, cuántas horas ofrecen, cómo quieren participar y desde dónde se conectan.'
+
+type Tab = SurveySlug | typeof CHARTS_TAB
 
 export default function AdminMarketing() {
   const { profile, loading } = useAdminGuard()
   const isSuperAdmin = profile?.role === 'super_admin'
 
+  const [tab, setTab] = useState<Tab>('psicologos')
+  // La última encuesta abierta: la lista la usa, y los gráficos abren con ella.
   const [survey, setSurvey] = useState<SurveySlug>('psicologos')
+  const [totals, setTotals] = useState<Partial<Record<SurveySlug, number>>>({})
   const [filters, setFilters] = useState<SurveyResponseFilters>({})
   const [searchDraft, setSearchDraft] = useState('')
   const [page, setPage] = useState(0)
@@ -58,13 +66,30 @@ export default function AdminMarketing() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exported, setExported] = useState('')
-  const [copied, setCopied] = useState(false)
 
   // `search` con debounce para no lanzar una consulta por tecla.
   useEffect(() => {
     const t = setTimeout(() => setFilter('search', searchDraft), 300)
     return () => clearTimeout(t)
   }, [searchDraft])
+
+  // El número de cada pestaña, sin filtros. Si falla, las pestañas salen sin número: no bloquea
+  // nada, así que no merece un aviso que tape la lista.
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await fetchSurveyTotals(await getAccessToken())
+        if (!cancelled) setTotals(Object.fromEntries(data.map((t) => [t.survey, t.total])))
+      } catch (e) {
+        console.error(e)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isSuperAdmin])
 
   function setFilter(key: keyof SurveyResponseFilters, value: string) {
     setFilters((prev) => {
@@ -81,13 +106,14 @@ export default function AdminMarketing() {
 
   // Cambiar de encuesta conserva los filtros: son los mismos en las tres (correo y fechas), y
   // buscar a una persona en las tres pestañas es justo el uso esperado.
-  function switchSurvey(next: SurveySlug) {
+  function switchTab(next: Tab) {
+    setTab(next)
+    if (next === CHARTS_TAB || next === survey) return
     setSurvey(next)
     setPage(0)
     setPreview(null)
     setExported('')
     setExportError('')
-    setCopied(false)
   }
 
   function clearFilters() {
@@ -100,7 +126,7 @@ export default function AdminMarketing() {
   // la respuesta de una petición que ya no corresponde: al saltar rápido entre pestañas, la de la
   // anterior podía llegar después y pintar sus filas bajo el título de la nueva.
   useEffect(() => {
-    if (!isSuperAdmin) return
+    if (!isSuperAdmin || tab === CHARTS_TAB) return
     let cancelled = false
     ;(async () => {
       setPreviewLoading(true)
@@ -127,7 +153,7 @@ export default function AdminMarketing() {
     return () => {
       cancelled = true
     }
-  }, [isSuperAdmin, survey, filters, page])
+  }, [isSuperAdmin, tab, survey, filters, page])
 
   async function onExport() {
     setExporting(true)
@@ -156,171 +182,154 @@ export default function AdminMarketing() {
     )
   }
 
-  const tab = TABS.find((t) => t.slug === survey)!
+  const surveyTab = SURVEY_TABS.find((t) => t.slug === survey)!
   const total = preview?.total ?? 0
   const activeFilters = preview?.filters ?? []
   const hasFilters = Object.keys(filters).length > 0
-  const surveyLink = `${window.location.origin}/encuesta/${survey}?email=${KIT_EMAIL_VARIABLE}`
-
-  async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(surveyLink)
-      setCopied(true)
-    } catch {
-      // Sin permiso de portapapeles (o sin HTTPS en local): el enlace sigue a la vista para
-      // copiarlo a mano, así que no hace falta un aviso de error.
-    }
-  }
+  const tabs: { slug: Tab; label: string }[] = [
+    ...SURVEY_TABS.map((t) => ({
+      slug: t.slug,
+      label: totals[t.slug] === undefined ? t.label : `${t.label} (${totals[t.slug]})`
+    })),
+    { slug: CHARTS_TAB, label: 'Gráficos' }
+  ]
 
   return (
     <AdminLayout title="Marketing" profile={profile}>
       <section className="card" style={{ marginBottom: 18 }}>
         <div className="tag-row" role="tablist" aria-label="Encuestas" style={{ marginBottom: 12 }}>
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button
               key={t.slug}
               type="button"
               role="tab"
               id={`tab-${t.slug}`}
-              aria-selected={survey === t.slug}
-              aria-controls="panel-encuesta"
-              className={`btn ${survey === t.slug ? 'btn-primary' : 'btn-outline'}`}
-              onClick={() => switchSurvey(t.slug)}
+              aria-selected={tab === t.slug}
+              aria-controls="panel-marketing"
+              className={`btn ${tab === t.slug ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => switchTab(t.slug)}
             >
               {t.label}
             </button>
           ))}
         </div>
-        <p style={{ margin: 0, color: '#64748b', fontSize: 14 }}>{tab.hint}</p>
+        <p style={{ margin: 0, color: '#64748b', fontSize: 14 }}>
+          {tab === CHARTS_TAB ? CHARTS_HINT : surveyTab.hint}
+        </p>
       </section>
 
-      <div role="tabpanel" id="panel-encuesta" aria-labelledby={`tab-${survey}`}>
-        <section className="card" style={{ marginBottom: 18 }}>
-          <h2 style={{ marginTop: 0 }}>Enlace para el correo masivo</h2>
-          <p style={{ marginTop: 0, color: '#64748b', fontSize: 14 }}>
-            Pégalo tal cual en el botón del correo de Kit: Kit reemplaza{' '}
-            <code>{KIT_EMAIL_VARIABLE}</code> por el correo de cada destinatario, y el formulario lo
-            muestra ya escrito.
-          </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            <input
-              readOnly
-              value={surveyLink}
-              aria-label="Enlace de la encuesta"
-              style={{ flex: '1 1 320px', fontFamily: 'monospace', fontSize: 13 }}
-              onFocus={(e) => e.target.select()}
-            />
-            <button type="button" className="btn btn-outline" onClick={copyLink}>
-              {copied ? 'Copiado' : 'Copiar enlace'}
-            </button>
-          </div>
-        </section>
+      <div role="tabpanel" id="panel-marketing" aria-labelledby={`tab-${tab}`}>
+        {tab === CHARTS_TAB ? (
+          <SurveyCharts surveys={SURVEY_TABS} initialSurvey={survey} />
+        ) : (
+          <>
+            <section className="card" style={{ marginBottom: 18 }}>
+              <h2 style={{ marginTop: 0 }}>Filtros</h2>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <input
+                  style={{ flex: '1 1 220px' }}
+                  placeholder="Buscar por correo"
+                  value={searchDraft}
+                  onChange={(e) => setSearchDraft(e.target.value)}
+                />
+                <input
+                  type="date"
+                  style={{ flex: '0 1 150px' }}
+                  value={filters.answered_from ?? ''}
+                  onChange={(e) => setFilter('answered_from', e.target.value)}
+                  title="Respondieron desde (inclusive)"
+                  aria-label="Respondieron desde"
+                />
+                <input
+                  type="date"
+                  style={{ flex: '0 1 150px' }}
+                  value={filters.answered_to ?? ''}
+                  onChange={(e) => setFilter('answered_to', e.target.value)}
+                  title="Respondieron hasta (inclusive)"
+                  aria-label="Respondieron hasta"
+                />
+                <button type="button" className="btn btn-muted" onClick={clearFilters}>
+                  Limpiar filtros
+                </button>
+              </div>
 
-        <section className="card" style={{ marginBottom: 18 }}>
-          <h2 style={{ marginTop: 0 }}>Filtros</h2>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            <input
-              style={{ flex: '1 1 220px' }}
-              placeholder="Buscar por correo"
-              value={searchDraft}
-              onChange={(e) => setSearchDraft(e.target.value)}
-            />
-            <input
-              type="date"
-              style={{ flex: '0 1 150px' }}
-              value={filters.answered_from ?? ''}
-              onChange={(e) => setFilter('answered_from', e.target.value)}
-              title="Respondieron desde (inclusive)"
-              aria-label="Respondieron desde"
-            />
-            <input
-              type="date"
-              style={{ flex: '0 1 150px' }}
-              value={filters.answered_to ?? ''}
-              onChange={(e) => setFilter('answered_to', e.target.value)}
-              title="Respondieron hasta (inclusive)"
-              aria-label="Respondieron hasta"
-            />
-            <button type="button" className="btn btn-muted" onClick={clearFilters}>
-              Limpiar filtros
-            </button>
-          </div>
+              {activeFilters.length > 0 && (
+                <div className="tag-row" style={{ marginTop: 12 }}>
+                  {activeFilters.map(([label, value]) => (
+                    <span key={label} className="badge badge-blue">
+                      {label}: {value}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </section>
 
-          {activeFilters.length > 0 && (
-            <div className="tag-row" style={{ marginTop: 12 }}>
-              {activeFilters.map(([label, value]) => (
-                <span key={label} className="badge badge-blue">
-                  {label}: {value}
-                </span>
-              ))}
-            </div>
-          )}
-        </section>
+            <section className="card">
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                  marginBottom: 12
+                }}
+              >
+                <h2 style={{ margin: 0 }}>
+                  Respuestas{' '}
+                  <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 14 }}>
+                    ({total} {total === 1 ? 'respuesta' : 'respuestas'})
+                  </span>
+                </h2>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={onExport}
+                  disabled={exporting || previewLoading || total === 0}
+                >
+                  {exporting ? 'Generando Excel...' : `Exportar a Excel (${total})`}
+                </button>
+              </div>
 
-        <section className="card">
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: 12,
-              flexWrap: 'wrap',
-              marginBottom: 12
-            }}
-          >
-            <h2 style={{ margin: 0 }}>
-              Respuestas{' '}
-              <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 14 }}>
-                ({total} {total === 1 ? 'respuesta' : 'respuestas'})
-              </span>
-            </h2>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={onExport}
-              disabled={exporting || previewLoading || total === 0}
-            >
-              {exporting ? 'Generando Excel...' : `Exportar a Excel (${total})`}
-            </button>
-          </div>
+              <p style={{ marginTop: 0, color: '#64748b', fontSize: 13 }}>
+                Una fila por persona: si alguien responde de nuevo, su respuesta se actualiza. La
+                tabla muestra {Math.min(PAGE_SIZE, total)} de {total}; el Excel incluye{' '}
+                <strong>todas</strong> las que cumplen estos filtros.
+              </p>
 
-          <p style={{ marginTop: 0, color: '#64748b', fontSize: 13 }}>
-            Una fila por persona: si alguien responde de nuevo, su respuesta se actualiza. La tabla
-            muestra {Math.min(PAGE_SIZE, total)} de {total}; el Excel incluye <strong>todas</strong>{' '}
-            las que cumplen estos filtros.
-          </p>
+              {previewError && (
+                <div className="notice notice-danger" style={{ marginBottom: 12 }}>
+                  {previewError}
+                </div>
+              )}
+              {exportError && (
+                <div className="notice notice-danger" style={{ marginBottom: 12 }}>
+                  {exportError}
+                </div>
+              )}
+              {exported && !exportError && (
+                <div className="notice notice-success" style={{ marginBottom: 12 }}>
+                  Respuestas descargadas como <strong>{exported}</strong>.
+                </div>
+              )}
 
-          {previewError && (
-            <div className="notice notice-danger" style={{ marginBottom: 12 }}>
-              {previewError}
-            </div>
-          )}
-          {exportError && (
-            <div className="notice notice-danger" style={{ marginBottom: 12 }}>
-              {exportError}
-            </div>
-          )}
-          {exported && !exportError && (
-            <div className="notice notice-success" style={{ marginBottom: 12 }}>
-              Respuestas descargadas como <strong>{exported}</strong>.
-            </div>
-          )}
-
-          <ReportTable
-            preview={preview}
-            loading={previewLoading}
-            page={page}
-            pageSize={PAGE_SIZE}
-            onPageChange={setPage}
-            emptyText={
-              hasFilters
-                ? 'Ninguna respuesta coincide con estos filtros.'
-                : 'Todavía no hay respuestas en esta encuesta.'
-            }
-            rowKey={(row, i) => String(row.email || i)}
-            wrapText
-          />
-        </section>
+              <ReportTable
+                preview={preview}
+                loading={previewLoading}
+                page={page}
+                pageSize={PAGE_SIZE}
+                onPageChange={setPage}
+                emptyText={
+                  hasFilters
+                    ? 'Ninguna respuesta coincide con estos filtros.'
+                    : 'Todavía no hay respuestas en esta encuesta.'
+                }
+                rowKey={(row, i) => String(row.email || i)}
+                wrapText
+              />
+            </section>
+          </>
+        )}
       </div>
     </AdminLayout>
   )

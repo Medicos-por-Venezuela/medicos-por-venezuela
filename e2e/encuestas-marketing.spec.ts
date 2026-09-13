@@ -140,10 +140,35 @@ test('psicólogo: sin correo en el enlace, el campo es editable y la ubicación 
   await expect(admin.getByRole('cell', { name: 'Japón (GMT+9)' })).toBeVisible()
   await expect(admin.getByRole('columnheader', { name: 'Dónde está' })).toBeVisible()
 
-  // El enlace para Kit de esta pestaña lleva la variable del correo.
-  await expect(admin.getByLabel('Enlace de la encuesta')).toHaveValue(
-    /\/encuesta\/psicologos\?email=\{\{ subscriber\.email_address \}\}$/
+  // Cada pestaña lleva el total de respuestas de su encuesta. El número exacto depende de lo que
+  // haya en la base local; lo que se fija es que esté.
+  await expect(admin.getByRole('tab', { name: /^Psicólogos \(\d+\)$/ })).toBeVisible()
+  await expect(admin.getByRole('tab', { name: /^Médico General \(\d+\)$/ })).toBeVisible()
+  // El bloque con el enlace para Kit se quitó del panel: ya no hacía falta.
+  await expect(admin.getByText('Enlace para el correo masivo')).toHaveCount(0)
+
+  // Gráficos abre con la última encuesta vista. Acotados a quienes marcaron "Otra forma", la
+  // respuesta de este test tiene que contar en su franja (sábado por la tarde) y en su ubicación.
+  await admin.getByRole('tab', { name: 'Gráficos' }).click()
+  await expect(admin.getByLabel('Encuesta', { exact: true })).toHaveValue('psicologos')
+  await admin
+    .getByLabel('Cómo quieren participar')
+    .selectOption({ label: 'Otra forma que quiero proponerles' })
+  await expect(
+    admin.getByText('Cómo quieren participar: Otra forma que quiero proponerles')
+  ).toBeVisible()
+  await expect(admin.getByRole('heading', { name: '¿Cuándo hay disponibilidad?' })).toBeVisible()
+  await expect(admin.getByRole('cell', { name: /^Sábado, Tarde: \d+ respuestas?$/ })).toHaveText(
+    /^[1-9]\d*$/
   )
+  await expect(admin.getByRole('heading', { name: '¿Desde dónde se conectan?' })).toBeVisible()
+  await expect(admin.getByText('Horas por semana, como mínimo, entre todos')).toBeVisible()
+
+  // Médicos generales no pregunta la ubicación, y sus formas de participar son otras: el filtro
+  // de "Otra forma" de psicólogos se suelta al cambiar de encuesta.
+  await admin.getByLabel('Encuesta', { exact: true }).selectOption({ label: 'Médico General' })
+  await expect(admin.getByLabel('Cómo quieren participar')).toHaveValue('')
+  await expect(admin.getByRole('heading', { name: '¿Desde dónde se conectan?' })).toHaveCount(0)
 
   // La misma persona no aparece en otra encuesta que no respondió.
   await admin.getByRole('tab', { name: 'Especialistas' }).click()

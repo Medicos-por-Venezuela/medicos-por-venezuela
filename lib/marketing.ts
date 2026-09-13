@@ -4,8 +4,8 @@
 //   · El formulario PÚBLICO (`/encuesta/<slug>`), al que el médico llega desde el correo masivo y
 //     que responde sin sesión.
 //   · El módulo Marketing del panel (solo super_admin, permiso `marketing.read`), que lista y
-//     exporta las respuestas. Usa el mismo contrato genérico que los reportes (`ReportPreview`:
-//     columnas + filas), así que se pinta con la misma tabla.
+//     exporta las respuestas —con el mismo contrato genérico que los reportes (`ReportPreview`:
+//     columnas + filas), así que se pinta con la misma tabla— y pinta sus totales y gráficos.
 import { getFile, getJson, postJson } from './apiClient'
 import { ReportPreview, saveBlob } from './reports'
 
@@ -56,7 +56,10 @@ export interface SurveyResponseFilters {
 
 // Los filtros vacíos se OMITEN: `?answered_from=` haría que FastAPI intente parsear '' como fecha
 // y devuelva un 422 en vez de "sin filtro" (mismo criterio que lib/reports.ts).
-function toQuery(filters: SurveyResponseFilters, extra: Record<string, string> = {}): string {
+function toQuery(
+  filters: SurveyResponseFilters | SurveyStatsFilters,
+  extra: Record<string, string> = {}
+): string {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries({ ...filters, ...extra })) {
     if (value) params.set(key, value)
@@ -94,4 +97,59 @@ export async function downloadSurveyResponses(
   const name = filename || `encuesta-${survey}.xlsx`
   saveBlob(blob, name)
   return name
+}
+
+export interface SurveyTotal {
+  survey: SurveySlug
+  total: number
+}
+
+// Respuestas de cada encuesta, sin filtros: el número de cada pestaña.
+export function fetchSurveyTotals(token: string): Promise<SurveyTotal[]> {
+  return getJson<SurveyTotal[]>(
+    '/api/v1/marketing/surveys',
+    'No se pudieron cargar los totales',
+    token
+  )
+}
+
+export interface OptionCount {
+  code: string
+  label: string // el texto que vio quien respondió, el de ESA encuesta
+  count: number // respuestas que marcaron la opción
+}
+
+// Agregados de una encuesta. Espejo de `SurveyStatsResponse` en el backend. Cada lista trae TODAS
+// las opciones de la pregunta en el orden del formulario, también las que tienen 0.
+export interface SurveyStats {
+  survey: SurveySlug
+  total: number
+  filters: [string, string][]
+  roles: OptionCount[]
+  days: OptionCount[]
+  moments: OptionCount[]
+  // `availability[i][j]`: respuestas que marcaron el día `days[i]` y el momento `moments[j]`.
+  // Día y momento se preguntan por separado, así que es cobertura posible, no un turno pactado.
+  availability: number[][]
+  weekly_hours: OptionCount[]
+  min_weekly_hours: number
+  timezones: OptionCount[] | null // null en la encuesta que no lo pregunta (médicos generales)
+}
+
+export interface SurveyStatsFilters {
+  role?: string // código de una forma de participar de ESA encuesta
+  answered_from?: string
+  answered_to?: string
+}
+
+export function fetchSurveyStats(
+  survey: SurveySlug,
+  filters: SurveyStatsFilters,
+  token: string
+): Promise<SurveyStats> {
+  return getJson<SurveyStats>(
+    `/api/v1/marketing/surveys/${survey}/stats${toQuery(filters)}`,
+    'No se pudieron cargar los gráficos',
+    token
+  )
 }
