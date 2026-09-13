@@ -66,11 +66,17 @@ test('médico general: la disponibilidad solo se pide si va a atender, y la resp
   )
   await admin.getByPlaceholder('Buscar por correo').fill(email)
   await expect(admin.getByRole('cell', { name: email })).toBeVisible()
-  await expect(
-    admin.getByRole('cell', {
-      name: 'Pedir interconsultas cuando tenga un caso que lo necesite; Seguir atendiendo pacientes a través de la plataforma'
-    })
-  ).toBeVisible()
+  // "Cómo quiere participar" es largo: sale recortado para no alargar la fila, y "Ver más" lo
+  // despliega entero.
+  const roles =
+    'Pedir interconsultas cuando tenga un caso que lo necesite; Seguir atendiendo pacientes a través de la plataforma'
+  await expect(admin.getByText(roles)).toHaveCount(0)
+  await admin.getByRole('button', { name: 'Ver más' }).click()
+  await expect(admin.getByText(roles)).toBeVisible()
+  await expect(admin.getByRole('button', { name: 'Ver menos' })).toHaveAttribute(
+    'aria-expanded',
+    'true'
+  )
   await expect(admin.getByRole('cell', { name: 'Entre 1 y 3 horas a la semana' })).toBeVisible()
   // Médicos generales no pregunta la ubicación: esa columna no existe en su pestaña.
   await expect(admin.getByRole('columnheader', { name: 'Dónde está' })).toHaveCount(0)

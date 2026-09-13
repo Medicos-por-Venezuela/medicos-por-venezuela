@@ -23,6 +23,10 @@ Each entry: date, a short summary of what changed and why, and the key files/are
     con el listado, búsqueda por correo, rango de fechas, exportación a Excel y el enlace listo
     para pegar en Kit. La tabla genérica de Reportes sale a `components/admin/ReportTable.tsx` y la
     usan las dos páginas; `saveBlob` sale de `downloadReport` por lo mismo.
+  - **"Ver más" en los textos largos** del listado: una respuesta con varias opciones marcadas
+    estiraba su fila hasta diez líneas. Con `wrapText`, las celdas de más de 60 caracteres salen
+    recortadas (en un espacio, sin partir palabras) y cada una se despliega por separado. Solo en
+    pantalla: el Excel trae el texto completo.
   - **Privacidad**: GA4 manda la URL completa (`page_location`), y con ella el correo del médico.
     El snippet y el `page_view` de `_app.tsx` quitan ahora `email` de la URL que reciben
     (`PARAMS_PRIVADOS`), conservando los `utm_*`.
