@@ -22,8 +22,9 @@ export interface Survey {
   intro: string
   roleQuestion: string
   roles: Option[]
-  // Roles que abren las preguntas de disponibilidad. `null` = se preguntan siempre.
-  availabilityRoles: string[] | null
+  // Las preguntas de disponibilidad van en su recuadro "Tu disponibilidad" (el diseño de médicos
+  // generales); en las otras dos van sueltas, como el resto del formulario.
+  availabilityBox: boolean
   // Rol con su propio "Cuéntanos qué tienes en mente", además del de "Otra".
   activeDetailRole: string | null
   momentHint: string
@@ -129,7 +130,7 @@ export const SURVEYS: Record<SurveySlug, Survey> = {
       },
       OTHER_ROLE
     ],
-    availabilityRoles: null,
+    availabilityBox: false,
     activeDetailRole: null,
     momentHint: 'Puedes marcar varios. Según tu hora local.',
     asksTimezone: true,
@@ -148,7 +149,7 @@ export const SURVEYS: Record<SurveySlug, Survey> = {
       { code: 'coordinar_especialidad', label: 'Coordinar mi especialidad dentro de la red' },
       OTHER_ROLE
     ],
-    availabilityRoles: null,
+    availabilityBox: false,
     activeDetailRole: null,
     momentHint: 'Puedes marcar varios. Según tu hora local.',
     asksTimezone: true,
@@ -156,9 +157,10 @@ export const SURVEYS: Record<SurveySlug, Survey> = {
       'Gracias por tu tiempo y por seguir contribuyendo a este proyecto que beneficia a Venezuela. ' +
       'Ya tenemos tu disponibilidad. Pronto nos comunicaremos contigo.'
   },
-  // Quien solo va a PEDIR interconsultas no se compromete a un horario: la disponibilidad solo se
-  // pregunta si además quiere atender, asumir un rol o proponer otra cosa. Sin zona horaria: la
-  // encuesta va a médicos en Venezuela ("Horas de Venezuela").
+  // Sin zona horaria: la encuesta va a médicos en Venezuela ("Horas de Venezuela"). El formulario sale
+  // completo desde el principio, disponibilidad incluida y obligatoria como en las otras dos: en el
+  // diseño esa sección solo aparecía al marcar atender, liderar u "Otra", y se decidió enseñarla
+  // siempre.
   'medicos-generales': {
     slug: 'medicos-generales',
     intro:
@@ -176,7 +178,7 @@ export const SURVEYS: Record<SurveySlug, Survey> = {
       { code: 'rol_activo', label: 'Asumir un rol más activo (coordinar, liderar)' },
       OTHER_ROLE
     ],
-    availabilityRoles: ['atender_pacientes', 'rol_activo', OTHER],
+    availabilityBox: true,
     activeDetailRole: 'rol_activo',
     momentHint: 'Puedes marcar varios. Horas de Venezuela.',
     asksTimezone: false,
