@@ -7,6 +7,17 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-09-12
 
+- **chore(correos): íconos PNG del correo de la campaña** — los cinco íconos del diseño
+  `MPV_correo_psicologos_3.html` (buscar y usuarios con recuadro; candado abierto, mensaje y check
+  sueltos), rasterizados con `scripts/build-iconos-correo.mjs` desde sus mismos SVG, colores y
+  tamaños. Un correo no puede usar SVG, así que se enlazan como PNG desde `/img/icono-*.png`. Al
+  doble de tamaño (72 y 40 px) para pantallas 2x y aplanados sobre el fondo en el que van en el
+  diseño, sin transparencia, por el mismo motivo que el logotipo del banner.
+- **chore(correos): foto `luis-psicologo.jpg` para los correos de marketing** — estático en
+  `/img/luis-psicologo.jpg` para enlazarlo desde los correos masivos de Kit. JPG y no WebP a
+  propósito: Outlook de escritorio no pinta WebP. Va tal cual, sin recomprimir: 480×860, 46 KB y
+  sin metadatos (EXIF/XMP). Una vez usado en un correo enviado no se debe mover ni renombrar, o la
+  imagen sale rota en los correos que ya están en las bandejas. Fichero: `public/img/luis-psicologo.jpg`.
 - **feat(marketing): encuestas de re-targeting para médicos y módulo Marketing en el panel** —
   tres formularios públicos (psicólogos, especialistas, médicos generales) para la campaña de
   correo masivo, y dónde ver y exportar lo que responden.
