@@ -5,6 +5,25 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-13
+
+- **feat(marketing): total de respuestas en cada pestaña y pestaña Gráficos** — en
+  `/admin/marketing`:
+  - **Pestañas con su total**: cada una muestra cuántas respuestas tiene su encuesta, sin filtros
+    ("Psicólogos (12)"), desde el nuevo `GET /marketing/surveys` del backend. Si esa carga falla,
+    las pestañas salen sin número y la lista sigue funcionando.
+  - **Pestaña Gráficos** (`components/admin/SurveyCharts.tsx`), para decidir con las respuestas
+    agregadas (`GET /marketing/surveys/{slug}/stats`). Por encuesta, con filtro de fechas y de
+    forma de participar (p. ej. la cobertura solo de quienes van a atender pacientes):
+    - Indicadores: respuestas, horas semanales mínimas entre todos y franja con más disponibilidad.
+    - Tabla de calor día × momento, con el número siempre escrito.
+    - Barras de formas de participar, de horas a la semana y de ubicación (esta no sale en
+      médicos generales, que no la pregunta).
+    - HTML y CSS, sin librería de gráficos.
+  - **Fuera el bloque "Enlace para el correo masivo"**: las plantillas de Kit ya llevan el enlace.
+  - Ficheros: `pages/admin/marketing.tsx`, `components/admin/SurveyCharts.tsx`, `lib/marketing.ts`,
+    `e2e/encuestas-marketing.spec.ts`, `CLAUDE.md`.
+
 ## 2026-09-12
 
 - **chore(correos): íconos corazón, escudo y persona para el correo de médicos generales** — los
