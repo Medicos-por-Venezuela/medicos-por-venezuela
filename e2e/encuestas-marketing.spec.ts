@@ -63,6 +63,10 @@ test('médico general: el formulario sale completo, la disponibilidad es obligat
     'true'
   )
   await admin.getByPlaceholder('Buscar por correo').fill(email)
+  // Esperar a que la búsqueda (con debounce) deje la lista en esta sola respuesta: la más reciente
+  // ya sale arriba sin filtrar, y con más respuestas en la base local, "Ver más" coincidiría con
+  // los botones de otras filas.
+  await expect(admin.getByText('(1 respuesta)')).toBeVisible()
   await expect(admin.getByRole('cell', { name: email })).toBeVisible()
   // "Cómo quiere participar" es largo: sale recortado para no alargar la fila, y "Ver más" lo
   // despliega entero.
@@ -147,10 +151,17 @@ test('psicólogo: sin correo en el enlace, el campo es editable y la ubicación 
   // El bloque con el enlace para Kit se quitó del panel: ya no hacía falta.
   await expect(admin.getByText('Enlace para el correo masivo')).toHaveCount(0)
 
-  // Gráficos abre con la última encuesta vista. Acotados a quienes marcaron "Otra forma", la
-  // respuesta de este test tiene que contar en su franja (sábado por la tarde) y en su ubicación.
+  // Gráficos abre con el tablero de todas las encuestas: el embudo de la campaña y las respuestas
+  // en el tiempo. Lo que venga de Kit depende de si la API local tiene KIT_API_KEY, así que aquí no
+  // se asertan sus números; el embudo sale igual, con o sin Kit.
   await admin.getByRole('tab', { name: 'Gráficos' }).click()
-  await expect(admin.getByLabel('Encuesta', { exact: true })).toHaveValue('psicologos')
+  await expect(admin.getByRole('radio', { name: 'Todas' })).toHaveAttribute('aria-checked', 'true')
+  await expect(admin.getByRole('heading', { name: 'Embudo de la campaña' })).toBeVisible()
+  await expect(admin.getByRole('heading', { name: 'Respuestas desde el envío' })).toBeVisible()
+
+  // Al elegir una encuesta se abre qué respondieron. Acotados a quienes marcaron "Otra forma", la
+  // respuesta de este test tiene que contar en su franja (sábado por la tarde) y en su ubicación.
+  await admin.getByRole('radio', { name: 'Psicólogos' }).click()
   await admin
     .getByLabel('Cómo quieren participar')
     .selectOption({ label: 'Otra forma que quiero proponerles' })
@@ -162,12 +173,13 @@ test('psicólogo: sin correo en el enlace, el campo es editable y la ubicación 
     /^[1-9]\d*$/
   )
   await expect(admin.getByRole('heading', { name: '¿Desde dónde se conectan?' })).toBeVisible()
-  await expect(admin.getByText('Horas por semana, como mínimo, entre todos')).toBeVisible()
+  await expect(admin.getByText('Franja con más disponibilidad')).toBeVisible()
 
   // Médicos generales no pregunta la ubicación, y sus formas de participar son otras: el filtro
-  // de "Otra forma" de psicólogos se suelta al cambiar de encuesta.
-  await admin.getByLabel('Encuesta', { exact: true }).selectOption({ label: 'Médico General' })
+  // de "Otra forma" de psicólogos no se arrastra al cambiar de encuesta.
+  await admin.getByRole('radio', { name: 'Médico General' }).click()
   await expect(admin.getByLabel('Cómo quieren participar')).toHaveValue('')
+  await expect(admin.getByRole('heading', { name: '¿Cuándo hay disponibilidad?' })).toBeVisible()
   await expect(admin.getByRole('heading', { name: '¿Desde dónde se conectan?' })).toHaveCount(0)
 
   // La misma persona no aparece en otra encuesta que no respondió.

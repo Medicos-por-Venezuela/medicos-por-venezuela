@@ -7,6 +7,30 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-09-13
 
+- **feat(marketing): tablero de la campaña con métricas reales de Kit** — la pestaña Gráficos
+  de `/admin/marketing` pasa a ser un tablero para decidir, en tres niveles y acotable a todas las
+  encuestas o a una:
+  - **Embudo de la campaña** (`GET /marketing/performance`): enviados, apertura, clics, respuesta
+    y bajas, con los datos de Kit que lee el backend, más la conversión entre pasos y la
+    comparativa por encuesta (la mejor tasa de cada columna resaltada) o la lista de envíos.
+    - Cada tasa dice sobre qué se calcula.
+    - La de respuesta cuenta solo lo llegado desde el primer envío.
+    - Sin clave de Kit, o con Kit caído, el tablero sigue con las respuestas y lo avisa.
+  - **Respuestas desde el envío**: respuestas acumuladas por hora o por día, en SVG propio.
+    - Marca los envíos, el pico y en cuánto tiempo llegó el 80 % de las respuestas.
+    - Tooltip con ratón y con teclado.
+  - **Qué respondieron**: lo de antes, pasado a `SurveyAnswers`.
+    - La tabla de calor usa cinco niveles fijos con contraste verificado. Antes, las casillas
+      intermedias dejaban el número en 2,5:1.
+    - La franja con más disponibilidad avisa si empata con otras.
+  - `lib/useFilterState.ts` junta el estado de filtros que estaba copiado en la página y en los
+    gráficos.
+  - `e2e/global-setup.ts` pide los usuarios de auth con `perPage: 1000`: con más de 50 usuarios en
+    el Supabase local, las cuentas de prueba quedaban fuera de la primera página.
+  - Ficheros: `components/admin/marketing/*` (sustituye a `SurveyCharts.tsx`),
+    `pages/admin/marketing.tsx`, `lib/marketing.ts`, `lib/useFilterState.ts`,
+    `e2e/encuestas-marketing.spec.ts`, `e2e/global-setup.ts`, `CLAUDE.md`.
+
 - **feat(marketing): total de respuestas en cada pestaña y pestaña Gráficos** — en
   `/admin/marketing`:
   - **Pestañas con su total**: cada una muestra cuántas respuestas tiene su encuesta, sin filtros
