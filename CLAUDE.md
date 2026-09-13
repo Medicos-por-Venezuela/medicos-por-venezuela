@@ -246,8 +246,19 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
   replaces the previous answer. The email is **not verified**, and it's stripped from what GA4
   receives (`PARAMS_PRIVADOS` in `lib/analytics.ts`), since `page_location` carries the query
 - `/admin/marketing` — **super_admin only** (`marketing.read`): one tab per survey (Psicólogos,
-  Especialistas, Médico General) with the responses list, email/date filters, `.xlsx` export and
-  the ready-to-paste Kit link. Reuses Reportes' generic table (`components/admin/ReportTable.tsx`)
+  Especialistas, Médico General), each labelled with its response count from
+  `GET /marketing/surveys`, with the responses list, email/date filters and `.xlsx` export — it
+  reuses Reportes' generic table (`components/admin/ReportTable.tsx`). A fourth tab, **Gráficos**,
+  is the campaign dashboard (`components/admin/marketing/`), scoped to all surveys or one:
+  - **Embudo de la campaña** (`GET /marketing/performance`): sent → opened → clicked → responded,
+    joining Kit broadcast metrics with the platform's responses. The backend reads Kit with
+    `KIT_API_KEY`; without it, or with Kit down, only the responses show. Every rate states its
+    denominator, and the response rate only counts responses after the first send.
+  - **Respuestas desde el envío**: a cumulative SVG time series with send markers, keyboard
+    navigable.
+  - **Qué respondieron** (`GET /marketing/surveys/{slug}/stats`): day × moment heatmap (fixed,
+    contrast-checked levels), roles, weekly hours and location, filterable by date and role.
+  - Plain HTML/CSS/SVG, no chart library.
 
 ## Database (Supabase Postgres)
 
