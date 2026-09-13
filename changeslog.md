@@ -16,9 +16,13 @@ Each entry: date, a short summary of what changed and why, and the key files/are
     llega en el enlace de Kit (`?email=`) y se muestra de solo lectura; si el enlace no lo trae, el
     campo pasa a editable. Un `+` sin codificar se recupera (la query lo lee como espacio).
   - **Reglas del diseño, también en el backend**: la disponibilidad es obligatoria en las tres
-    encuestas, y psicólogos y especialistas exigen además la ubicación. "Otra forma" y la zona
-    "Otra" abren su campo solo al elegirlas (en el diseño estaban siempre visibles, y lo escrito sin
-    marcar la opción se habría descartado).
+    encuestas, y psicólogos y especialistas exigen además la ubicación. "Otra forma" abre su campo
+    solo al marcarla (en el diseño estaba siempre visible, y lo escrito sin marcarla se habría
+    descartado).
+  - **Campo de ubicación siempre visible** (psicólogos y especialistas): el texto bajo "¿Dónde
+    estás?" se había dejado condicionado a elegir la zona "Otra"; vuelve a verse siempre, como en
+    el diseño. La API guarda lo escrito elija lo que elija (precisar "Maracaibo" tras elegir
+    Venezuela es válido), en vez de descartarlo si la zona no es "Otra".
   - **Médicos generales, formulario completo**: en su diseño la disponibilidad solo aparecía al
     marcar atender, liderar u "Otra". Se decidió enseñar todo el formulario desde el principio, así
     que la sección se ve siempre (en su recuadro "Tu disponibilidad") y se exige como en las otras

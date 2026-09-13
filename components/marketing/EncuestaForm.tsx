@@ -129,8 +129,9 @@ export default function EncuestaForm({ survey }: { survey: Survey }) {
         weekly_hours: weeklyHours || null,
         availability_notes: availabilityNotes.trim() || null,
         timezone: survey.asksTimezone ? timezone || null : null,
-        timezone_other:
-          survey.asksTimezone && timezone === OTHER ? timezoneOther.trim() || null : null,
+        // Lo escrito bajo "¿Dónde estás?" viaja elija lo que elija: el campo está siempre a la vista,
+        // y quien elige Venezuela y escribe "Maracaibo" está precisando, no equivocándose.
+        timezone_other: survey.asksTimezone ? timezoneOther.trim() || null : null,
         notes: notes.trim() || null,
         website
       })
@@ -372,18 +373,17 @@ export default function EncuestaForm({ survey }: { survey: Survey }) {
                         </optgroup>
                       ))}
                     </select>
-                    {timezone === OTHER && (
-                      <div className="nested">
-                        <input
-                          type="text"
-                          aria-label="Tu país o zona horaria"
-                          placeholder="Cuéntanos cuál es tu país o zona horaria"
-                          maxLength={200}
-                          value={timezoneOther}
-                          onChange={(e) => setTimezoneOther(e.target.value)}
-                        />
-                      </div>
-                    )}
+                    {/* Siempre a la vista, como en el diseño: no aparece recién al elegir "Otra". */}
+                    <div className="nested nested-select">
+                      <input
+                        type="text"
+                        aria-label="Tu país o zona horaria"
+                        placeholder='Si elegiste "Otra", cuéntanos cuál es tu país o zona horaria'
+                        maxLength={200}
+                        value={timezoneOther}
+                        onChange={(e) => setTimezoneOther(e.target.value)}
+                      />
+                    </div>
                     <p className="err">Elige tu país o zona horaria.</p>
                   </div>
                 )}
@@ -726,6 +726,11 @@ export default function EncuestaForm({ survey }: { survey: Survey }) {
         .nested {
           margin: -2px 0 9px;
           padding: 5px 0 0;
+        }
+        /* Bajo un selector no hay margen de opción que compensar: la separación del diseño. */
+        .nested-select {
+          margin: 0;
+          padding: 12px 0 0;
         }
         .dispo-block {
           background: var(--card-alt-bg);
