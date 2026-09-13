@@ -133,9 +133,7 @@ export async function fetchReportPreview(
 // Descarga el .xlsx con TODAS las filas que cumplen el filtro y se lo entrega al navegador.
 //
 // El endpoint exige el JWT en `Authorization`, y un `<a href>` no manda cabeceras: por eso hay
-// que traer el archivo por fetch y disparar la descarga desde un blob. La URL del objeto se
-// revoca al terminar; si no, el blob (que puede pesar megas) queda retenido hasta que se
-// recargue la página.
+// que traer el archivo por fetch y disparar la descarga desde un blob (ver `saveBlob`).
 export async function downloadReport(
   kind: ReportKind,
   filters: ReportFilters,
@@ -149,6 +147,14 @@ export async function downloadReport(
   // Fallback solo por si la cabecera no llegara (ver `filenameFromDisposition`): el nombre
   // bueno, con fecha de Venezuela, lo fija el backend.
   const name = filename || `${FALLBACK_FILENAMES[kind]}.xlsx`
+  saveBlob(blob, name)
+  return name
+}
+
+// Le entrega al navegador un archivo ya traído por fetch. La URL del objeto se revoca al terminar;
+// si no, el blob (que puede pesar megas) queda retenido hasta que se recargue la página. La usa
+// también la exportación de las encuestas (lib/marketing.ts).
+export function saveBlob(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob)
   try {
     const link = document.createElement('a')
@@ -160,5 +166,4 @@ export async function downloadReport(
   } finally {
     URL.revokeObjectURL(url)
   }
-  return name
 }

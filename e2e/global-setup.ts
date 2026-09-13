@@ -143,6 +143,19 @@ function cleanupTestData(): void {
   execSync(`docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c "${sql}"`, {
     stdio: 'pipe'
   })
+
+  // Respuestas de encuestas de corridas previas (encuestas-marketing.spec.ts). Va aparte y sin
+  // hacer caer el setup: en una base sin la migración de la tabla, el borrado fallaría y se
+  // llevaría por delante la suite entera, cuando solo ese spec la necesita.
+  try {
+    execSync(
+      `docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c ` +
+        `"delete from public.marketing_survey_responses where email like 'e2e-encuesta%';"`,
+      { stdio: 'pipe' }
+    )
+  } catch {
+    console.warn('[e2e] Sin la tabla marketing_survey_responses: ¿faltan migraciones del backend?')
+  }
 }
 
 export default async function globalSetup(config: FullConfig): Promise<void> {

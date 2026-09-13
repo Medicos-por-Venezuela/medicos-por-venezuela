@@ -5,6 +5,49 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-12
+
+- **feat(marketing): encuestas de re-targeting para médicos y módulo Marketing en el panel** —
+  tres formularios públicos (psicólogos, especialistas, médicos generales) para la campaña de
+  correo masivo, y dónde ver y exportar lo que responden.
+  - **Formularios** en `/encuesta/{psicologos,especialistas,medicos-generales}`, fieles a los
+    diseños HTML del equipo (paleta oscura con styled-jsx, acotada a la página). Un solo componente
+    (`components/marketing/EncuestaForm.tsx`) y los textos/opciones en `encuestas.ts`. El correo
+    llega en el enlace de Kit (`?email=`) y se muestra de solo lectura; si el enlace no lo trae, el
+    campo pasa a editable. Un `+` sin codificar se recupera (la query lo lee como espacio).
+  - **Reglas del diseño, también en el backend**: la disponibilidad es obligatoria en las tres
+    encuestas, y psicólogos y especialistas exigen además la ubicación. "Otra forma" abre su campo
+    solo al marcarla (en el diseño estaba siempre visible, y lo escrito sin marcarla se habría
+    descartado).
+  - **Campo de ubicación siempre visible** (psicólogos y especialistas): el texto bajo "¿Dónde
+    estás?" se había dejado condicionado a elegir la zona "Otra"; vuelve a verse siempre, como en
+    el diseño. La API guarda lo escrito elija lo que elija (precisar "Maracaibo" tras elegir
+    Venezuela es válido), en vez de descartarlo si la zona no es "Otra".
+  - **Médicos generales, formulario completo**: en su diseño la disponibilidad solo aparecía al
+    marcar atender, liderar u "Otra". Se decidió enseñar todo el formulario desde el principio, así
+    que la sección se ve siempre (en su recuadro "Tu disponibilidad") y se exige como en las otras
+    dos. Cambia también el backend, que antes descartaba la disponibilidad de quien solo pedía
+    interconsultas: con el formulario completo, eso habría borrado lo que la persona escribió.
+  - **`/admin/marketing`** (solo super_admin, permiso `marketing.read`): una pestaña por encuesta
+    con el listado, búsqueda por correo, rango de fechas, exportación a Excel y el enlace listo
+    para pegar en Kit. La tabla genérica de Reportes sale a `components/admin/ReportTable.tsx` y la
+    usan las dos páginas; `saveBlob` sale de `downloadReport` por lo mismo.
+  - **"Ver más" en los textos largos** del listado: una respuesta con varias opciones marcadas
+    estiraba su fila hasta diez líneas. Con `wrapText`, las celdas de más de 60 caracteres salen
+    recortadas (en un espacio, sin partir palabras) y cada una se despliega por separado. Solo en
+    pantalla: el Excel trae el texto completo.
+  - **Privacidad**: GA4 manda la URL completa (`page_location`), y con ella el correo del médico.
+    El snippet y el `page_view` de `_app.tsx` quitan ahora `email` de la URL que reciben
+    (`PARAMS_PRIVADOS`), conservando los `utm_*`.
+  - E2E: `e2e/encuestas-marketing.spec.ts` (formulario → panel → Excel, campo editable sin correo,
+    gating de admin). `global-setup` borra las respuestas `e2e-encuesta%` de corridas previas.
+  - Backend: `api-medicos-por-venezuela` rama `feat/encuestas-marketing` (tabla
+    `marketing_survey_responses`, endpoints `/marketing/surveys/*`, permiso `marketing.read`).
+  - Ficheros: `pages/encuesta/*`, `pages/admin/marketing.tsx`, `pages/admin/reportes.tsx`,
+    `components/marketing/*`, `components/admin/{ReportTable,AdminLayout}.tsx`, `lib/marketing.ts`,
+    `lib/reports.ts`, `lib/analytics.ts`, `pages/_app.tsx`, `public/robots.txt`,
+    `e2e/encuestas-marketing.spec.ts`, `e2e/global-setup.ts`, `CLAUDE.md`.
+
 ## 2026-09-09
 
 - **feat(videoconsulta): el paciente puede volver a su sala y el médico ve que entró** — dos
