@@ -7,6 +7,10 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-09-12
 
+- **chore(correos): íconos corazón, escudo y persona para el correo de médicos generales** — los
+  tres íconos de la tarjeta de interconsultas de `MPV_correo_medicos_generales_*.html`, generados
+  sin fondo (72×72, transparencia, trazo `#9FB0CB`) con `scripts/build-iconos-correo.mjs`, igual
+  que los de psicólogos. Ficheros: `public/img/icono-{corazon,escudo,persona}-sin-fondo.png`.
 - **chore(correos): logotipo, foto cuadrada e íconos sin fondo para el correo de psicólogos** — lo
   que le faltaba al correo de Kit para verse bien en Gmail y Outlook:
   - `img/logo-correo-marketing.png` (260×100, para mostrarse a 130 px): el SVG no se ve en Gmail ni
