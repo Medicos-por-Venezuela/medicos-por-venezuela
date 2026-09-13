@@ -1,7 +1,7 @@
 import type { AppProps } from 'next/app'
 import { useRouter } from 'next/router'
 import '../styles/globals.css'
-import { esProduccion } from '../lib/analytics'
+import { esProduccion, urlSinParamsPrivados } from '../lib/analytics'
 import { useMountEffect } from '../lib/hooks'
 import { PresenceProvider } from '../lib/presence'
 
@@ -21,10 +21,11 @@ export default function App({ Component, pageProps }: AppProps) {
     const alCambiarDeRuta = (url: string) => {
       // Sin `page_title`: gtag lee el título del documento en el momento del envío, que a estas
       // alturas ya es el de la página nueva. Pasarlo a mano solo abriría la puerta a mandar el
-      // anterior.
+      // anterior. Ruta y ubicación sin los parámetros privados (el correo de las encuestas).
+      const ruta = urlSinParamsPrivados(url)
       window.gtag?.('event', 'page_view', {
-        page_path: url,
-        page_location: window.location.href
+        page_path: `${ruta.pathname}${ruta.search}`,
+        page_location: urlSinParamsPrivados(window.location.href).href
       })
     }
     router.events.on('routeChangeComplete', alCambiarDeRuta)

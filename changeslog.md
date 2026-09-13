@@ -5,6 +5,36 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-12
+
+- **feat(marketing): encuestas de re-targeting para médicos y módulo Marketing en el panel** —
+  tres formularios públicos (psicólogos, especialistas, médicos generales) para la campaña de
+  correo masivo, y dónde ver y exportar lo que responden.
+  - **Formularios** en `/encuesta/{psicologos,especialistas,medicos-generales}`, fieles a los
+    diseños HTML del equipo (paleta oscura con styled-jsx, acotada a la página). Un solo componente
+    (`components/marketing/EncuestaForm.tsx`) y los textos/opciones en `encuestas.ts`. El correo
+    llega en el enlace de Kit (`?email=`) y se muestra de solo lectura; si el enlace no lo trae, el
+    campo pasa a editable. Un `+` sin codificar se recupera (la query lo lee como espacio).
+  - **Reglas del diseño, también en el backend**: en médicos generales la disponibilidad solo se
+    pide si quiere atender, asumir un rol o proponer otra cosa; psicólogos y especialistas exigen
+    además la ubicación. "Otra forma" y la zona "Otra" abren su campo solo al elegirlas (en el
+    diseño estaban siempre visibles, y lo escrito sin marcar la opción se habría descartado).
+  - **`/admin/marketing`** (solo super_admin, permiso `marketing.read`): una pestaña por encuesta
+    con el listado, búsqueda por correo, rango de fechas, exportación a Excel y el enlace listo
+    para pegar en Kit. La tabla genérica de Reportes sale a `components/admin/ReportTable.tsx` y la
+    usan las dos páginas; `saveBlob` sale de `downloadReport` por lo mismo.
+  - **Privacidad**: GA4 manda la URL completa (`page_location`), y con ella el correo del médico.
+    El snippet y el `page_view` de `_app.tsx` quitan ahora `email` de la URL que reciben
+    (`PARAMS_PRIVADOS`), conservando los `utm_*`.
+  - E2E: `e2e/encuestas-marketing.spec.ts` (formulario → panel → Excel, campo editable sin correo,
+    gating de admin). `global-setup` borra las respuestas `e2e-encuesta%` de corridas previas.
+  - Backend: `api-medicos-por-venezuela` rama `feat/encuestas-marketing` (tabla
+    `marketing_survey_responses`, endpoints `/marketing/surveys/*`, permiso `marketing.read`).
+  - Ficheros: `pages/encuesta/*`, `pages/admin/marketing.tsx`, `pages/admin/reportes.tsx`,
+    `components/marketing/*`, `components/admin/{ReportTable,AdminLayout}.tsx`, `lib/marketing.ts`,
+    `lib/reports.ts`, `lib/analytics.ts`, `pages/_app.tsx`, `public/robots.txt`,
+    `e2e/encuestas-marketing.spec.ts`, `e2e/global-setup.ts`, `CLAUDE.md`.
+
 ## 2026-09-09
 
 - **feat(videoconsulta): el paciente puede volver a su sala y el médico ve que entró** — dos
