@@ -15,14 +15,23 @@ Each entry: date, a short summary of what changed and why, and the key files/are
     (`components/marketing/EncuestaForm.tsx`) y los textos/opciones en `encuestas.ts`. El correo
     llega en el enlace de Kit (`?email=`) y se muestra de solo lectura; si el enlace no lo trae, el
     campo pasa a editable. Un `+` sin codificar se recupera (la query lo lee como espacio).
-  - **Reglas del diseño, también en el backend**: en médicos generales la disponibilidad solo se
-    pide si quiere atender, asumir un rol o proponer otra cosa; psicólogos y especialistas exigen
-    además la ubicación. "Otra forma" y la zona "Otra" abren su campo solo al elegirlas (en el
-    diseño estaban siempre visibles, y lo escrito sin marcar la opción se habría descartado).
+  - **Reglas del diseño, también en el backend**: la disponibilidad es obligatoria en las tres
+    encuestas, y psicólogos y especialistas exigen además la ubicación. "Otra forma" y la zona
+    "Otra" abren su campo solo al elegirlas (en el diseño estaban siempre visibles, y lo escrito sin
+    marcar la opción se habría descartado).
+  - **Médicos generales, formulario completo**: en su diseño la disponibilidad solo aparecía al
+    marcar atender, liderar u "Otra". Se decidió enseñar todo el formulario desde el principio, así
+    que la sección se ve siempre (en su recuadro "Tu disponibilidad") y se exige como en las otras
+    dos. Cambia también el backend, que antes descartaba la disponibilidad de quien solo pedía
+    interconsultas: con el formulario completo, eso habría borrado lo que la persona escribió.
   - **`/admin/marketing`** (solo super_admin, permiso `marketing.read`): una pestaña por encuesta
     con el listado, búsqueda por correo, rango de fechas, exportación a Excel y el enlace listo
     para pegar en Kit. La tabla genérica de Reportes sale a `components/admin/ReportTable.tsx` y la
     usan las dos páginas; `saveBlob` sale de `downloadReport` por lo mismo.
+  - **"Ver más" en los textos largos** del listado: una respuesta con varias opciones marcadas
+    estiraba su fila hasta diez líneas. Con `wrapText`, las celdas de más de 60 caracteres salen
+    recortadas (en un espacio, sin partir palabras) y cada una se despliega por separado. Solo en
+    pantalla: el Excel trae el texto completo.
   - **Privacidad**: GA4 manda la URL completa (`page_location`), y con ella el correo del médico.
     El snippet y el `page_view` de `_app.tsx` quitan ahora `email` de la URL que reciben
     (`PARAMS_PRIVADOS`), conservando los `utm_*`.

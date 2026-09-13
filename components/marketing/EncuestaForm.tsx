@@ -90,17 +90,12 @@ export default function EncuestaForm({ survey }: { survey: Survey }) {
     setEmailFromLink(fromLink !== '')
   })
 
-  const asksAvailability =
-    survey.availabilityRoles === null || roles.some((r) => survey.availabilityRoles.includes(r))
-
   const invalid: Group[] = []
   if (!EMAIL_RE.test(email.trim())) invalid.push('email')
   if (roles.length === 0) invalid.push('roles')
-  if (asksAvailability) {
-    if (moments.length === 0) invalid.push('moments')
-    if (days.length === 0) invalid.push('days')
-    if (!weeklyHours) invalid.push('weeklyHours')
-  }
+  if (moments.length === 0) invalid.push('moments')
+  if (days.length === 0) invalid.push('days')
+  if (!weeklyHours) invalid.push('weeklyHours')
   if (survey.asksTimezone && !timezone) invalid.push('timezone')
   const shows = (group: Group) => attempted && invalid.includes(group)
 
@@ -118,8 +113,8 @@ export default function EncuestaForm({ survey }: { survey: Survey }) {
 
     setSending(true)
     try {
-      // Solo viaja lo que se preguntó: lo que el formulario oculta (la disponibilidad de quien solo
-      // pide interconsultas, el texto de una "Otra" desmarcada) no se manda. El backend lo descarta
+      // Solo viaja lo que se preguntó: lo que el formulario oculta (el texto de una "Otra"
+      // desmarcada, la zona horaria en médicos generales) no se manda. El backend lo descarta
       // igualmente, pero así el payload dice lo mismo que la pantalla.
       await submitSurveyResponse(survey.slug, {
         email: email.trim(),
@@ -129,10 +124,10 @@ export default function EncuestaForm({ survey }: { survey: Survey }) {
             ? activeDetail.trim() || null
             : null,
         role_other_detail: roles.includes(OTHER) ? otherDetail.trim() || null : null,
-        moments: asksAvailability ? moments : [],
-        days: asksAvailability ? days : [],
-        weekly_hours: asksAvailability ? weeklyHours || null : null,
-        availability_notes: asksAvailability ? availabilityNotes.trim() || null : null,
+        moments,
+        days,
+        weekly_hours: weeklyHours || null,
+        availability_notes: availabilityNotes.trim() || null,
         timezone: survey.asksTimezone ? timezone || null : null,
         timezone_other:
           survey.asksTimezone && timezone === OTHER ? timezoneOther.trim() || null : null,
@@ -247,110 +242,108 @@ export default function EncuestaForm({ survey }: { survey: Survey }) {
                   <p className="err">Selecciona al menos una opción.</p>
                 </fieldset>
 
-                {asksAvailability && (
-                  // En médicos generales la disponibilidad es condicional y va en su propio bloque
-                  // ("Tu disponibilidad"); en las otras dos se pregunta siempre, sin recuadro.
-                  <div className={survey.availabilityRoles ? 'dispo-block' : undefined}>
-                    {survey.availabilityRoles && <p className="lead">Tu disponibilidad</p>}
+                {/* La disponibilidad se pregunta siempre, en las tres. En médicos generales va en su
+                    recuadro "Tu disponibilidad", como en su diseño; en las otras dos, suelta. */}
+                <div className={survey.availabilityBox ? 'dispo-block' : undefined}>
+                  {survey.availabilityBox && <p className="lead">Tu disponibilidad</p>}
 
-                    <fieldset
-                      className={shows('moments') ? 'invalid' : undefined}
-                      id={GROUP_IDS.moments}
-                    >
-                      <legend>
-                        ¿En qué momento del día te resulta más fácil conectarte?
-                        <span className="req">*</span>
-                      </legend>
-                      <p className="ayuda">{survey.momentHint}</p>
-                      {MOMENTS.map((m) => {
-                        const checked = moments.includes(m.code)
-                        return (
-                          <label key={m.code} className={`opt${checked ? ' on' : ''}`}>
-                            <input
-                              type="checkbox"
-                              name="momento"
-                              value={m.code}
-                              checked={checked}
-                              onChange={() => setMoments((prev) => toggle(prev, m.code))}
-                            />{' '}
-                            {m.label}
-                          </label>
-                        )
-                      })}
-                      <p className="err">Selecciona al menos una opción.</p>
-                    </fieldset>
+                  <fieldset
+                    className={shows('moments') ? 'invalid' : undefined}
+                    id={GROUP_IDS.moments}
+                  >
+                    <legend>
+                      ¿En qué momento del día te resulta más fácil conectarte?
+                      <span className="req">*</span>
+                    </legend>
+                    <p className="ayuda">{survey.momentHint}</p>
+                    {MOMENTS.map((m) => {
+                      const checked = moments.includes(m.code)
+                      return (
+                        <label key={m.code} className={`opt${checked ? ' on' : ''}`}>
+                          <input
+                            type="checkbox"
+                            name="momento"
+                            value={m.code}
+                            checked={checked}
+                            onChange={() => setMoments((prev) => toggle(prev, m.code))}
+                          />{' '}
+                          {m.label}
+                        </label>
+                      )
+                    })}
+                    <p className="err">Selecciona al menos una opción.</p>
+                  </fieldset>
 
-                    <fieldset className={shows('days') ? 'invalid' : undefined} id={GROUP_IDS.days}>
-                      <legend>
-                        ¿Qué días de la semana te quedan mejor?
-                        <span className="req">*</span>
-                      </legend>
-                      <p className="ayuda">
-                        Puedes marcar varios. Si es variable, cuéntanos más abajo, en el campo de
-                        disponibilidad.
-                      </p>
-                      {DAYS.map((d) => {
-                        const checked = days.includes(d.code)
-                        return (
-                          <label key={d.code} className={`opt${checked ? ' on' : ''}`}>
-                            <input
-                              type="checkbox"
-                              name="dia"
-                              value={d.code}
-                              checked={checked}
-                              onChange={() => setDays((prev) => toggle(prev, d.code))}
-                            />{' '}
-                            {d.label}
-                          </label>
-                        )
-                      })}
-                      <p className="err">Selecciona al menos una opción.</p>
-                    </fieldset>
+                  <fieldset className={shows('days') ? 'invalid' : undefined} id={GROUP_IDS.days}>
+                    <legend>
+                      ¿Qué días de la semana te quedan mejor?
+                      <span className="req">*</span>
+                    </legend>
+                    <p className="ayuda">
+                      Puedes marcar varios. Si es variable, cuéntanos más abajo, en el campo de
+                      disponibilidad.
+                    </p>
+                    {DAYS.map((d) => {
+                      const checked = days.includes(d.code)
+                      return (
+                        <label key={d.code} className={`opt${checked ? ' on' : ''}`}>
+                          <input
+                            type="checkbox"
+                            name="dia"
+                            value={d.code}
+                            checked={checked}
+                            onChange={() => setDays((prev) => toggle(prev, d.code))}
+                          />{' '}
+                          {d.label}
+                        </label>
+                      )
+                    })}
+                    <p className="err">Selecciona al menos una opción.</p>
+                  </fieldset>
 
-                    <fieldset
-                      className={shows('weeklyHours') ? 'invalid' : undefined}
-                      id={GROUP_IDS.weeklyHours}
-                    >
-                      <legend>
-                        Disponibilidad: ¿cuántas horas a la semana podrías dedicar, aproximadamente?
-                        <span className="req">*</span>
-                      </legend>
-                      <p className="ayuda">
-                        Es un estimado para organizarnos, no una obligación fija.
-                      </p>
-                      {WEEKLY_HOURS.map((h) => {
-                        const checked = weeklyHours === h.code
-                        return (
-                          <label key={h.code} className={`opt${checked ? ' on' : ''}`}>
-                            <input
-                              type="radio"
-                              name="frecuencia"
-                              value={h.code}
-                              checked={checked}
-                              onChange={() => setWeeklyHours(h.code)}
-                            />{' '}
-                            {h.label}
-                          </label>
-                        )
-                      })}
-                      <p className="err">Selecciona una opción.</p>
-                    </fieldset>
+                  <fieldset
+                    className={shows('weeklyHours') ? 'invalid' : undefined}
+                    id={GROUP_IDS.weeklyHours}
+                  >
+                    <legend>
+                      Disponibilidad: ¿cuántas horas a la semana podrías dedicar, aproximadamente?
+                      <span className="req">*</span>
+                    </legend>
+                    <p className="ayuda">
+                      Es un estimado para organizarnos, no una obligación fija.
+                    </p>
+                    {WEEKLY_HOURS.map((h) => {
+                      const checked = weeklyHours === h.code
+                      return (
+                        <label key={h.code} className={`opt${checked ? ' on' : ''}`}>
+                          <input
+                            type="radio"
+                            name="frecuencia"
+                            value={h.code}
+                            checked={checked}
+                            onChange={() => setWeeklyHours(h.code)}
+                          />{' '}
+                          {h.label}
+                        </label>
+                      )
+                    })}
+                    <p className="err">Selecciona una opción.</p>
+                  </fieldset>
 
-                    <div className="field">
-                      <label htmlFor="dispo-libre">
-                        Si prefieres, descríbenos tu disponibilidad real con tus palabras{' '}
-                        <span className="optional">Opcional</span>
-                      </label>
-                      <textarea
-                        id="dispo-libre"
-                        placeholder="Ej: martes y jueves en la noche, fines de semana variable."
-                        maxLength={2000}
-                        value={availabilityNotes}
-                        onChange={(e) => setAvailabilityNotes(e.target.value)}
-                      />
-                    </div>
+                  <div className="field">
+                    <label htmlFor="dispo-libre">
+                      Si prefieres, descríbenos tu disponibilidad real con tus palabras{' '}
+                      <span className="optional">Opcional</span>
+                    </label>
+                    <textarea
+                      id="dispo-libre"
+                      placeholder="Ej: martes y jueves en la noche, fines de semana variable."
+                      maxLength={2000}
+                      value={availabilityNotes}
+                      onChange={(e) => setAvailabilityNotes(e.target.value)}
+                    />
                   </div>
-                )}
+                </div>
 
                 {survey.asksTimezone && (
                   <div

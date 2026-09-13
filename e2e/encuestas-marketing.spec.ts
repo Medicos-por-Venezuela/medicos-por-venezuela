@@ -12,7 +12,7 @@ import { test, expect } from '@playwright/test'
 
 const ENVIAR = { name: 'Enviar mi respuesta' }
 
-test('médico general: la disponibilidad solo se pide si va a atender, y la respuesta llega al panel', async ({
+test('médico general: el formulario sale completo, la disponibilidad es obligatoria y la respuesta llega al panel', async ({
   page,
   browser
 }) => {
@@ -25,23 +25,21 @@ test('médico general: la disponibilidad solo se pide si va a atender, y la resp
   await expect(correo).toHaveValue(email)
   await expect(correo).toHaveJSProperty('readOnly', true)
 
-  // Vacío: se marca el grupo de roles, y la disponibilidad ni aparece — todavía no dijo que
-  // quiere atender.
+  // Todo el formulario desde el principio, sin marcar nada: la disponibilidad ya está a la vista
+  // en su recuadro. Antes solo aparecía al marcar atender, liderar u "Otra".
+  await expect(page.getByText('Tu disponibilidad', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Noche', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Entre 1 y 3 horas a la semana')).toBeVisible()
+
+  // Y es obligatoria marque lo que marque: solo pedir interconsultas no la exime.
+  await page.getByLabel('Pedir interconsultas cuando tenga un caso que lo necesite').check()
   await page.getByRole('button', ENVIAR).click()
   await expect(
     page.getByText('Por favor completa los campos marcados con * antes de enviar.')
   ).toBeVisible()
-  await expect(page.getByText('Tu disponibilidad', { exact: true })).toHaveCount(0)
-
-  // Quien solo va a pedir interconsultas no se compromete a un horario...
-  await page.getByLabel('Pedir interconsultas cuando tenga un caso que lo necesite').check()
-  await expect(page.getByText('Tu disponibilidad', { exact: true })).toHaveCount(0)
-
-  // ...pero querer atender abre la disponibilidad, y entonces es obligatoria.
-  await page.getByLabel('Seguir atendiendo pacientes a través de la plataforma').check()
-  await expect(page.getByText('Tu disponibilidad', { exact: true })).toBeVisible()
-  await page.getByRole('button', ENVIAR).click()
   await expect(page.getByText('Selecciona una opción.')).toBeVisible()
+
+  await page.getByLabel('Seguir atendiendo pacientes a través de la plataforma').check()
 
   await page.getByLabel('Noche', { exact: true }).check()
   await page.getByLabel('Martes', { exact: true }).check()
@@ -66,11 +64,17 @@ test('médico general: la disponibilidad solo se pide si va a atender, y la resp
   )
   await admin.getByPlaceholder('Buscar por correo').fill(email)
   await expect(admin.getByRole('cell', { name: email })).toBeVisible()
-  await expect(
-    admin.getByRole('cell', {
-      name: 'Pedir interconsultas cuando tenga un caso que lo necesite; Seguir atendiendo pacientes a través de la plataforma'
-    })
-  ).toBeVisible()
+  // "Cómo quiere participar" es largo: sale recortado para no alargar la fila, y "Ver más" lo
+  // despliega entero.
+  const roles =
+    'Pedir interconsultas cuando tenga un caso que lo necesite; Seguir atendiendo pacientes a través de la plataforma'
+  await expect(admin.getByText(roles)).toHaveCount(0)
+  await admin.getByRole('button', { name: 'Ver más' }).click()
+  await expect(admin.getByText(roles)).toBeVisible()
+  await expect(admin.getByRole('button', { name: 'Ver menos' })).toHaveAttribute(
+    'aria-expanded',
+    'true'
+  )
   await expect(admin.getByRole('cell', { name: 'Entre 1 y 3 horas a la semana' })).toBeVisible()
   // Médicos generales no pregunta la ubicación: esa columna no existe en su pestaña.
   await expect(admin.getByRole('columnheader', { name: 'Dónde está' })).toHaveCount(0)
