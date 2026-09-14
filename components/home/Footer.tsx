@@ -5,9 +5,8 @@
 // Lo usan el home Y `/quienes-somos`: las anclas van como `/#seccion` por lo mismo que en el
 // Navbar. Ver la nota de allí.
 //
-// El aviso legal se acortó el 2026-08-28 por decisión del copy aprobado; con él desapareció la
-// frase de "esto no reemplaza la atención de urgencia". Queda anotado en copy.ts y en
-// tasks/home-refresh/todo.md: era una salvaguarda clínica, no un texto de relleno.
+// El aviso legal se acortó el 2026-08-28 por decisión del copy aprobado y con él se fue la frase
+// de "esto no reemplaza la atención de urgencia". Volvió el 2026-09-13 (ver copy.ts).
 
 import Image from 'next/image'
 import Link from 'next/link'
