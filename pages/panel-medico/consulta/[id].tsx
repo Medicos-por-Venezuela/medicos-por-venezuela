@@ -42,6 +42,7 @@ import {
 } from '../../../lib/notificationPrefs'
 import { usePatientsInRoom } from '../../../lib/patientPresence'
 import EstadoPacienteBadge from '../../../components/EstadoPacienteBadge'
+import AntesDeEntrarModal from '../../../components/AntesDeEntrarModal'
 
 type Patient = {
   id: string
@@ -140,6 +141,8 @@ export default function ConsultaDetalle() {
   // Última nota persistida (para exigir "nota guardada" antes de cerrar la consulta).
   const [savedNote, setSavedNote] = useState('')
   const [poolOpen, setPoolOpen] = useState(false)
+  // El aviso de "antes de entrar" a la sala está arriba.
+  const [avisoVideo, setAvisoVideo] = useState(false)
   // Para qué se abre el pool: 'browse' (ver médicos + asignar interconsulta) o 'referral'
   // (elegir a quién derivar en "Agendar con especialista").
   const [poolMode, setPoolMode] = useState<'browse' | 'referral'>('browse')
@@ -649,15 +652,13 @@ export default function ConsultaDetalle() {
               Aparece siempre que exista la sala, aunque el caso se haya tomado por WhatsApp —
               pero no en casos finalizados (la sala ya no existe operativamente). */}
           {consultation.video_room_url && !isCaseClosed && (
-            <a
+            <button
               className="btn btn-primary btn-full"
-              href={browserRoomUrl(consultation.video_room_url)}
-              target="_blank"
-              rel="noreferrer"
+              onClick={() => setAvisoVideo(true)}
               style={{ marginBottom: 16 }}
             >
               Unirse a videoconsulta
-            </a>
+            </button>
           )}
 
           {/* Acciones de referencia/agenda, en una fila debajo del encabezado. */}
@@ -917,6 +918,22 @@ export default function ConsultaDetalle() {
               </div>
             </section>
           </div>
+
+          <AntesDeEntrarModal
+            para="medico"
+            open={avisoVideo}
+            // El correo "tu médico te está esperando" solo sale al tomar el caso POR VIDEO y si
+            // el paciente dejó correo (ver video_ready_mail_args en el backend).
+            pacienteSinCorreo={!consultation.patients?.email || consultation.attended_via_whatsapp}
+            onCancel={() => setAvisoVideo(false)}
+            onConfirm={() => {
+              setAvisoVideo(false)
+              // Dentro del clic de "Entendido": fuera de un gesto el navegador bloquea el pop-up.
+              if (consultation.video_room_url) {
+                window.open(browserRoomUrl(consultation.video_room_url), '_blank', 'noreferrer')
+              }
+            }}
+          />
 
           <DoctorPoolModal
             open={poolOpen}

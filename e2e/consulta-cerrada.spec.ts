@@ -61,7 +61,7 @@ test('caso finalizado: no-show confirma, cerrar exige nota y la UI queda solo-le
   await page.goto(`/panel-medico/consulta/${cid}`)
   await expect(page.getByRole('heading', { name: 'Detalle de consulta' })).toBeVisible()
   // Caso abierto con sala: el CTA de video está arriba.
-  await expect(page.getByRole('link', { name: 'Unirse a videoconsulta' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Unirse a videoconsulta' })).toBeVisible()
 
   // 1. No-show pide confirmación; cancelar no finaliza el caso.
   const noShow = page.getByRole('button', { name: 'Paciente no estaba en la sala de espera' })
@@ -108,7 +108,7 @@ test('caso finalizado: no-show confirma, cerrar exige nota y la UI queda solo-le
   await expect(page.getByText('Este caso ya está finalizado')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Cerrar consulta' })).toHaveCount(0)
   await expect(noShow).toHaveCount(0)
-  await expect(page.getByRole('link', { name: 'Unirse a videoconsulta' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Unirse a videoconsulta' })).toHaveCount(0)
 
   await ctx.close()
 })

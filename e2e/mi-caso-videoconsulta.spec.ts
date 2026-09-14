@@ -57,9 +57,11 @@ test('el paciente vuelve por /mi-caso, entra a la sala y el médico ve que entr�
   // El modal de instrucciones es el MISMO que el de la sala de espera (componente compartido):
   // si se hubiera copiado, esta aserción seguiría verde con dos textos divergiendo en paralelo.
   await unirse.click()
-  await expect(
-    page.getByRole('heading', { name: 'Antes de entrar a la videoconsulta' })
-  ).toBeVisible()
+  const aviso = page.getByRole('dialog')
+  await expect(aviso.getByRole('heading', { name: 'Información importante' })).toBeVisible()
+  await expect(aviso.getByText(/espera de 15 a 20 minutos/)).toBeVisible()
+  // Las instrucciones de Jitsi siguen debajo de los avisos: el diseño nuevo no las reemplaza.
+  await expect(aviso.getByText(/Escribe tu nombre completo/)).toBeVisible()
 
   // Confirmar abre la sala en una pestaña nueva Y registra la entrada. Las dos cosas: sin el
   // `window.open` el paciente no entra, y sin el POST el médico no se entera.
@@ -67,7 +69,7 @@ test('el paciente vuelve por /mi-caso, entra a la sala y el médico ve que entr�
   const entradaPromise = page.waitForResponse(
     (r) => r.url().includes('/entered-call') && r.request().method() === 'POST'
   )
-  await page.getByRole('button', { name: 'Entendido, entrar a la videoconsulta' }).click()
+  await aviso.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
 
   const popup = await popupPromise
   expect(popup.url()).toContain('/vamed-')
