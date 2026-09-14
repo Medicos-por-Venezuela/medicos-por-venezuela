@@ -32,6 +32,10 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   - Ficheros: `lib/postLogin.ts`, `lib/doctors.ts`, `lib/consultations.ts`,
     `pages/registro-medico.tsx`, `components/YaRegistradoModal.tsx`, `pages/auth/recuperar.tsx`,
     `pages/panel-medico.tsx`, `e2e/*`, `CLAUDE.md`.
+  - Nota del rebase sobre #133 (términos): `global-setup.ts` conserva las dos siembras (la cuenta sin
+    rol de #133 y las de este cambio). `terminos.spec.ts` contaba como "alta" cualquier
+    `POST /api/v1/doctors*` y el chequeo de solo lectura `/doctors/registration-check` lo hacía
+    fallar: las altas se anclan ahora al final de la ruta.
 
 ## 2026-09-13
 

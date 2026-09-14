@@ -12,13 +12,17 @@ const MENSAJE = 'Debes aceptar los Términos de uso y privacidad para continuar.
 const CASILLA = /acepto los Términos de uso y privacidad/
 
 // Cualquier petición que cree algo: el signUp de Supabase, las altas del backend y la
-// finalización del rol de /elegir-rol.
+// finalización del rol de /elegir-rol. Las altas se anclan al final de la ruta: el registro de
+// médico también hace `POST /doctors/registration-check` al salir del campo de correo, y esa
+// consulta es de solo lectura (no crea nada), así que no cuenta como alta.
 function registrarAltas(page: Page): string[] {
   const altas: string[] = []
   page.on('request', (r) => {
     if (r.method() !== 'POST') return
     if (
-      /\/auth\/v1\/signup|\/api\/v1\/(patients|consultations|doctors)|finalize-role/.test(r.url())
+      /\/auth\/v1\/signup|\/api\/v1\/(patients|consultations|doctors)(\?|$)|finalize-role/.test(
+        r.url()
+      )
     )
       altas.push(r.url())
   })
