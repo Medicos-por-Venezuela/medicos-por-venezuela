@@ -7,6 +7,13 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-09-14
 
+- **fix(legal): "Quién ve sus datos" según lo que manda el backend** — en `/legal/privacidad`, la
+  cola de espera ya no dice que muestra el nombre del paciente (el backend no lo envía ahí). El
+  nombre, la cédula y el teléfono solo los ven el médico que toma la consulta y administración.
+  En una interconsulta, el especialista solo ve el motivo, las notas clínicas del médico y la edad,
+  sin datos personales. `e2e/terminos.spec.ts` fija los dos textos. Iba en el PR #133, pero ese
+  PR se mergeó antes del push.
+
 - **fix(auth): una cuenta de Auth sin ficha de médico ni registro de paciente ya no entra** — en
   producción había cuentas así que iniciaban sesión igual. Casi todas nacen del registro de médico:
   crea la cuenta en Supabase Auth y DESPUÉS la ficha, y si la ficha falla (en prod: médicos ya
