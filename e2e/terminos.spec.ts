@@ -55,6 +55,11 @@ test('la página de términos es pública, sin 2FA, y el pie la enlaza junto al 
   ).toHaveAttribute('href', 'mailto:legal@medicosporvenezuela.org')
   // La plataforma no tiene autenticación de dos factores: prometerla sería falso.
   await expect(page.getByText(/dos factores|2FA/i)).toHaveCount(0)
+  // Lo que ve cada quien tiene que coincidir con lo que manda el backend: la cola de espera no
+  // trae el nombre (ver el tipo `Patient` de pages/panel-medico.tsx) y la bandeja de
+  // interconsultas no trae datos personales (`InterconsultationRequestInbox` en la API).
+  await expect(page.getByText(/alergias y el motivo de la consulta, sin su nombre/)).toBeVisible()
+  await expect(page.getByText(/sin sus datos personales: ni nombre, ni cédula/)).toBeVisible()
   // Pública e indexable, a diferencia de login/panel.
   await expect(page.locator('meta[name="robots"]')).toHaveCount(0)
 })

@@ -19,7 +19,7 @@ import Footer from '../../components/home/Footer'
 import Navbar from '../../components/home/Navbar'
 import { MARCA } from '../../components/home/copy'
 
-const ACTUALIZADO = '13 de septiembre de 2026'
+const ACTUALIZADO = '14 de septiembre de 2026'
 const CORREO_LEGAL = 'legal@medicosporvenezuela.org'
 
 export default function TerminosPrivacidadPage() {
@@ -176,15 +176,16 @@ export default function TerminosPrivacidadPage() {
             <ul>
               <li>
                 En la lista de espera, los profesionales ven solo lo necesario para decidir quién le
-                atiende: su nombre, zona, edad, alergias y el motivo de la consulta.
+                atiende: zona, edad, alergias y el motivo de la consulta, sin su nombre.
               </li>
               <li>
-                Su cédula y su número de teléfono solo los ven el profesional que toma su consulta y
-                el equipo de administración de la Plataforma.
+                Su nombre, su cédula y su número de teléfono solo los ven el profesional que toma su
+                consulta y el equipo de administración de la Plataforma.
               </li>
               <li>
-                Si su médico pide una interconsulta, el especialista que la atiende ve la
-                información del caso necesaria para darla.
+                Si su médico pide una interconsulta, el especialista que la atiende solo ve el
+                motivo de la consulta, las notas clínicas de su médico y su edad, sin sus datos
+                personales: ni nombre, ni cédula, ni teléfono, ni correo, ni zona.
               </li>
               <li>
                 El teléfono de los profesionales nunca se muestra a los pacientes. Solo se facilita
