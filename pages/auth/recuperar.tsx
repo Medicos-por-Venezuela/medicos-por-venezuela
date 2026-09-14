@@ -127,8 +127,9 @@ export default function RecuperarClave() {
       const perfil = await fetchMyProfile(session.access_token)
       const ruta = resolvePostLoginRoute(perfil)
       if (ruta.kind === 'blocked') {
-        // La contraseña SÍ se cambió; lo que pasa es que la cuenta está desactivada. Se cierra la
-        // sesión y se explica, en vez de rebotar a una página que no lo dice.
+        // La contraseña SÍ se cambió; lo que pasa es que la cuenta no puede entrar (desactivada, o
+        // sin ficha ni registro de paciente: un registro de médico a medias, que el mensaje explica
+        // cómo terminar). Se cierra la sesión y se explica, en vez de rebotar sin decirlo.
         await supabase.auth.signOut()
         setError(ruta.message)
         return

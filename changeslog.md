@@ -5,6 +5,38 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-14
+
+- **fix(auth): una cuenta de Auth sin ficha de médico ni registro de paciente ya no entra** — en
+  producción había cuentas así que iniciaban sesión igual. Casi todas nacen del registro de médico:
+  crea la cuenta en Supabase Auth y DESPUÉS la ficha, y si la ficha falla (en prod: médicos ya
+  registrados que probaron otra vez con otro correo, con la cédula repetida) la cuenta queda sola.
+  - `resolvePostLoginRoute` bloquea (y cierra la sesión) si `has_account_record` de `/auth/me` es
+    `false`, salvo admins. Va después de `role_chosen`, así que un alta con Google se termina en su
+    primera sesión. Aplica a `/login`, `/auth/callback`, `/auth/recuperar` y `/mi-caso`. Solo
+    bloquea un `false` explícito: si este frontend sale antes que la API, el campo llega
+    `undefined` y no debe dejar fuera a todo el mundo.
+  - **Buscador rápido de correos en `/registro-medico`:** al salir del campo pregunta a
+    `POST /doctors/registration-check`; si el correo ya es de un médico, `YaRegistradoModal` con los
+    enlaces "inicie sesión" y "pida recordar su clave". Al enviar se repite con la cédula, ANTES de
+    crear la cuenta. Un registro a medias (`incomplete`) se termina con la misma contraseña
+    (`signInWithPassword`) en vez de chocar con "User already registered".
+  - La cola del panel ya no recibe cédula ni teléfono del paciente (tipos en `lib/consultations.ts` y
+    `panel-medico.tsx`); el backend dejó de enviarlos.
+  - Va con el PR del backend (RLS alineada con la API: nadie lee `patients` por PostgREST, y de
+    `consultations` solo la señal de Realtime). CLAUDE.md actualizado: el trade-off de "cualquier
+    médico recién registrado lee toda la PII por RLS" ya no es cierto.
+  - E2E nuevos: `cuenta-sin-registro.spec.ts`, `registro-medico-correo.spec.ts`. `global-setup.ts`
+    siembra la fila de `patients` del paciente de login (sin ella, el login la bloquearía) y una
+    cuenta de médico sin ficha.
+  - Ficheros: `lib/postLogin.ts`, `lib/doctors.ts`, `lib/consultations.ts`,
+    `pages/registro-medico.tsx`, `components/YaRegistradoModal.tsx`, `pages/auth/recuperar.tsx`,
+    `pages/panel-medico.tsx`, `e2e/*`, `CLAUDE.md`.
+  - Nota del rebase sobre #133 (términos): `global-setup.ts` conserva las dos siembras (la cuenta sin
+    rol de #133 y las de este cambio). `terminos.spec.ts` contaba como "alta" cualquier
+    `POST /api/v1/doctors*` y el chequeo de solo lectura `/doctors/registration-check` lo hacía
+    fallar: las altas se anclan ahora al final de la ruta.
+
 ## 2026-09-13
 
 - **feat(legal): términos de uso y privacidad, y aceptación obligatoria al registrarse** — el sitio

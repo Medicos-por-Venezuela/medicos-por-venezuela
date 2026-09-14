@@ -39,8 +39,9 @@ type Patient = {
   // Opcional: en "Pacientes que no han podido ser atendidos" (cola de espera) el backend no manda
   // el nombre por seguridad; solo llega en "Mis consultas abiertas". El card cae a "Paciente".
   full_name?: string
-  cedula: string | null
-  phone_whatsapp: string
+  // Tampoco llegan en la cola de espera: solo en las consultas ya tomadas.
+  cedula?: string | null
+  phone_whatsapp?: string
   affected_zone: string
   age_range: string | null
   needs_tags: string[] | null

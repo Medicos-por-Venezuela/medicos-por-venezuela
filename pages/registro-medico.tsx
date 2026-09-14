@@ -1,16 +1,19 @@
 import Seo from '../components/Seo'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { z } from 'zod'
+import YaRegistradoModal, { type MotivoYaRegistrado } from '../components/YaRegistradoModal'
 import { supabase } from '../lib/supabase'
 import { verificarSacs, verificarPsicologo } from '../lib/verificacion'
 import {
+  checkDoctorRegistration,
   fetchProfessionalTypes,
   fetchSpecialties,
   createDoctor,
   ApiError,
   type ProfessionalTypeResponse,
+  type RegistrationEmailStatus,
   type SpecialtyResponse
 } from '../lib/doctors'
 import { useMountEffect } from '../lib/hooks'
@@ -45,6 +48,16 @@ const PAISES = [
 ]
 
 const soloDigitos = (value: string) => value.replace(/\D/g, '')
+
+const correoValido = (value: string) => z.string().email().safeParse(value).success
+
+// Qué aviso toca por el estado del correo. 'incomplete' no avisa: ese registro se termina aquí
+// mismo, entrando con la contraseña de la cuenta que ya existe.
+function motivoPorCorreo(estado: RegistrationEmailStatus): MotivoYaRegistrado | null {
+  if (estado === 'doctor') return 'medico'
+  if (estado === 'account') return 'cuenta'
+  return null
+}
 
 // Validación del formulario. mostrarEspecialidad/especialidad viajan juntos porque la
 // especialidad solo es obligatoria cuando el tipo de profesional es "Médico" (para
@@ -103,6 +116,12 @@ export default function RegistroMedico() {
   const [verificando, setVerificando] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // Buscador rápido del correo: al salir del campo se pregunta al backend si ya está registrado.
+  // `correoBuscado` es el correo al que corresponde `estadoCorreo`: si el usuario lo edita mientras
+  // la respuesta viaja, esa respuesta ya no dice nada del correo que hay en el campo.
+  const [estadoCorreo, setEstadoCorreo] = useState<RegistrationEmailStatus | null>(null)
+  const correoBuscado = useRef('')
+  const [yaRegistrado, setYaRegistrado] = useState<MotivoYaRegistrado | null>(null)
 
   useMountEffect(() => {
     fetchProfessionalTypes()
@@ -199,6 +218,32 @@ export default function RegistroMedico() {
     }
   }
 
+  function onChangeCorreo(value: string) {
+    setCorreo(value)
+    setEstadoCorreo(null)
+    // Olvidarlo sirve a la vez para volver a buscar al salir del campo y para descartar la
+    // respuesta que aún viaje del correo anterior.
+    correoBuscado.current = ''
+  }
+
+  async function buscarCorreo() {
+    const email = correo.trim().toLowerCase()
+    if (!correoValido(email) || email === correoBuscado.current) return
+    correoBuscado.current = email
+    try {
+      const { email_status } = await checkDoctorRegistration({ email })
+      if (correoBuscado.current !== email) return // lo cambió mientras tanto
+      setEstadoCorreo(email_status)
+      const motivo = motivoPorCorreo(email_status)
+      if (motivo) setYaRegistrado(motivo)
+    } catch (e) {
+      // Es una ayuda, no un requisito: si falla (red, rate limit), el envío lo vuelve a comprobar
+      // antes de crear la cuenta. Se olvida el correo para poder reintentar al salir otra vez.
+      console.error(e)
+      correoBuscado.current = ''
+    }
+  }
+
   const camposBloqueados = verificado === true
 
   const submit = async () => {
@@ -225,32 +270,80 @@ export default function RegistroMedico() {
       return
     }
 
-    // Marca si signUp() ya dejó una cuenta+sesión activas antes de llamar a createDoctor(), para
-    // poder distinguir en el catch si hay que revertir la sesión (ver mitigación de cuentas
-    // huérfanas más abajo).
-    let cuentaCreada = false
+    // Marca si ya hay una sesión abierta (cuenta recién creada, o la de un registro a medias en la
+    // que se acaba de entrar) antes de llamar a createDoctor(), para poder distinguir en el catch si
+    // hay que cerrarla (ver mitigación de cuentas huérfanas más abajo).
+    let sesionAbierta = false
 
     setLoading(true)
     try {
       const accountEmail = correo.trim().toLowerCase()
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: accountEmail,
-        password: contrasena,
-        options: { data: { full_name: nombreCompleto.trim(), role: 'doctor' } }
-      })
-      if (signUpError) throw signUpError
-      if (!signUpData.session) {
-        setError(
-          'Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión en el panel médico.'
-        )
-        return
+      const cedula = `${cedulaPrefijo}-${cedulaNumero}`
+
+      // Chequeo ANTES de tocar Supabase Auth. Sin él, un correo o una cédula ya registrados creaban
+      // la cuenta y luego fallaban al guardar la ficha: la cuenta quedaba huérfana. Así nacieron en
+      // producción cuentas de médicos que ya estaban registrados y probaron otra vez.
+      let estadoCorreo: RegistrationEmailStatus = 'available'
+      try {
+        const check = await checkDoctorRegistration({ email: accountEmail, cedula })
+        estadoCorreo = check.email_status
+        const motivo = motivoPorCorreo(check.email_status) ?? (check.cedula_taken ? 'cedula' : null)
+        if (motivo) {
+          setYaRegistrado(motivo)
+          return
+        }
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 429) {
+          setError('Demasiados intentos. Intenta de nuevo más tarde.')
+          return
+        }
+        // Chequeo caído: se sigue como antes. El backend vuelve a comprobar correo y cédula antes de
+        // guardar la ficha, y el catch de abajo cierra la sesión si eso falla.
+        console.error(e)
       }
-      cuentaCreada = true
+
+      if (estadoCorreo === 'incomplete') {
+        // Registro que se cortó: la cuenta ya existe y no tiene ficha. Se termina con la misma
+        // contraseña en vez de crear otra cuenta (signUp fallaría: el correo ya está en Auth).
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: accountEmail,
+          password: contrasena
+        })
+        if (signInError || !signInData.session) {
+          setYaRegistrado('clave')
+          return
+        }
+      } else {
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: accountEmail,
+          password: contrasena,
+          options: { data: { full_name: nombreCompleto.trim(), role: 'doctor' } }
+        })
+        if (signUpError) {
+          // El correo está en Auth aunque el chequeo no lo viera (una cuenta de Auth sin fila en
+          // `users`, o dos registros a la vez): mismo aviso, no el error genérico de abajo.
+          if (
+            signUpError.code === 'user_already_exists' ||
+            /already registered/i.test(signUpError.message)
+          ) {
+            setYaRegistrado('cuenta')
+            return
+          }
+          throw signUpError
+        }
+        if (!signUpData.session) {
+          setError(
+            'Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión en el panel médico.'
+          )
+          return
+        }
+      }
+      sesionAbierta = true
 
       await createDoctor({
         professional_type_id: tipoProfesionalId,
         specialty_id: resolverSpecialtyId(),
-        cedula: `${cedulaPrefijo}-${cedulaNumero}`,
+        cedula,
         full_name: nombreCompleto,
         license: licencia || null,
         phone: `${whatsappPrefijo}${whatsappNumero}`,
@@ -267,15 +360,16 @@ export default function RegistroMedico() {
       // no se pide un login manual aparte — signUp() ya dejó una sesión activa.
       await router.push('/panel-medico')
     } catch (e) {
-      if (cuentaCreada) {
-        // El registro en el backend falló después de crear la cuenta de Supabase: cerramos la
-        // sesión para no dejar al usuario autenticado con un perfil a medio completar, y se lo
-        // decimos explícitamente. No revertimos la cuenta en sí (eso requeriría un endpoint
-        // admin con service-role, fuera del alcance de este fix — ver changeslog).
+      if (sesionAbierta) {
+        // El registro en el backend falló después de abrir la sesión de Supabase: la cerramos
+        // para no dejar al usuario autenticado sin ficha (tampoco podría entrar: el login rechaza
+        // las cuentas sin ficha). No revertimos la cuenta en sí (eso requeriría un endpoint admin
+        // con service-role); en cambio, reintentar con el mismo correo y contraseña la completa,
+        // porque el chequeo previo la reconoce como un registro a medias.
         await supabase.auth.signOut()
         console.error(e)
         setError(
-          'Tu cuenta se creó, pero no pudimos guardar tus datos de registro. Contáctanos desde la sección "Contacto" de la página principal para completar tu registro manualmente, o inténtalo de nuevo más tarde con el mismo correo.'
+          'No pudimos guardar tus datos de registro. Inténtalo de nuevo en unos minutos con el mismo correo y contraseña, o contáctanos desde la sección "Contacto" de la página principal.'
         )
       } else if (e instanceof ApiError && e.status === 422) {
         setError(e.message || 'Cédula o teléfono con formato inválido.')
@@ -419,8 +513,23 @@ export default function RegistroMedico() {
               </div>
 
               <div>
-                <label className="label">Correo *</label>
-                <input type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} />
+                <label className="label" htmlFor="registro-medico-correo">
+                  Correo *
+                </label>
+                <input
+                  id="registro-medico-correo"
+                  type="email"
+                  autoComplete="email"
+                  value={correo}
+                  onChange={(e) => onChangeCorreo(e.target.value)}
+                  onBlur={buscarCorreo}
+                />
+                {estadoCorreo === 'incomplete' && (
+                  <div className="notice notice-info" style={{ marginTop: 8 }}>
+                    Ya empezaste un registro con este correo. Completa el formulario con la misma
+                    contraseña que usaste y lo terminamos.
+                  </div>
+                )}
               </div>
 
               <div>
@@ -489,6 +598,7 @@ export default function RegistroMedico() {
             </p>
           </div>
         </div>
+        <YaRegistradoModal motivo={yaRegistrado} onClose={() => setYaRegistrado(null)} />
       </main>
     </>
   )
