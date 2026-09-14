@@ -88,7 +88,10 @@ export const RUTAS = {
   // El CTA de Psicología va al MISMO registro de paciente que la telemedicina, con un parámetro
   // que deja preseleccionada la especialidad. Lo lee `pages/registro-paciente.tsx`, que resuelve
   // Psicología por el flag `mental_health_only` del catálogo y no por el nombre.
-  psicologia: '/registro-paciente?especialidad=psicologia'
+  psicologia: '/registro-paciente?especialidad=psicologia',
+  // Términos de uso y privacidad. La enlazan el pie y la casilla de los registros
+  // (`components/AceptaTerminos.tsx`), que la abre en otra pestaña.
+  terminos: '/legal/privacidad'
 } as const
 
 export const HERO = {
@@ -613,13 +616,18 @@ export const NAV: NavItem[] = [
 // Unidos y fuera la advertencia de que la orientación no sustituye la atención presencial de
 // urgencia. La `descripcion` de la columna de marca también decía "registrada en Estados Unidos";
 // se quita ahí igualmente, porque si no el pie se contradice consigo mismo a dos párrafos de
-// distancia. ⚠️ La advertencia de urgencias era una salvaguarda clínica, no un texto de relleno:
-// se retira porque lo pide el copy aprobado, y queda anotado aquí por si alguien la echa en falta.
+// distancia.
+//
+// La advertencia de urgencias VOLVIÓ el 2026-09-13, a pedido del equipo: era una salvaguarda
+// clínica, no relleno. Estados Unidos sigue fuera.
 export const FOOTER = {
   descripcion:
     'Organización sin fines de lucro registrada. Conectamos profesionales de la salud ' +
     'verificados con quienes los necesitan dentro de Venezuela.',
-  avisoLegal: 'Médicos por Venezuela es una organización sin fines de lucro registrada.',
+  avisoLegal:
+    'Médicos por Venezuela es una organización sin fines de lucro registrada. La orientación ' +
+    'ofrecida a través de esta plataforma no reemplaza la atención médica presencial de ' +
+    'urgencia. Si tienes una emergencia médica, acude a tu servicio de salud más cercano.',
   copyright: '© 2026 Médicos por Venezuela',
   // Franja de créditos, debajo del aviso legal. The Climb va como texto —no se dio una URL—; solo
   // Softronic lleva enlace. Se parte en tres trozos para no meter marcado dentro de una cadena.
@@ -644,7 +652,8 @@ export const FOOTER = {
       enlaces: [
         // Ahora es una página propia, no el ancla del home.
         { label: 'Quiénes Somos', href: RUTAS.quienesSomos },
-        { label: 'Impacto', ancla: 'impacto' }
+        { label: 'Impacto', ancla: 'impacto' },
+        { label: 'Términos y privacidad', href: RUTAS.terminos }
       ]
     }
   ]

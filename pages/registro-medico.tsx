@@ -15,6 +15,7 @@ import {
 } from '../lib/doctors'
 import { useMountEffect } from '../lib/hooks'
 import { trackAltaDeMedico } from '../lib/analytics'
+import AceptaTerminos, { MENSAJE_TERMINOS } from '../components/AceptaTerminos'
 
 // Consolida en un solo paso lo que antes estaba dividido entre este archivo (cuenta) y
 // /elegir-rol (especialidad/país/whatsapp), según el diagrama de secuencia + wireframe
@@ -66,12 +67,14 @@ const registroMedicoSchema = z
     paisReside: z.string().min(1, 'Selecciona el país donde resides.'),
     mostrarEspecialidad: z.boolean(),
     especialidadId: z.string(),
-    contrasena: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres.')
+    contrasena: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres.'),
+    terminos: z.boolean()
   })
   .refine((data) => !data.mostrarEspecialidad || data.especialidadId.length > 0, {
     message: 'Selecciona una especialidad.',
     path: ['especialidadId']
   })
+  .refine((data) => data.terminos, { message: MENSAJE_TERMINOS, path: ['terminos'] })
 
 export default function RegistroMedico() {
   const router = useRouter()
@@ -89,6 +92,7 @@ export default function RegistroMedico() {
   const [paisReside, setPaisReside] = useState('')
   const [especialidadId, setEspecialidadId] = useState('')
   const [contrasena, setContrasena] = useState('')
+  const [terminos, setTerminos] = useState(false)
   // Honeypot anti-bot: campo real (no type="hidden") que un humano nunca ve ni completa,
   // pero que un bot que auto-rellena formularios sí suele tocar.
   const [website, setWebsite] = useState('')
@@ -209,7 +213,8 @@ export default function RegistroMedico() {
       paisReside,
       mostrarEspecialidad,
       especialidadId,
-      contrasena
+      contrasena,
+      terminos
     })
     if (!result.success) {
       setError(result.error.issues[0]?.message || 'Revisa los campos del formulario.')
@@ -469,6 +474,7 @@ export default function RegistroMedico() {
                 style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }}
               />
 
+              <AceptaTerminos checked={terminos} onChange={setTerminos} />
               {error && <div className="notice notice-danger">{error}</div>}
               <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>
                 {loading ? 'Registrando...' : 'Registrarse'}

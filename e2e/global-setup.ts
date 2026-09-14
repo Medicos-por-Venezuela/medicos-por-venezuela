@@ -215,4 +215,15 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
       `"update public.users set role='patient', active=true, role_chosen=true, full_name='E2E Paciente Login' where id='${patientUid}';"`,
     { stdio: 'pipe' }
   )
+
+  // Cuenta a medio crear, como la que deja el primer inicio con Google: sin rol elegido, así que
+  // aterriza en /elegir-rol (terminos.spec.ts). `role_chosen=false` se reafirma en cada corrida por
+  // si alguna vez un spec la finaliza.
+  const sinRolUid = await ensureAuthUser('e2e-sin-rol@example.com')
+  execSync(
+    `docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c ` +
+      `"update public.users set role='patient', active=true, role_chosen=false, full_name='E2E Sin Rol' where id='${sinRolUid}';"`,
+    { stdio: 'pipe' }
+  )
+  await saveSession('e2e-sin-rol@example.com', baseURL, 'e2e/.auth/sin-rol.json')
 }

@@ -215,6 +215,12 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `/sala-espera` — patient confirmation (anonymous submissions)
 - `/registro-medico` — doctor self-registration (email+password or Google)
 - `/elegir-rol` — first-time Google role picker (patient vs doctor)
+- `/legal/privacidad` — public, indexable Terms of use and privacy page (linked from the footer).
+  `/registro-paciente`, `/registro-medico` and `/elegir-rol` require ticking
+  `components/AceptaTerminos.tsx`, which opens this page in a new tab. The acceptance is enforced
+  client-side only (not yet stored by the backend). Every claim on the page is a legal commitment:
+  a new provider or a new form field means updating the text and its date
+  (`e2e/terminos.spec.ts`)
 - `/login` — **single sign-in for patients, doctors and admins**; routes by effective role
   (`lib/postLogin.ts`, shared with `/auth/callback` and `/mi-caso`)
 - `/mi-caso` — patient portal, read-only case status (no login form; sends you to `/login`)

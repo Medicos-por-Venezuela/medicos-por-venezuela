@@ -7,6 +7,27 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-09-13
 
+- **feat(legal): términos de uso y privacidad, y aceptación obligatoria al registrarse** — el sitio
+  no tenía términos ni política de privacidad publicados.
+  - **`/legal/privacidad`**: página pública e indexable, con el pie y la cabecera del home. Parte
+    del documento legal del equipo, corregido contra lo que hace la plataforma:
+    - Sin la autenticación de dos factores, que no existe.
+    - Con los datos reales de pacientes, menores y profesionales, y la verificación ante SACS/FPV.
+    - Con los proveedores reales y el responsable (Médicos por Venezuela, `legal@`).
+    - Destaca arriba que la telemedicina no reemplaza la atención presencial.
+  - **Casilla "He leído y acepto los Términos de uso y privacidad"** (`components/AceptaTerminos.tsx`)
+    en `/registro-paciente`, `/registro-medico` y `/elegir-rol`, que es por donde termina el alta
+    con Google. Sin marcarla no sale ninguna petición de alta. El enlace abre en otra pestaña para
+    no perder lo escrito. La aceptación no se guarda todavía en el backend.
+  - **Pie**: vuelve la advertencia de urgencias que se retiró el 2026-08-28 (sin la mención a
+    Estados Unidos) y se añade el enlace "Términos y privacidad".
+  - `e2e/terminos.spec.ts` (página, pie y el gating de las tres altas) y una cuenta sin rol en
+    `e2e/global-setup.ts`. Los specs que registran pacientes por la UI marcan la casilla.
+  - Ficheros: `pages/legal/privacidad.tsx`, `components/AceptaTerminos.tsx`,
+    `components/home/copy.ts`, `components/home/Footer.tsx`, `pages/registro-paciente.tsx`,
+    `pages/registro-medico.tsx`, `pages/elegir-rol.tsx`, `public/sitemap.xml`, `e2e/*`,
+    `CLAUDE.md`, `tasks/home-refresh/todo.md`.
+
 - **feat(videoconsulta): aviso "Información importante" antes de entrar a la sala** — con el
   diseño nuevo (bandera, cabecera con el logo, avisos grandes) y para los dos lados:
   - **Paciente** (`/sala-espera` y `/mi-caso`): esperar de 15 a 20 minutos si el médico no se

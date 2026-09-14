@@ -37,6 +37,7 @@ test('registro adulto por UI: formulario → signup → sala de espera con video
     .locator('textarea')
     .fill('Dolor de cabeza persistente desde hace tres días. Sin medicación actual.')
   await page.getByRole('checkbox', { name: /Acepto compartir/ }).check()
+  await page.getByRole('checkbox', { name: /acepto los Términos de uso y privacidad/ }).check()
 
   await page.getByRole('button', { name: 'Registrarse' }).click()
 

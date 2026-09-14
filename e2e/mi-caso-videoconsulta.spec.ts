@@ -37,6 +37,7 @@ test('el paciente vuelve por /mi-caso, entra a la sala y el médico ve que entr�
   await page.getByPlaceholder('Ej. 34').fill('41')
   await page.locator('textarea').fill(MOTIVO)
   await page.getByRole('checkbox', { name: /Acepto compartir/ }).check()
+  await page.getByRole('checkbox', { name: /acepto los Términos de uso y privacidad/ }).check()
   await page.getByRole('button', { name: 'Registrarse' }).click()
 
   // Aterriza en la sala de espera con la sala ya creada por el backend.
