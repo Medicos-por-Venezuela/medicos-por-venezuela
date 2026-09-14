@@ -39,16 +39,40 @@ test('atender por videoconsulta crea la sala si falta y el detalle muestra Unirs
   const card = page.locator('.card-flat').filter({ hasText: 'E2E Paciente Video' })
   await expect(card).toBeVisible()
 
-  // El claim crea la sala y la abre en pestaña nueva (popup con la URL de Jitsi).
+  // Antes de tomar el caso sale el aviso para el médico. Cerrarlo NO puede tomar el caso: el
+  // claim es lo que saca al paciente de la cola, y un clic de más dejaría a alguien asignado a
+  // un médico que decidió no atenderlo.
+  const atender = card.getByRole('button', { name: 'Atender por videoconsulta' })
+  await atender.click()
+  const aviso = page.getByRole('dialog')
+  await expect(aviso.getByRole('heading', { name: 'Información importante' })).toBeVisible()
+  await expect(aviso.getByText(/espera de 15 a 20 minutos/)).toBeVisible()
+  await expect(aviso.getByText(/contactarlo por WhatsApp/)).toBeVisible()
+  await aviso.getByRole('button', { name: 'Cerrar' }).click()
+  await expect(aviso).toHaveCount(0)
+  await expect(page).toHaveURL(/\/panel-medico$/)
+  await expect(card).toBeVisible()
+
+  // Confirmar el aviso: el claim crea la sala y la abre en pestaña nueva (popup con Jitsi).
+  await atender.click()
   const popupPromise = page.waitForEvent('popup')
-  await card.getByRole('button', { name: 'Atender por videoconsulta' }).click()
+  await aviso.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
   const popup = await popupPromise
   expect(popup.url()).toContain('/vamed-')
   await popup.close()
 
   // Y el detalle muestra el CTA "Unirse a videoconsulta" (la consulta ya tiene sala).
   await expect(page).toHaveURL(new RegExp(`/panel-medico/consulta/${cid}`))
-  await expect(page.getByRole('link', { name: 'Unirse a videoconsulta' })).toBeVisible()
+  const unirse = page.getByRole('button', { name: 'Unirse a videoconsulta' })
+  await expect(unirse).toBeVisible()
+
+  // Volver a entrar desde el detalle también pasa por el aviso. Este paciente se creó sin
+  // correo, así que el aviso no puede prometer que le llegó uno.
+  await unirse.click()
+  await expect(aviso.getByText(/no recibió el aviso por correo/)).toBeVisible()
+  const popupDetalle = page.waitForEvent('popup')
+  await aviso.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
+  expect((await popupDetalle).url()).toContain('/vamed-')
 
   await ctx.close()
 })

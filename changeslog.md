@@ -7,6 +7,29 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-09-13
 
+- **feat(videoconsulta): aviso "Información importante" antes de entrar a la sala** — con el
+  diseño nuevo (bandera, cabecera con el logo, avisos grandes) y para los dos lados:
+  - **Paciente** (`/sala-espera` y `/mi-caso`): esperar de 15 a 20 minutos si el médico no se
+    conecta, y estar atento al correo que avisa cuando el médico está en la sala. Debajo siguen
+    las instrucciones de Jitsi que ya traía el modal (nombre completo, "Continuar en el navegador",
+    "Permitir", la captura de "Unirse en el navegador"): salieron de reportes reales.
+  - **Médico/psicólogo** (panel y detalle de la consulta): esperar de 15 a 20 minutos al paciente,
+    que el paciente recibe el correo de "tu médico te está esperando", y que si no se conecta lo
+    contacte por WhatsApp.
+    - En el panel, "Atender al siguiente paciente" y "Atender por videoconsulta" abren el aviso, y
+      el caso se toma solo al confirmar: cerrarlo no saca al paciente de la cola. El "siguiente" se
+      elige al confirmar, no al abrir el aviso, porque la cola pudo moverse mientras lo leía.
+    - En el detalle, "Unirse a videoconsulta" pasa de enlace a botón con el mismo aviso. Si el
+      paciente no dejó correo o el caso se tomó por WhatsApp, el aviso no promete un correo que
+      nunca salió. En el panel no se sabe (la cola no trae el correo) y se asume que lo recibió.
+  - Un solo componente para los cuatro sitios, con styled-jsx como la encuesta de marketing.
+  - E2E: `panel-atender-video.spec.ts` cubre que cerrar el aviso no toma el caso y el aviso del
+    detalle sin correo; `mi-caso-videoconsulta.spec.ts` y `consulta-cerrada.spec.ts` siguen el
+    texto y el rol nuevos.
+  - Ficheros: `components/AntesDeEntrarModal.tsx`, `pages/panel-medico.tsx`,
+    `pages/panel-medico/consulta/[id].tsx`, `e2e/panel-atender-video.spec.ts`,
+    `e2e/mi-caso-videoconsulta.spec.ts`, `e2e/consulta-cerrada.spec.ts`, `CLAUDE.md`.
+
 - **feat(marketing): tablero de la campaña con métricas reales de Kit** — la pestaña Gráficos
   de `/admin/marketing` pasa a ser un tablero para decidir, en tres niveles y acotable a todas las
   encuestas o a una:
