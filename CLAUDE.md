@@ -359,6 +359,14 @@ heartbeat failed), opens the same Jitsi room, and navigates to
 ansiedad_) only go to Psicología/Psiquiatría and never fall back to general doctors (`canAttend` in
 [lib/utils.ts](lib/utils.ts)). The API route is idempotent (one room per consultation).
 
+Every entry to a room goes through [AntesDeEntrarModal](components/AntesDeEntrarModal.tsx) first,
+the "Información importante" notice: wait 15–20 minutes, the patient gets the "tu médico te está
+esperando" email, and (doctor side) contact the patient by WhatsApp if they don't show. Patients see
+it from `/sala-espera` and `/mi-caso`, with the Jitsi tips below. Doctors see it from the panel,
+where the case is claimed only on confirm (closing the notice leaves it in the queue), and from
+the detail page's "Unirse a videoconsulta". The room is opened from the confirm click, which is
+the user gesture that keeps `window.open` from being blocked as a pop-up.
+
 Admins/super_admins can also use `/panel-medico`: they keep a link back to `/admin/dashboard`, see admin
 counters plus an admin-only **Casos activos del sistema** section for `in_progress`, `urgent_in_person`, and
 `referred_to_specialist` cases (patient, status, motive, presence, assignment), and open those cases in the
