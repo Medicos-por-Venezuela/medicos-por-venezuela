@@ -12,6 +12,7 @@ import { fetchSpecialties, type SpecialtyResponse } from '../lib/doctors'
 import { createConsultation, createPatient, ensureVideoRoom, ApiError } from '../lib/patients'
 import { useMountEffect } from '../lib/hooks'
 import { trackSolicitudDeConsulta } from '../lib/analytics'
+import AceptaTerminos, { MENSAJE_TERMINOS } from '../components/AceptaTerminos'
 import CedulaField from '../components/CedulaField'
 import PhoneField from '../components/PhoneField'
 
@@ -53,7 +54,8 @@ const adultSchema = z
     hasAllergy: z.boolean(),
     allergyDetail: z.string(),
     descripcion: z.string().trim().min(1, 'Describe brevemente el motivo de la consulta.'),
-    consent: z.boolean()
+    consent: z.boolean(),
+    terminos: z.boolean()
   })
   .refine((d) => d.authedPatient || d.email.trim().length > 0, {
     message: 'Ingresa tu correo.',
@@ -75,6 +77,7 @@ const adultSchema = z
     message: 'Debes aceptar el consentimiento para poder continuar.',
     path: ['consent']
   })
+  .refine((d) => d.terminos, { message: MENSAJE_TERMINOS, path: ['terminos'] })
 
 // Rama menor de edad (representante + menor).
 const minorSchema = z
@@ -100,7 +103,8 @@ const minorSchema = z
       .string()
       .trim()
       .min(1, 'Describe brevemente el motivo de la consulta del menor.'),
-    consent: z.boolean()
+    consent: z.boolean(),
+    terminos: z.boolean()
   })
   .refine((d) => d.authedPatient || d.gEmail.trim().length > 0, {
     message: 'Ingresa el correo del representante.',
@@ -122,6 +126,7 @@ const minorSchema = z
     message: 'Debes aceptar el consentimiento para poder continuar.',
     path: ['consent']
   })
+  .refine((d) => d.terminos, { message: MENSAJE_TERMINOS, path: ['terminos'] })
 
 export default function RegistroPaciente() {
   const router = useRouter()
@@ -168,6 +173,7 @@ export default function RegistroPaciente() {
   const [zona, setZona] = useState('')
   const [descripcion, setDescripcion] = useState('')
   const [consent, setConsent] = useState(false)
+  const [terminos, setTerminos] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -248,7 +254,8 @@ export default function RegistroPaciente() {
           mHasAllergy,
           mAllergyDetail,
           descripcion,
-          consent
+          consent,
+          terminos
         })
       : adultSchema.safeParse({
           cedula,
@@ -264,7 +271,8 @@ export default function RegistroPaciente() {
           hasAllergy,
           allergyDetail,
           descripcion,
-          consent
+          consent,
+          terminos
         })
     if (!result.success) {
       setError(result.error.issues[0]?.message || 'Revisa los campos del formulario.')
@@ -754,6 +762,7 @@ export default function RegistroPaciente() {
                   presencial ni servicios de emergencia.
                 </span>
               </label>
+              <AceptaTerminos checked={terminos} onChange={setTerminos} />
               {error && <div className="notice notice-danger">{error}</div>}
               <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>
                 {loading ? 'Enviando...' : 'Registrarse'}

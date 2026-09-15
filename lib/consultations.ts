@@ -20,6 +20,11 @@ export interface MyProfile {
   active: boolean
   has_doctor_profile: boolean
   doctor_cedula: string | null
+  // Hay ficha viva en `doctors` o paciente vivo en `patients` detrás de la cuenta. NO es
+  // `has_doctor_profile` (que es true para un médico de Google sin ficha). Con `false` el login no
+  // deja entrar salvo a un admin: ver lib/postLogin.ts. Opcional: una API anterior a este campo no
+  // lo manda, y ausente NO debe leerse como "sin registro".
+  has_account_record?: boolean
 }
 
 // Al cargar una página autenticada, /auth/me se pedía 3 VECES en paralelo: PresenceProvider lo
@@ -80,8 +85,9 @@ export interface PanelPatient {
   // Opcional a propósito: en la cola de ESPERA (waiting) el backend NO envía el nombre por
   // seguridad; solo llega en las consultas ya tomadas por el médico (mine).
   full_name?: string
-  cedula: string | null
-  phone_whatsapp: string | null
+  // Igual que el nombre: la cola de espera tampoco trae con qué identificar ni contactar al paciente.
+  cedula?: string | null
+  phone_whatsapp?: string | null
   affected_zone: string | null
   age_range: string | null
   needs_tags: string[] | null

@@ -106,6 +106,19 @@ Recover via `mem_search(query: "{topic_key}", project: "medicos-por-venezuela")`
   matching email.
 - **Admins:** promoted manually via SQL. Sign in at `/login` like everyone else (`/admin` is now just a redirect);
   manage cases (reassign doctor, change status, edit note) from `/admin/dashboard`.
+- **Una cuenta de Auth sin registro no entra.** `resolvePostLoginRoute` (`lib/postLogin.ts`) bloquea
+  —y cierra la sesión— a quien no es admin y no tiene detrás una ficha viva en `doctors` ni un
+  paciente vivo en `patients` (`has_account_record` de `GET /auth/me`). En producción había cuentas así
+  (2026-09-14): el registro de médico crea la cuenta y DESPUÉS la ficha, y si la ficha fallaba (p. ej.
+  un médico ya registrado probando con otro correo) la cuenta quedaba sola y entraba al sitio.
+  - Va DESPUÉS de `role_chosen`: quien entra con Google por primera vez termina el alta en esa sesión
+    (elegir rol → completar ficha o solicitud). Si se va sin terminar, el siguiente login lo bloquea.
+  - El admin va antes del chequeo: no necesita registro.
+  - Salida del bloqueo para un médico: volver a `/registro-medico` con el mismo correo y contraseña.
+    `POST /doctors/registration-check` lo reconoce como `incomplete` y el formulario entra con esa
+    cuenta (`signInWithPassword`) en vez de crear otra. Una cuenta cuya ficha dio de baja un admin NO
+    es `incomplete`: registrarse otra vez desharía la baja.
+  - Fijado por `e2e/cuenta-sin-registro.spec.ts`.
 - **Google sign-in:** OAuth can't carry a role, so a first-time Google user gets a placeholder profile
   (`role_chosen = false`) and is routed to `/elegir-rol` to pick patient vs doctor. The choice is
   finalized by the `set_my_role` RPC, which can never grant admin/specialist. A Google user who picks
@@ -213,8 +226,19 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `/` — home (two cards: paciente / médico; no admin link)
 - `/registro-paciente` — patient request form (public; optional account + Google)
 - `/sala-espera` — patient confirmation (anonymous submissions)
-- `/registro-medico` — doctor self-registration (email+password or Google)
+- `/registro-medico` — doctor self-registration (email+password). **Antes de crear la cuenta en
+  Supabase Auth** pregunta a `POST /doctors/registration-check`: al salir del campo de correo (si ya
+  es de un médico, `YaRegistradoModal` con dos enlaces: "inicie sesión" → `/login` y "pida recordar
+  su clave" → `/auth/recuperar`) y otra vez al enviar, con la cédula. Sin esto, un correo o una cédula
+  ya registrados creaban la cuenta y fallaban al guardar la ficha. Fijado por
+  `e2e/registro-medico-correo.spec.ts` (ningún spec envía el formulario: el alta manda correos reales)
 - `/elegir-rol` — first-time Google role picker (patient vs doctor)
+- `/legal/privacidad` — public, indexable Terms of use and privacy page (linked from the footer).
+  `/registro-paciente`, `/registro-medico` and `/elegir-rol` require ticking
+  `components/AceptaTerminos.tsx`, which opens this page in a new tab. The acceptance is enforced
+  client-side only (not yet stored by the backend). Every claim on the page is a legal commitment:
+  a new provider or a new form field means updating the text and its date
+  (`e2e/terminos.spec.ts`)
 - `/login` — **single sign-in for patients, doctors and admins**; routes by effective role
   (`lib/postLogin.ts`, shared with `/auth/callback` and `/mi-caso`)
 - `/mi-caso` — patient portal, read-only case status (no login form; sends you to `/login`)
@@ -281,8 +305,15 @@ Postgres functions / RPCs:
 - `mark_patient_waiting(uuid)` — RPC called by `/sala-espera` to update `patient_last_seen_at`
   (patient presence is still a DB heartbeat — only the doctor side moved to Presence)
 
-RLS is enabled on all tables. Anon can INSERT patients/consultations; account-holding patients read
-their own rows; staff read all; admins manage.
+RLS is enabled on all tables. **Desde 2026-09-14 (migración del backend `20260914_111456`) la RLS dice
+lo mismo que la API:** nadie lee `patients` ni `consultation_events` por PostgREST (sin policies ni
+SELECT para `authenticated`); de `consultations`, `authenticated` solo tiene SELECT en `id`, `status` y
+`assigned_doctor_id` — la señal que usan los canales Realtime del panel y del detalle, que respetan
+privilegios por columna. Staff = `current_user_role()`, que a un médico le exige ficha habilitada
+(`public.doctor_can_practice`, espejo de `has_valid_credential`). El paciente con cuenta ve sus
+consultas (`public.owns_patient`). Todos los datos de pacientes van por la API, que valida pertenencia.
+Antes cualquier cuenta con `users.role = 'doctor'` —con ficha o sin ella— leía todos los pacientes con
+el anon key.
 
 ## Getting started (the backend = Supabase)
 
@@ -353,6 +384,14 @@ heartbeat failed), opens the same Jitsi room, and navigates to
 ansiedad_) only go to Psicología/Psiquiatría and never fall back to general doctors (`canAttend` in
 [lib/utils.ts](lib/utils.ts)). The API route is idempotent (one room per consultation).
 
+Every entry to a room goes through [AntesDeEntrarModal](components/AntesDeEntrarModal.tsx) first,
+the "Información importante" notice: wait 15–20 minutes, the patient gets the "tu médico te está
+esperando" email, and (doctor side) contact the patient by WhatsApp if they don't show. Patients see
+it from `/sala-espera` and `/mi-caso`, with the Jitsi tips below. Doctors see it from the panel,
+where the case is claimed only on confirm (closing the notice leaves it in the queue), and from
+the detail page's "Unirse a videoconsulta". The room is opened from the confirm click, which is
+the user gesture that keeps `window.open` from being blocked as a pop-up.
+
 Admins/super_admins can also use `/panel-medico`: they keep a link back to `/admin/dashboard`, see admin
 counters plus an admin-only **Casos activos del sistema** section for `in_progress`, `urgent_in_person`, and
 `referred_to_specialist` cases (patient, status, motive, presence, assignment), and open those cases in the
@@ -368,8 +407,10 @@ the same button.
 
 ## Security notes
 
-- **Instant doctor access is a known trade-off:** anyone who self-registers as a doctor immediately
-  reads all patient PII via the `is_staff` RLS read. Mitigation is admin revocation, not pre-approval.
+- **Instant doctor access is a known trade-off:** anyone who self-registers as a doctor gets an
+  account right away. Ya NO lee la PII de pacientes por la RLS (`is_staff` exige ficha habilitada y
+  `patients` no se lee por PostgREST, ver Database): lo que ve sale de la API, detrás del gate de
+  credencial del backend. Mitigation is still admin revocation, not pre-approval.
   To switch to an approval gate later, have signup/`finalize_role` set doctors
   `users.verified = false`: `current_user_role()` **already** filters on it, so the gate would work
   without touching RLS. Today that filter is a no-op because the column is `true` for every row —

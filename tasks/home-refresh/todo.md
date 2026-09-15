@@ -462,9 +462,9 @@ patrón que ya existe: redefinir tokens dentro de una clase de tema.
 - [ ] **Varias fotos de especialistas traen el logotipo de la bata deformado** ("NEDx VZLA" en vez
       de "MEDx VZLA" en la de Alejandro Marcano, y texto ilegible en el gafete de otra). A 236 px no
       se lee, pero conviene que el equipo lo sepa antes de usarlas en cualquier sitio más grande
-- [ ] **Advertencia de urgencias retirada del pie** por el copy aprobado del 2026-08-28
-      ("no reemplaza la atención médica presencial de urgencia"). Era una salvaguarda clínica;
-      queda aquí por si el equipo la quiere recuperar en otro sitio de la página
+- [x] **Advertencia de urgencias retirada del pie** por el copy aprobado del 2026-08-28
+      ("no reemplaza la atención médica presencial de urgencia"). Era una salvaguarda clínica.
+      Repuesta en el pie el 2026-09-13, a pedido del equipo
 - [ ] **Crítico, en otra rama**: 21 de 25 campos de `/registro-paciente` y `/registro-medico` no
       tienen nombre accesible (etiquetas visibles sin asociar). Exige tocar el marcado de esas
       páginas, fuera del "solo colores y tipografía" de T10

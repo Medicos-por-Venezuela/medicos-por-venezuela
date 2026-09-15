@@ -31,6 +31,7 @@ import {
 import { ensureVideoRoom } from '../lib/patients'
 import { usePatientsInRoom } from '../lib/patientPresence'
 import EstadoPacienteBadge from '../components/EstadoPacienteBadge'
+import AntesDeEntrarModal from '../components/AntesDeEntrarModal'
 import { fetchMyPermissions } from '../lib/users'
 
 type Patient = {
@@ -38,8 +39,9 @@ type Patient = {
   // Opcional: en "Pacientes que no han podido ser atendidos" (cola de espera) el backend no manda
   // el nombre por seguridad; solo llega en "Mis consultas abiertas". El card cae a "Paciente".
   full_name?: string
-  cedula: string | null
-  phone_whatsapp: string
+  // Tampoco llegan en la cola de espera: solo en las consultas ya tomadas.
+  cedula?: string | null
+  phone_whatsapp?: string
   affected_zone: string
   age_range: string | null
   needs_tags: string[] | null
@@ -123,6 +125,10 @@ export default function PanelMedico() {
   )
   // Waiting case the doctor wants to attend via WhatsApp — set while the commitment modal is open.
   const [whatsappTarget, setWhatsappTarget] = useState<Consultation | null>(null)
+  // A quién va a atender por video mientras el aviso de "antes de entrar" está arriba: un caso
+  // concreto de la cola, o 'siguiente'. El siguiente se elige al CONFIRMAR y no al abrir el aviso:
+  // mientras lo lee, Realtime puede haber movido la cola y otro médico haberse llevado al primero.
+  const [videoTarget, setVideoTarget] = useState<Consultation | 'siguiente' | null>(null)
   // Admins have no doctor profile by default. But an admin who is ALSO a doctor (has a `doctors`
   // row) does — this tracks whether /doctors/me resolved for them, so we only show "Mi perfil"
   // when there's actually a profile to open (a pure admin would just hit a 404 there).
@@ -399,6 +405,15 @@ export default function PanelMedico() {
     const exactMatch = waiting.find((c) => matchesConsultation(profile?.specialty, c.specialty))
     await openConsultation(isCurrentUserAdmin ? waiting[0] : exactMatch || waiting[0])
   }
+
+  // "Entendido" del aviso. Toma el caso y abre la sala desde ESTE clic: el `window.open` necesita
+  // un gesto reciente del usuario, y el de abrir el aviso ya quedó atrás mientras lo leía.
+  function confirmVideo() {
+    const target = videoTarget
+    setVideoTarget(null)
+    if (target === 'siguiente') attendNext()
+    else if (target) openConsultation(target)
+  }
   async function logout() {
     await supabase.auth.signOut()
     router.push('/')
@@ -561,7 +576,7 @@ export default function PanelMedico() {
           <button
             className="btn btn-primary btn-full"
             style={{ marginBottom: 18, fontSize: 16, padding: '15px 18px' }}
-            onClick={attendNext}
+            onClick={() => setVideoTarget('siguiente')}
             disabled={waiting.length === 0}
           >
             {waiting.length
@@ -606,7 +621,7 @@ export default function PanelMedico() {
                       key={c.id}
                       c={c}
                       inRoom={patientsInRoom.has(c.id)}
-                      onOpen={() => openConsultation(c)}
+                      onOpen={() => setVideoTarget(c)}
                       onWhatsapp={() => setWhatsappTarget(c)}
                     />
                   ))}
@@ -657,6 +672,13 @@ export default function PanelMedico() {
           )}
         </div>
       </main>
+
+      <AntesDeEntrarModal
+        para="medico"
+        open={videoTarget !== null}
+        onCancel={() => setVideoTarget(null)}
+        onConfirm={confirmVideo}
+      />
 
       {whatsappTarget && (
         <div

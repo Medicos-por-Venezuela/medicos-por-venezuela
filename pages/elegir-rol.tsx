@@ -6,6 +6,7 @@ import { fetchMyProfile } from '../lib/consultations'
 import { finalizeMyRole } from '../lib/users'
 import { fetchSpecialties, type SpecialtyResponse } from '../lib/doctors'
 import { isAdminRole } from '../lib/utils'
+import AceptaTerminos, { MENSAJE_TERMINOS } from '../components/AceptaTerminos'
 
 const PAISES = [
   'Venezuela',
@@ -43,6 +44,9 @@ export default function ElegirRol() {
   const [country, setCountry] = useState('')
   const [license, setLicense] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
+  // Quien entra con Google termina su alta AQUÍ, sin pasar por /registro-paciente ni
+  // /registro-medico: sin esta casilla, sería la única puerta a una cuenta sin aceptar los términos.
+  const [terminos, setTerminos] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -97,6 +101,10 @@ export default function ElegirRol() {
 
   const confirmPatient = async () => {
     setError('')
+    if (!terminos) {
+      setError(MENSAJE_TERMINOS)
+      return
+    }
     setLoading(true)
     try {
       const {
@@ -117,6 +125,10 @@ export default function ElegirRol() {
     setError('')
     if (!specialty || !country || !whatsapp.trim()) {
       setError('Completa especialidad, país y WhatsApp.')
+      return
+    }
+    if (!terminos) {
+      setError(MENSAJE_TERMINOS)
       return
     }
     setLoading(true)
@@ -213,6 +225,7 @@ export default function ElegirRol() {
                 <div className="notice notice-info">
                   Tu cuenta quedará como paciente. Luego podrás registrar tu solicitud.
                 </div>
+                <AceptaTerminos checked={terminos} onChange={setTerminos} />
                 {error && <div className="notice notice-danger">{error}</div>}
                 <button
                   className="btn btn-primary btn-full"
@@ -280,6 +293,7 @@ export default function ElegirRol() {
                     </div>
                   </div>
                 </div>
+                <AceptaTerminos checked={terminos} onChange={setTerminos} />
                 {error && <div className="notice notice-danger">{error}</div>}
                 <button
                   className="btn btn-primary btn-full"

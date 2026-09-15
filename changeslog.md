@@ -5,7 +5,90 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-14
+
+- **fix(legal): "Quién ve sus datos" según lo que manda el backend** — en `/legal/privacidad`, la
+  cola de espera ya no dice que muestra el nombre del paciente (el backend no lo envía ahí). El
+  nombre, la cédula y el teléfono solo los ven el médico que toma la consulta y administración.
+  En una interconsulta, el especialista solo ve el motivo, las notas clínicas del médico y la edad,
+  sin datos personales. `e2e/terminos.spec.ts` fija los dos textos. Iba en el PR #133, pero ese
+  PR se mergeó antes del push.
+
+- **fix(auth): una cuenta de Auth sin ficha de médico ni registro de paciente ya no entra** — en
+  producción había cuentas así que iniciaban sesión igual. Casi todas nacen del registro de médico:
+  crea la cuenta en Supabase Auth y DESPUÉS la ficha, y si la ficha falla (en prod: médicos ya
+  registrados que probaron otra vez con otro correo, con la cédula repetida) la cuenta queda sola.
+  - `resolvePostLoginRoute` bloquea (y cierra la sesión) si `has_account_record` de `/auth/me` es
+    `false`, salvo admins. Va después de `role_chosen`, así que un alta con Google se termina en su
+    primera sesión. Aplica a `/login`, `/auth/callback`, `/auth/recuperar` y `/mi-caso`. Solo
+    bloquea un `false` explícito: si este frontend sale antes que la API, el campo llega
+    `undefined` y no debe dejar fuera a todo el mundo.
+  - **Buscador rápido de correos en `/registro-medico`:** al salir del campo pregunta a
+    `POST /doctors/registration-check`; si el correo ya es de un médico, `YaRegistradoModal` con los
+    enlaces "inicie sesión" y "pida recordar su clave". Al enviar se repite con la cédula, ANTES de
+    crear la cuenta. Un registro a medias (`incomplete`) se termina con la misma contraseña
+    (`signInWithPassword`) en vez de chocar con "User already registered".
+  - La cola del panel ya no recibe cédula ni teléfono del paciente (tipos en `lib/consultations.ts` y
+    `panel-medico.tsx`); el backend dejó de enviarlos.
+  - Va con el PR del backend (RLS alineada con la API: nadie lee `patients` por PostgREST, y de
+    `consultations` solo la señal de Realtime). CLAUDE.md actualizado: el trade-off de "cualquier
+    médico recién registrado lee toda la PII por RLS" ya no es cierto.
+  - E2E nuevos: `cuenta-sin-registro.spec.ts`, `registro-medico-correo.spec.ts`. `global-setup.ts`
+    siembra la fila de `patients` del paciente de login (sin ella, el login la bloquearía) y una
+    cuenta de médico sin ficha.
+  - Ficheros: `lib/postLogin.ts`, `lib/doctors.ts`, `lib/consultations.ts`,
+    `pages/registro-medico.tsx`, `components/YaRegistradoModal.tsx`, `pages/auth/recuperar.tsx`,
+    `pages/panel-medico.tsx`, `e2e/*`, `CLAUDE.md`.
+  - Nota del rebase sobre #133 (términos): `global-setup.ts` conserva las dos siembras (la cuenta sin
+    rol de #133 y las de este cambio). `terminos.spec.ts` contaba como "alta" cualquier
+    `POST /api/v1/doctors*` y el chequeo de solo lectura `/doctors/registration-check` lo hacía
+    fallar: las altas se anclan ahora al final de la ruta.
+
 ## 2026-09-13
+
+- **feat(legal): términos de uso y privacidad, y aceptación obligatoria al registrarse** — el sitio
+  no tenía términos ni política de privacidad publicados.
+  - **`/legal/privacidad`**: página pública e indexable, con el pie y la cabecera del home. Parte
+    del documento legal del equipo, corregido contra lo que hace la plataforma:
+    - Sin la autenticación de dos factores, que no existe.
+    - Con los datos reales de pacientes, menores y profesionales, y la verificación ante SACS/FPV.
+    - Con los proveedores reales y el responsable (Médicos por Venezuela, `legal@`).
+    - Destaca arriba que la telemedicina no reemplaza la atención presencial.
+  - **Casilla "He leído y acepto los Términos de uso y privacidad"** (`components/AceptaTerminos.tsx`)
+    en `/registro-paciente`, `/registro-medico` y `/elegir-rol`, que es por donde termina el alta
+    con Google. Sin marcarla no sale ninguna petición de alta. El enlace abre en otra pestaña para
+    no perder lo escrito. La aceptación no se guarda todavía en el backend.
+  - **Pie**: vuelve la advertencia de urgencias que se retiró el 2026-08-28 (sin la mención a
+    Estados Unidos) y se añade el enlace "Términos y privacidad".
+  - `e2e/terminos.spec.ts` (página, pie y el gating de las tres altas) y una cuenta sin rol en
+    `e2e/global-setup.ts`. Los specs que registran pacientes por la UI marcan la casilla.
+  - Ficheros: `pages/legal/privacidad.tsx`, `components/AceptaTerminos.tsx`,
+    `components/home/copy.ts`, `components/home/Footer.tsx`, `pages/registro-paciente.tsx`,
+    `pages/registro-medico.tsx`, `pages/elegir-rol.tsx`, `public/sitemap.xml`, `e2e/*`,
+    `CLAUDE.md`, `tasks/home-refresh/todo.md`.
+
+- **feat(videoconsulta): aviso "Información importante" antes de entrar a la sala** — con el
+  diseño nuevo (bandera, cabecera con el logo, avisos grandes) y para los dos lados:
+  - **Paciente** (`/sala-espera` y `/mi-caso`): esperar de 15 a 20 minutos si el médico no se
+    conecta, y estar atento al correo que avisa cuando el médico está en la sala. Debajo siguen
+    las instrucciones de Jitsi que ya traía el modal (nombre completo, "Continuar en el navegador",
+    "Permitir", la captura de "Unirse en el navegador"): salieron de reportes reales.
+  - **Médico/psicólogo** (panel y detalle de la consulta): esperar de 15 a 20 minutos al paciente,
+    que el paciente recibe el correo de "tu médico te está esperando", y que si no se conecta lo
+    contacte por WhatsApp.
+    - En el panel, "Atender al siguiente paciente" y "Atender por videoconsulta" abren el aviso, y
+      el caso se toma solo al confirmar: cerrarlo no saca al paciente de la cola. El "siguiente" se
+      elige al confirmar, no al abrir el aviso, porque la cola pudo moverse mientras lo leía.
+    - En el detalle, "Unirse a videoconsulta" pasa de enlace a botón con el mismo aviso. Si el
+      paciente no dejó correo o el caso se tomó por WhatsApp, el aviso no promete un correo que
+      nunca salió. En el panel no se sabe (la cola no trae el correo) y se asume que lo recibió.
+  - Un solo componente para los cuatro sitios, con styled-jsx como la encuesta de marketing.
+  - E2E: `panel-atender-video.spec.ts` cubre que cerrar el aviso no toma el caso y el aviso del
+    detalle sin correo; `mi-caso-videoconsulta.spec.ts` y `consulta-cerrada.spec.ts` siguen el
+    texto y el rol nuevos.
+  - Ficheros: `components/AntesDeEntrarModal.tsx`, `pages/panel-medico.tsx`,
+    `pages/panel-medico/consulta/[id].tsx`, `e2e/panel-atender-video.spec.ts`,
+    `e2e/mi-caso-videoconsulta.spec.ts`, `e2e/consulta-cerrada.spec.ts`, `CLAUDE.md`.
 
 - **feat(marketing): tablero de la campaña con métricas reales de Kit** — la pestaña Gráficos
   de `/admin/marketing` pasa a ser un tablero para decidir, en tres niveles y acotable a todas las

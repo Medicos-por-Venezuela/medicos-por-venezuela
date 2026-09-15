@@ -209,10 +209,40 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
 
   // Paciente de prueba: el cuarto destino del fan-out de /login (login-fanout.spec.ts). No guarda
   // storageState — ese spec entra por el formulario de verdad, no con la sesión ya puesta.
+  // Necesita su fila en `patients`: sin ficha de médico ni registro de paciente, el login rechaza
+  // la cuenta. El nombre NO empieza por 'E2E Paciente' para que cleanupTestData no la borre.
   const patientUid = await ensureAuthUser('e2e-patient@example.com')
+  const patientSql = [
+    `update public.users set role='patient', active=true, role_chosen=true, full_name='E2E Paciente Login' where id='${patientUid}';`,
+    `insert into public.patients (full_name, phone_whatsapp, affected_zone, consent, consent_at, user_id) select 'E2E Titular Login', '+584120000000', 'Caracas', true, now(), '${patientUid}' where not exists (select 1 from public.patients where user_id='${patientUid}' and deleted_at is null);`
+  ].join(' ')
+  execSync(`docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c "${patientSql}"`, {
+    stdio: 'pipe'
+  })
+
+  // Cuenta de Auth con rol médico y SIN ficha: lo que deja un registro de médico que creó la cuenta
+  // y no llegó a guardar la ficha (cuenta-sin-registro.spec.ts, registro-medico-correo.spec.ts).
+  // Se le borra cualquier ficha que haya dejado una corrida anterior: tiene que seguir sin tener
+  // NINGUNA, ni borrada, para que el registro la reconozca como "a medias".
+  const sinFichaUid = await ensureAuthUser('e2e-sin-ficha@example.com')
+  const sinFichaSql = [
+    `delete from public.doctors where user_id='${sinFichaUid}';`,
+    `delete from public.patients where user_id='${sinFichaUid}';`,
+    `update public.users set role='doctor', active=true, role_chosen=true, full_name='E2E Sin Ficha' where id='${sinFichaUid}';`
+  ].join(' ')
+  execSync(`docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c "${sinFichaSql}"`, {
+    stdio: 'pipe'
+  })
+
+  // Cuenta a medio crear, como la que deja el primer inicio con Google: sin rol elegido, así que
+  // aterriza en /elegir-rol (terminos.spec.ts). `role_chosen=false` se reafirma en cada corrida por
+  // si alguna vez un spec la finaliza. No la bloquea el login aunque no tenga registro: elegir rol
+  // va antes de ese chequeo, para que el alta se termine en esa sesión.
+  const sinRolUid = await ensureAuthUser('e2e-sin-rol@example.com')
   execSync(
     `docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c ` +
-      `"update public.users set role='patient', active=true, role_chosen=true, full_name='E2E Paciente Login' where id='${patientUid}';"`,
+      `"update public.users set role='patient', active=true, role_chosen=false, full_name='E2E Sin Rol' where id='${sinRolUid}';"`,
     { stdio: 'pipe' }
   )
+  await saveSession('e2e-sin-rol@example.com', baseURL, 'e2e/.auth/sin-rol.json')
 }

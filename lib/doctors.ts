@@ -117,6 +117,34 @@ export async function createDoctor(payload: DoctorCreate): Promise<DoctorRespons
   return postJson<DoctorResponse>('/api/v1/doctors', payload, 'No se pudo completar el registro')
 }
 
+// Qué encontraría el registro con este correo:
+// - 'available': nadie lo usa.
+// - 'doctor': ya hay un médico registrado con ese correo → iniciar sesión o recuperar la clave.
+// - 'incomplete': una cuenta de médico que nunca llegó a tener ficha (su registro se cortó). El
+//   formulario la completa entrando con la misma contraseña, en vez de crear otra cuenta.
+// - 'account': el correo es de otra cuenta (paciente, admin, o un médico dado de baja).
+export type RegistrationEmailStatus = 'available' | 'doctor' | 'incomplete' | 'account'
+
+export interface DoctorRegistrationCheck {
+  email_status: RegistrationEmailStatus
+  cedula_taken: boolean
+}
+
+// POST /api/v1/doctors/registration-check — público y con rate limit. Se consulta ANTES de crear la
+// cuenta en Supabase Auth: el alta crea la cuenta y luego la ficha, y si la ficha choca con un
+// correo o una cédula que ya existen, la cuenta se quedaba huérfana. POST y no GET para que el
+// correo no viaje en la URL.
+export async function checkDoctorRegistration(payload: {
+  email: string
+  cedula?: string
+}): Promise<DoctorRegistrationCheck> {
+  return postJson<DoctorRegistrationCheck>(
+    '/api/v1/doctors/registration-check',
+    payload,
+    'No se pudo comprobar el registro'
+  )
+}
+
 // --- Pool de médicos (para referir/agendar desde la consulta) ---
 
 export interface DoctorPoolItem {
