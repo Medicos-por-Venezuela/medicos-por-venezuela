@@ -133,6 +133,34 @@ async function saveSession(email: string, baseURL: string, file: string): Promis
 // Especialidad de los E2E de interconsulta. Se fija por NOMBRE para que el spec pueda elegir la
 // misma en el selector: el id es un UUID distinto en cada entorno.
 export const ESPECIALIDAD_E2E = 'Cardiología'
+// La cola es por especialidad: un médico sin especialidad no ve ningún caso. doc1 es el médico
+// general de los specs de cola, y las consultas de prueba se crean en esta misma especialidad
+// (`idEspecialidadGeneral` en helpers.ts).
+export const ESPECIALIDAD_GENERAL_E2E = 'Medicina general'
+
+// Fija la especialidad de una cuenta (users) y de su ficha (doctors), como lo haría el backend.
+function setSpecialty(uid: string, specialty: string): void {
+  setSpecialties(uid, [specialty])
+}
+
+// El conjunto de especialidades que ejerce (puede tener varias): la primera es la principal.
+function setSpecialties(uid: string, especialidades: string[]): void {
+  const [principal] = especialidades
+  const sql = [
+    `update public.users set specialty_id = (select id from public.specialties where name = '${principal}' and deleted_at is null limit 1), specialty = '${principal}' where id='${uid}';`,
+    `update public.doctors set specialty_id = (select id from public.specialties where name = '${principal}' and deleted_at is null limit 1), requested_specialty = null, requested_specialty_at = null where user_id='${uid}';`,
+    // El conjunto que decide su cola: se reafirma para que una corrida anterior (que puede haber
+    // marcado otras especialidades) no cambie lo que ven los demás specs.
+    `delete from public.doctor_specialties where user_id='${uid}';`,
+    ...especialidades.map(
+      (nombre) =>
+        `insert into public.doctor_specialties (user_id, specialty_id) select '${uid}', id from public.specialties where name = '${nombre}' and deleted_at is null limit 1;`
+    )
+  ].join(' ')
+  execSync(`docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c "${sql}"`, {
+    stdio: 'pipe'
+  })
+}
 
 function cleanupTestData(): void {
   // Borra consultas/pacientes de corridas E2E previas para que cada corrida arranque limpia
@@ -170,6 +198,21 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
     seedDoctorRow(uid, doc.name, doc.cedula, doc.license, doc.verified ?? true)
     await saveSession(doc.email, baseURL, doc.file)
   }
+  setSpecialty(await ensureAuthUser('e2e-doc1@example.com'), ESPECIALIDAD_GENERAL_E2E)
+
+  // Médico habilitado con especialidad "Otra" (especialidad-otra.spec.ts): no ve la cola hasta
+  // elegir la suya. Se reafirma "Otra" sin solicitud pendiente en cada corrida, porque el spec la
+  // cambia.
+  const otraUid = await ensureAuthUser('e2e-doc-otra@example.com')
+  seedDoctorRow(otraUid, 'E2E Doctor Otra', 'V-88880004', 'MPPS-88880004')
+  setSpecialty(otraUid, 'Otra')
+  // Las especialidades que ese spec agrega al catálogo, ya sin nadie que las tenga asignadas.
+  execSync(
+    `docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c ` +
+      `"delete from public.specialties where name like 'Medicina del deporte E2E%';"`,
+    { stdio: 'pipe' }
+  )
+  await saveSession('e2e-doc-otra@example.com', baseURL, 'e2e/.auth/doc-otra.json')
 
   // Admin de prueba (solo observa presencia, no es médico) para el test del dashboard.
   const adminUid = await ensureAuthUser('e2e-admin@example.com')
@@ -182,16 +225,10 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
 
   // Interconsulta asíncrona: doc2 es el ESPECIALISTA. Necesita `users.specialty_id` — sin él no
   // le llega ninguna difusión ni ve nada en su bandeja (el backend filtra por especialidad).
-  // doc1 se deja SIN especialidad a propósito: es el médico tratante, y así se comprueba de paso
-  // que la bandeja de un médico sin especialidad no muestra los casos de otros.
+  // doc1 es Medicina general: es el médico tratante, y así se comprueba de paso que la bandeja de
+  // otra especialidad no muestra los casos de Cardiología.
   const doc2Uid = await ensureAuthUser('e2e-doc2@example.com')
-  execSync(
-    `docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c ` +
-      `"update public.users set specialty_id = (select id from public.specialties ` +
-      `where name = '${ESPECIALIDAD_E2E}' and deleted_at is null limit 1), ` +
-      `specialty = '${ESPECIALIDAD_E2E}' where id='${doc2Uid}';"`,
-    { stdio: 'pipe' }
-  )
+  setSpecialty(doc2Uid, ESPECIALIDAD_E2E)
 
   // DUAL multi-rol: rol legacy 'doctor' + super_admin ADICIONAL en user_roles (RBAC). Reproduce
   // el caso real "primero doctor, luego se le agrega super_admin": el acceso admin debe salir
@@ -205,6 +242,11 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   execSync(`docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c "${dualSql}"`, {
     stdio: 'pipe'
   })
+  // Además de admin, EJERCE dos especialidades: es el caso real de una super_admin que también
+  // pasa consulta (ve todas las colas, pero quiere las suyas separadas). Con ficha habilitada,
+  // porque sin ella el panel la manda a completar el perfil profesional.
+  seedDoctorRow(dualUid, 'E2E Dual DoctorAdmin', 'V-88880005', 'MPPS-88880005')
+  setSpecialties(dualUid, [ESPECIALIDAD_GENERAL_E2E, ESPECIALIDAD_E2E])
   await saveSession('e2e-dual@example.com', baseURL, 'e2e/.auth/dual.json')
 
   // Paciente de prueba: el cuarto destino del fan-out de /login (login-fanout.spec.ts). No guarda

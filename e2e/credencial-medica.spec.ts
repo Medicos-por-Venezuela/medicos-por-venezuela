@@ -33,6 +33,8 @@ test('el admin aprueba la credencial desde el panel y puede revocarla', async ({
   const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' })
   const page = await ctx.newPage()
   await page.goto('/admin/doctores')
+  // Las credenciales viven en su propia pestaña, separadas de la lista de cuentas.
+  await page.getByRole('button', { name: 'Doctores por aprobar' }).click()
 
   // La tabla de credenciales tiene su propio buscador (con debounce de 300 ms + fetch server-side);
   // se espera a que quede reducida a la única coincidencia, no a que el texto aparezca.
@@ -65,6 +67,7 @@ test('el filtro por motivo saca a los aprobables del fondo del listado', async (
   const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' })
   const page = await ctx.newPage()
   await page.goto('/admin/doctores')
+  await page.getByRole('button', { name: 'Doctores por aprobar' }).click()
 
   // Sin filtro, los aprobables son una minoría diminuta y no salen en la primera página: el panel
   // aparenta no tener nada que aprobar. El contador es el atajo que aplica el filtro.

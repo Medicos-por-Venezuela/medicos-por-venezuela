@@ -1,5 +1,5 @@
 // Registro de paciente adulto por la UI COMPLETA: /registro-paciente → validación zod → signUp
-// de Supabase → createPatient/createConsultation en el backend → sala Jitsi → /sala-espera.
+// de Supabase → createPatient/createConsultation en el backend → /sala-espera en cola.
 // Complementa a sala-espera.spec.ts (que siembra la consulta por API): aquí se ejercita el
 // formulario en sí, que es lo que estuvo roto en producción sin que nadie lo notara.
 // El email es único por corrida (los auth users de Supabase no se limpian entre corridas);
@@ -7,9 +7,7 @@
 // patient+consultation. Dominio @example.com: el EmailStr del backend rechaza .local.
 import { test, expect } from '@playwright/test'
 
-test('registro adulto por UI: formulario → signup → sala de espera con videoconsulta', async ({
-  page
-}) => {
+test('registro adulto por UI: formulario → signup → sala de espera en cola', async ({ page }) => {
   // Ninguna petición a Google debe salir de local: el guard de lib/analytics.ts comprueba el
   // DOMINIO, y localhost no lo cumple. Se registran para asertarlo al final.
   const aGoogle: string[] = []
@@ -41,12 +39,17 @@ test('registro adulto por UI: formulario → signup → sala de espera con video
 
   await page.getByRole('button', { name: 'Registrarse' }).click()
 
-  // Aterrizar en la sala de espera con la sala de video ya creada por el backend. El botón
-  // solo aparece si ensureVideoRoom funcionó — si falla, la UI cae al fallback de WhatsApp
-  // sin videollamada (el bug silencioso de Amplify que motivó este spec).
+  // Aterriza en la sala de espera EN COLA: todavía ningún médico tomó el caso, así que no hay
+  // botón para entrar (antes lo había y el paciente entraba a una sala vacía). La sala le dice
+  // que espere y que esté atento al correo.
   await page.waitForURL(/\/sala-espera\?/)
-  await expect(page.getByRole('button', { name: 'Entrar a la videoconsulta' })).toBeVisible()
-  await expect(page.getByText(/contactarte por WhatsApp/)).toBeVisible()
+  await expect(page.getByText('Estás en la sala de espera')).toBeVisible()
+  await expect(page.getByText(/Atento a tu correo/)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Entrar a la videoconsulta' })).toHaveCount(0)
+  // Y "Otra" no se le ofreció: no es la cola de nadie.
+  await page.goBack()
+  await page.getByRole('checkbox', { name: 'Conozco la especialidad que necesito' }).check()
+  await expect(page.locator('option', { hasText: /^Otra$/ })).toHaveCount(0)
 
   // La conversión `generate_lead` se dispara aquí en PRODUCCIÓN. Lo que se puede comprobar en
   // local es lo contrario, que es lo que protege este assert: que no se filtre analítica desde

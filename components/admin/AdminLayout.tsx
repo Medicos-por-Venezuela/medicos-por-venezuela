@@ -2,6 +2,7 @@
 // médico / salir) + content area. Mobile-first: the sidebar is an off-canvas drawer below 850px
 // (see .admin-sidebar rules in styles/globals.css), a fixed column above it.
 import Head from 'next/head'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { ReactNode, useState } from 'react'
@@ -60,7 +61,17 @@ export default function AdminLayout({
         )}
 
         <aside className={`admin-sidebar${menuOpen ? ' admin-sidebar-open' : ''}`}>
-          <div className="admin-sidebar-brand">Médicos por Venezuela</div>
+          <Link href="/" className="admin-sidebar-brand">
+            {/* `unoptimized`: SVG vectorial; ver la nota del isotipo en components/home/Navbar.tsx. */}
+            <Image
+              src="/brand/logo-white.svg"
+              alt="Médicos por Venezuela"
+              width={120}
+              height={46}
+              unoptimized
+              priority
+            />
+          </Link>
           <nav className="admin-nav">
             {NAV_ITEMS.filter(
               // `profile.role` es el rol admin EFECTIVO (lo resuelve useAdminGuard vía RBAC),
@@ -117,11 +128,19 @@ export function AdminLoading() {
   )
 }
 
-export function Line({ label, value }: { label: string; value?: string | null }) {
+export function Line({
+  label,
+  value,
+  strong
+}: {
+  label: string
+  value?: string | null
+  strong?: boolean
+}) {
   if (!value) return null
   return (
-    <div style={{ fontSize: 12, color: '#64748b' }}>
-      <span style={{ color: '#94a3b8' }}>{label}:</span> {value}
+    <div style={{ fontSize: 12, color: strong ? '#0f172a' : '#64748b' }}>
+      <span style={{ color: '#94a3b8' }}>{label}:</span> {strong ? <strong>{value}</strong> : value}
     </div>
   )
 }

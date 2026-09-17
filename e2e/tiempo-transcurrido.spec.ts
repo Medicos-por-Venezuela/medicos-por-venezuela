@@ -39,7 +39,8 @@ test('la tarjeta del panel muestra días y horas, no minutos crudos', async ({ b
   // 32 horas = 1 día y 8 horas, el caso que cubre las dos unidades a la vez.
   execSync(
     `docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c ` +
-      `"update public.consultations set created_at = now() - interval '32 hours' ` +
+      `"update public.consultations set created_at = now() - interval '32 hours', ` +
+      `queued_at = now() - interval '32 hours' ` +
       `where id='${consultationId}';"`,
     { stdio: 'pipe' }
   )

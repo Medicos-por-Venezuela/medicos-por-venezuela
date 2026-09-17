@@ -86,8 +86,13 @@ async function raiseApiError(res: Response, defaultErrorMessage: string): Promis
   )
 }
 
-export async function getJson<T>(path: string, errorMessage: string, token?: string): Promise<T> {
-  const res = await authedFetch(path, {}, token)
+export async function getJson<T>(
+  path: string,
+  errorMessage: string,
+  token?: string,
+  extraHeaders?: Record<string, string>
+): Promise<T> {
+  const res = await authedFetch(path, {}, token, extraHeaders)
   // ApiError (no Error plano) también en GET: los callers pueden distinguir 401/403/etc.
   if (!res.ok) await raiseApiError(res, errorMessage)
   return res.json()

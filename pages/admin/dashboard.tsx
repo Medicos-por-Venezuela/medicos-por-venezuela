@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import AdminLayout, { AdminLoading, Kpi } from '../../components/admin/AdminLayout'
 import ConsultationsMonitorModal from '../../components/admin/ConsultationsMonitorModal'
+import EspecialidadesPendientes from '../../components/admin/EspecialidadesPendientes'
 import DoctorPoolModal from '../../components/DoctorPoolModal'
 import { getAccessToken, useAdminGuard } from '../../lib/admin'
 import { fetchInProgressConsultations, ConsultationMonitorItem } from '../../lib/consultations'
@@ -85,6 +86,8 @@ export default function AdminDashboard() {
         />
         <Kpi value={stats?.consultations_closed ?? '—'} label="Consultas cerradas" />
       </div>
+
+      <EspecialidadesPendientes />
 
       {!!stats && stats.consultations_urgent > 0 && (
         <div className="notice notice-danger">

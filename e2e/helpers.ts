@@ -9,6 +9,8 @@
 // El id no se puede fijar a mano en el código: es un UUID que cambia por entorno. Se lee del
 // catálogo real, que es además lo que hace la aplicación.
 
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { request } from '@playwright/test'
 
 const API = 'http://localhost:8000/api/v1'
@@ -54,4 +56,62 @@ export async function idEspecialidadGeneral(): Promise<string> {
   }
   cache = elegida.id
   return cache
+}
+
+/**
+ * access_token de la sesión guardada por global-setup (storageState). El mismo token que usa el
+ * navegador sirve como Bearer contra el backend.
+ */
+export function accessToken(file: string): string {
+  const state = JSON.parse(readFileSync(path.join(__dirname, '..', file), 'utf8'))
+  const entry = state.origins[0].localStorage.find((e: { name: string }) =>
+    e.name.includes('auth-token')
+  )
+  return JSON.parse(entry.value).access_token
+}
+
+/** El id de una especialidad activa por su nombre exacto (para sembrar casos de otra cola). */
+export async function idEspecialidadPorNombre(nombre: string): Promise<string> {
+  const ctx = await request.newContext()
+  const res = await ctx.get(`${API}/specialties`)
+  const cuerpo = await res.json()
+  await ctx.dispose()
+  const lista: Especialidad[] = Array.isArray(cuerpo) ? cuerpo : (cuerpo?.items ?? [])
+  const elegida = lista.find((e) => e.name === nombre && e.status === 'active')
+  if (!elegida) throw new Error(`no hay especialidad activa llamada "${nombre}"`)
+  return elegida.id
+}
+
+/**
+ * Paciente + consulta en espera de Medicina general (o de la especialidad que se pida), sembrados
+ * por los endpoints públicos. Sin correo a propósito: el backend local no manda correos, pero
+ * así ningún flujo intentaría uno. Devuelve el id de la consulta y su token de sala.
+ */
+export async function crearConsultaEnEspera(
+  marcador: string,
+  especialidad?: string
+): Promise<{ id: string; token: string }> {
+  const ctx = await request.newContext()
+  const patient = await ctx.post(`${API}/patients`, {
+    data: {
+      full_name: marcador,
+      phone_whatsapp: '+584120000055',
+      affected_zone: 'Caracas',
+      consent: true
+    }
+  })
+  const patientId = (await patient.json()).id
+  // La cola oculta el nombre; el card muestra chief_complaint → se usa como marcador.
+  const cons = await ctx.post(`${API}/consultations`, {
+    data: {
+      patient_id: patientId,
+      chief_complaint: marcador,
+      specialty_id: especialidad
+        ? await idEspecialidadPorNombre(especialidad)
+        : await idEspecialidadGeneral()
+    }
+  })
+  const body = await cons.json()
+  await ctx.dispose()
+  return { id: body.id, token: body.access_token }
 }

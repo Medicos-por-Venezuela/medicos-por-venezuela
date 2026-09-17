@@ -48,7 +48,9 @@ test('admin re-rutea un caso cambiando su especialidad (specialty_id)', async ({
   // Persistió: la fila muestra la especialidad asignada tras el reload (esperarla evita clickear
   // la fila stale), y al reabrir el caso el select la trae seleccionada.
   const row = page.locator('tr').filter({ hasText: 'E2E Paciente Especialidad' }).first()
-  await expect(row.getByText(/La pueden atender:\s*Psicología/)).toBeVisible()
+  // La fila anuncia la especialidad de AHORA (si el caso se deriva, la nueva), no la categoría
+  // que el paciente eligió al registrarse.
+  await expect(row.getByText(/Especialidad:\s*Psicología/)).toBeVisible()
   await row.getByRole('button', { name: 'E2E Paciente Especialidad' }).click()
   await expect(espSelect.locator('option:checked')).toHaveText('Psicología')
 
