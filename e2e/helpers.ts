@@ -9,6 +9,8 @@
 // El id no se puede fijar a mano en el código: es un UUID que cambia por entorno. Se lee del
 // catálogo real, que es además lo que hace la aplicación.
 
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { request } from '@playwright/test'
 
 const API = 'http://localhost:8000/api/v1'
@@ -54,4 +56,47 @@ export async function idEspecialidadGeneral(): Promise<string> {
   }
   cache = elegida.id
   return cache
+}
+
+/**
+ * access_token de la sesión guardada por global-setup (storageState). El mismo token que usa el
+ * navegador sirve como Bearer contra el backend.
+ */
+export function accessToken(file: string): string {
+  const state = JSON.parse(readFileSync(path.join(__dirname, '..', file), 'utf8'))
+  const entry = state.origins[0].localStorage.find((e: { name: string }) =>
+    e.name.includes('auth-token')
+  )
+  return JSON.parse(entry.value).access_token
+}
+
+/**
+ * Paciente + consulta en espera de Medicina general, sembrados por los endpoints públicos. Sin
+ * correo a propósito: el backend local no manda correos, pero así ningún flujo intentaría uno.
+ * Devuelve el id de la consulta y su token de sala.
+ */
+export async function crearConsultaEnEspera(
+  marcador: string
+): Promise<{ id: string; token: string }> {
+  const ctx = await request.newContext()
+  const patient = await ctx.post(`${API}/patients`, {
+    data: {
+      full_name: marcador,
+      phone_whatsapp: '+584120000055',
+      affected_zone: 'Caracas',
+      consent: true
+    }
+  })
+  const patientId = (await patient.json()).id
+  // La cola oculta el nombre; el card muestra chief_complaint → se usa como marcador.
+  const cons = await ctx.post(`${API}/consultations`, {
+    data: {
+      patient_id: patientId,
+      chief_complaint: marcador,
+      specialty_id: await idEspecialidadGeneral()
+    }
+  })
+  const body = await cons.json()
+  await ctx.dispose()
+  return { id: body.id, token: body.access_token }
 }

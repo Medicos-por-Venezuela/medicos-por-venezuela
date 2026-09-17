@@ -1,75 +1,60 @@
-import { test, expect, request } from '@playwright/test'
-import { idEspecialidadGeneral } from './helpers'
+// La cola del panel: un caso nuevo aparece en vivo a los médicos de SU especialidad, no a los de
+// otra, y si dos médicos lo intentan tomar a la vez solo uno gana (claim atómico).
+import { test, expect } from '@playwright/test'
+import { crearConsultaEnEspera } from './helpers'
 
-const API = 'http://localhost:8000/api/v1'
+const MARCADOR = 'E2E Paciente Carrera'
 
-// Crea un paciente + consulta en espera por el backend (endpoints públicos), y devuelve el id.
-async function createWaitingConsultation(): Promise<string> {
-  const ctx = await request.newContext()
-  const patient = await ctx.post(`${API}/patients`, {
-    data: {
-      full_name: 'E2E Paciente Carrera',
-      phone_whatsapp: '+584120000001',
-      affected_zone: 'Caracas',
-      consent: true
-    }
-  })
-  const patientId = (await patient.json()).id
-  // La cola oculta el nombre; el card muestra chief_complaint → lo usamos como marcador.
-  const consultation = await ctx.post(`${API}/consultations`, {
-    data: {
-      patient_id: patientId,
-      chief_complaint: 'E2E Paciente Carrera',
-      specialty_id: await idEspecialidadGeneral()
-    }
-  })
-  const cid = (await consultation.json()).id
-  await ctx.dispose()
-  return cid
-}
-
-test('consulta nueva visible en tiempo real y solo un médico la toma (carrera)', async ({
+test('el caso lo ve su especialidad, no otra, y solo un médico lo toma (carrera)', async ({
   browser
 }) => {
-  const cid = await createWaitingConsultation()
+  const { id: cid } = await crearConsultaEnEspera(MARCADOR)
 
+  // doc1 = Medicina general (la del caso). admin = los admins ven todas las colas.
+  // doc2 = Cardiología: no debe verlo.
   const ctx1 = await browser.newContext({ storageState: 'e2e/.auth/doc1.json' })
-  const ctx2 = await browser.newContext({ storageState: 'e2e/.auth/doc2.json' })
+  const ctx2 = await browser.newContext({ storageState: 'e2e/.auth/admin.json' })
+  const ctxOtra = await browser.newContext({ storageState: 'e2e/.auth/doc2.json' })
   const page1 = await ctx1.newPage()
   const page2 = await ctx2.newPage()
+  const cardiologo = await ctxOtra.newPage()
 
   await page1.goto('/panel-medico')
   await page2.goto('/panel-medico')
+  await cardiologo.goto('/panel-medico')
 
-  // El panel carga por el backend (no se queda en "Cargando") y muestra los KPIs de la cola
-  // (partidos en "En videollamada ahora" / "Sin atender (+20 min)").
-  await expect(page1.getByText('En videollamada ahora')).toBeVisible()
+  // Los contadores del panel: solo "Sin atender en tu cola" y "Consultas cerradas por mí".
+  await expect(page1.getByText('Sin atender en tu cola')).toBeVisible()
+  await expect(page1.getByText('Consultas cerradas por mí')).toBeVisible()
+  await expect(page1.getByText('En videollamada ahora')).toHaveCount(0)
+  await expect(page1.getByText('Esperando para tu especialidad')).toHaveCount(0)
 
-  // Ambos ven el caso recién creado de inmediato (sin el gate de 20 min).
-  await expect(page1.getByText('E2E Paciente Carrera')).toBeVisible()
-  await expect(page2.getByText('E2E Paciente Carrera')).toBeVisible()
+  const cardIn = (page: typeof page1) => page.locator('.card-flat').filter({ hasText: MARCADOR })
+  await expect(cardIn(page1)).toBeVisible()
+  await expect(cardIn(page2)).toBeVisible()
+  await expect(cardiologo.getByText('Sin atender en tu cola')).toBeVisible()
+  await expect(cardIn(cardiologo)).toHaveCount(0)
 
-  // Ambos abren el modal ANTES de que ninguno confirme: así la carrera es determinista (si doc1
-  // confirmara primero, Realtime le quitaría la card a doc2 y no podría intentar tomarla).
-  // El botón se busca DENTRO de la card de este paciente: la cola puede traer otros casos en
-  // espera (de otros specs o datos manuales) y sin scoping el localizador strict fallaría.
-  const waBtn = /Puedo atender a este paciente vía WhatsApp/i
-  const cardIn = (page: typeof page1) =>
-    page.locator('.card-flat').filter({ hasText: 'E2E Paciente Carrera' })
-  await cardIn(page1).getByRole('button', { name: waBtn }).click()
-  await cardIn(page2).getByRole('button', { name: waBtn }).click()
-  await expect(page1.getByRole('button', { name: /^Aceptar$/ })).toBeVisible()
-  await expect(page2.getByRole('button', { name: /^Aceptar$/ })).toBeVisible()
+  // Ambos abren el aviso ANTES de que ninguno confirme: así la carrera es determinista (si doc1
+  // confirmara primero, Realtime le quitaría la card al otro y no podría intentar tomarla).
+  const confirmar = { name: 'Entendido, continuar a la videollamada' }
+  await cardIn(page1).getByRole('button', { name: 'Atender paciente' }).click()
+  await cardIn(page2).getByRole('button', { name: 'Atender paciente' }).click()
+  await expect(page1.getByRole('button', confirmar)).toBeVisible()
+  await expect(page2.getByRole('button', confirmar)).toBeVisible()
 
-  // doc1 confirma → gana el claim atómico → navega a la consulta.
-  await page1.getByRole('button', { name: /^Aceptar$/ }).click()
+  // doc1 confirma → gana el claim atómico → se abre la sala y navega a la consulta.
+  const popup = page1.waitForEvent('popup')
+  await page1.getByRole('button', confirmar).click()
+  expect((await popup).url()).toContain('/vamed-')
   await expect(page1).toHaveURL(new RegExp(`/panel-medico/consulta/${cid}`))
 
-  // doc2 confirma el MISMO caso → claim atómico responde 409 → mensaje y sigue en el panel.
-  await page2.getByRole('button', { name: /^Aceptar$/ }).click()
-  await expect(page2.getByText(/Ya fue asignado a otro doctor/i)).toBeVisible()
+  // El otro confirma el MISMO caso → 409 → mensaje, sin sala, y sigue en el panel.
+  await page2.getByRole('button', confirmar).click()
+  await expect(page2.getByText(/ya fue tomado por otro médico/i)).toBeVisible()
   await expect(page2).toHaveURL(/\/panel-medico$/)
 
   await ctx1.close()
   await ctx2.close()
+  await ctxOtra.close()
 })

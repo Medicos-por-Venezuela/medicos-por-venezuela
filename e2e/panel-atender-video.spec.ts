@@ -1,13 +1,13 @@
-// "Atender por videoconsulta" con un caso SIN sala (creado por API/WhatsApp o durante el bug
-// del hosting): el panel debe CREAR la sala (backend, idempotente, antes del claim), abrirla en
-// una pestaña nueva y el detalle debe mostrar "Unirse a videoconsulta". Reproduce el reporte
-// "no me abre el link y desaparece el botón de unirse".
+// "Atender paciente" con un caso SIN sala: el mismo claim del backend crea la sala, el panel la
+// abre en una pestaña nueva y el detalle muestra "Unirse a videoconsulta". La atención es siempre
+// por video: el botón de WhatsApp ya no existe. Reproduce el reporte "no me abre el link y
+// desaparece el botón de unirse".
 import { test, expect, request } from '@playwright/test'
 import { idEspecialidadGeneral } from './helpers'
 
 const API = 'http://localhost:8000/api/v1'
 
-test('atender por videoconsulta crea la sala si falta y el detalle muestra Unirse', async ({
+test('atender paciente crea la sala en el claim y el detalle muestra Unirse', async ({
   browser
 }) => {
   // Consulta SIN sala (la API pública no la crea sola).
@@ -38,11 +38,15 @@ test('atender por videoconsulta crea la sala si falta y el detalle muestra Unirs
 
   const card = page.locator('.card-flat').filter({ hasText: 'E2E Paciente Video' })
   await expect(card).toBeVisible()
+  // La tarjeta muestra la especialidad de la cola en vez de "Paciente", y ya no ofrece WhatsApp.
+  await expect(card.getByText('Medicina general', { exact: true })).toBeVisible()
+  await expect(card.getByRole('button', { name: /WhatsApp/i })).toHaveCount(0)
+  await expect(card.getByRole('button', { name: 'Derivar a especialista' })).toBeVisible()
 
   // Antes de tomar el caso sale el aviso para el médico. Cerrarlo NO puede tomar el caso: el
   // claim es lo que saca al paciente de la cola, y un clic de más dejaría a alguien asignado a
   // un médico que decidió no atenderlo.
-  const atender = card.getByRole('button', { name: 'Atender por videoconsulta' })
+  const atender = card.getByRole('button', { name: 'Atender paciente' })
   await atender.click()
   const aviso = page.getByRole('dialog')
   await expect(aviso.getByRole('heading', { name: 'Información importante' })).toBeVisible()

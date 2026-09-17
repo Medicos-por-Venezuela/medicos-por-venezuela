@@ -5,6 +5,34 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-17
+
+- **feat: cola por especialidad, derivación a la cola y sala de espera en vivo** — spec en la API
+  (`tasks/cola-por-especialidad/`). Requiere la API de la rama del mismo nombre.
+  - **Cola:** cada médico ve solo su especialidad (Psiquiatría también Psicología, Medicina interna
+    también Medicina general; un admin ve todo salvo si es de Psicología). La tarjeta se titula con
+    la especialidad y dice "Derivado desde X". Un único botón **"Atender paciente"** (siempre video:
+    el claim crea la sala) y **"Derivar a especialista"** (`DerivarEspecialidadModal` +
+    `ConfirmDialog`). Fuera la atención por WhatsApp. KPIs: "Sin atender en tu cola" y "Consultas
+    cerradas por mí". Aviso para médicos con "Otra" o sin especialidad.
+  - **Detalle:** "Ver Pool de médicos (pedir interconsulta)"; "Agendar con especialista" pasa a
+    **"Derivar con especialista"** (especialidad → motivo → firma, sin fecha); bloque "Paciente
+    derivado desde X por Y: motivo"; "Unirse a videoconsulta" en todo caso abierto (crea la sala si
+    falta).
+  - **Sala de espera y Mi caso:** sin botón de entrar hasta que un médico toma el caso; aviso de
+    alta demanda y de estar atento al correo. Se actualizan solas por SSE (`lib/waitingRoom.ts`,
+    `components/SalaEsperaEnVivo.tsx`), siguen al caso derivado y guardan el token en
+    sessionStorage (recargar ya no pierde la sala). El registro ya no crea la sala.
+  - **"Otra":** fuera del registro de paciente; en el perfil, "Mi especialidad no está en la lista"
+    para escribirla; el dashboard admin muestra "Especialidades por revisar" para agregarla y
+    asignarla (`components/admin/EspecialidadesPendientes.tsx`).
+  - **Marca:** los paneles internos usan la de la web pública — barra navy con el logo
+    (`components/PanelHeader.tsx`, montada en `_app.tsx`), lateral del admin navy, azul `--brand`
+    en las acciones y Nunito Sans. El verde queda para estados de éxito.
+  - E2E: `derivar-especialista`, `especialidad-otra`, y reescritos `panel-race`, `sala-espera`,
+    `mi-caso-videoconsulta`, `panel-atender-video`, `pool-modal`, `registro-paciente`. El seed da a
+    doc1 Medicina general y crea `e2e-doc-otra`.
+
 ## 2026-09-14
 
 - **fix(legal): "Quién ve sus datos" según lo que manda el backend** — en `/legal/privacidad`, la

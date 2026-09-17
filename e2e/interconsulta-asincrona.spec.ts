@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test'
 import { ESPECIALIDAD_E2E } from './global-setup'
 
-const TRATANTE = 'e2e/.auth/doc1.json' // sin especialidad: solo pide
+const TRATANTE = 'e2e/.auth/doc1.json' // Medicina general: solo pide
 const ESPECIALISTA = 'e2e/.auth/doc2.json' // con ESPECIALIDAD_E2E: recibe y toma
 
 // Nombre único por corrida: si dos corridas dejan el mismo, el localizador strict de Playwright

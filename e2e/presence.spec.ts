@@ -42,10 +42,14 @@ test('el médico sigue online tras pasar del panel a la consulta (Realtime Prese
   await doctorPage.goto('/panel-medico')
   await expect(doctorPage.getByText('E2E Paciente Presencia')).toBeVisible()
   await doctorPage
-    .getByRole('button', { name: /Puedo atender a este paciente vía WhatsApp/i })
+    .locator('.card-flat')
+    .filter({ hasText: 'E2E Paciente Presencia' })
     .first()
+    .getByRole('button', { name: 'Atender paciente' })
     .click()
-  await doctorPage.getByRole('button', { name: /^Aceptar$/ }).click()
+  const popup = doctorPage.waitForEvent('popup')
+  await doctorPage.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
+  await (await popup).close()
   await expect(doctorPage).toHaveURL(/\/panel-medico\/consulta\//)
 
   // El admin lo ve ONLINE aunque el médico esté en la consulta, no en el panel (antes se caía).

@@ -1,45 +1,66 @@
-// Sala de espera del paciente: con sala creada, la videoconsulta es la acción principal y se
-// avisa que también pueden contactarlo por WhatsApp; sin sala, cae al fallback. (La sala la crea
-// el BACKEND — POST /consultations/{id}/video-room — desde el registro; el viejo /api/videoconsulta
-// de Next moría en Amplify y dejaba a TODOS los pacientes sin videollamada.)
-import { test, expect, request } from '@playwright/test'
-import { idEspecialidadGeneral } from './helpers'
+// Sala de espera del paciente EN VIVO. El bug que motivó esto: el paciente veía "Entrar a la
+// videoconsulta" desde el registro y entraba a una sala donde todavía no había ningún médico.
+// Ahora el botón aparece solo cuando un médico toma el caso, y aparece SIN recargar la página
+// (stream SSE desde la API).
+import { test, expect } from '@playwright/test'
+import { crearConsultaEnEspera } from './helpers'
 
-const API = 'http://localhost:8000/api/v1'
+const MARCADOR = 'E2E Paciente Sala'
 
-test('paciente con sala: botón de videoconsulta + aviso de WhatsApp', async ({ browser }) => {
-  // Sembrar consulta y crear su sala por el MISMO endpoint público que usa el registro.
-  const api = await request.newContext()
-  const patient = await api.post(`${API}/patients`, {
-    data: {
-      full_name: 'E2E Paciente Sala',
-      phone_whatsapp: '+584120000012',
-      affected_zone: 'Caracas',
-      consent: true
-    }
-  })
-  const patientId = (await patient.json()).id
-  const cons = await api.post(`${API}/consultations`, {
-    data: { patient_id: patientId, specialty_id: await idEspecialidadGeneral() }
-  })
-  // El create devuelve el token de acceso a la sala (caduca a las 24 h): sin él, video-room y
-  // entered-call responden 401. Es la única vez que el backend lo entrega.
-  const { id: cid, access_token: roomToken } = await cons.json()
-  const withRoom = await api.post(`${API}/consultations/${cid}/video-room`, {
-    headers: { 'X-Consultation-Token': roomToken }
-  })
-  const room = (await withRoom.json()).video_room_url
-  expect(room, 'el backend debe generar la sala').toContain('/vamed-')
-  await api.dispose()
+test('en cola no hay botón; cuando un médico toma el caso aparece solo', async ({ browser }) => {
+  const { id: cid, token } = await crearConsultaEnEspera(MARCADOR)
 
-  const ctx = await browser.newContext()
-  const page = await ctx.newPage()
-  await page.goto(
-    `/sala-espera?nombre=E2E%20Paciente%20Sala&cid=${cid}&room=${encodeURIComponent(room)}`
+  const ctxPaciente = await browser.newContext()
+  const paciente = await ctxPaciente.newPage()
+  await paciente.goto(`/sala-espera?nombre=E2E&cid=${cid}&t=${token}`)
+
+  // El token sale de la URL (queda en sessionStorage): no debe quedar en el historial.
+  await expect(paciente).not.toHaveURL(/[?&]t=/)
+  await expect(paciente.getByText('Estás en la sala de espera')).toBeVisible()
+  await expect(paciente.getByText('Medicina general', { exact: true })).toBeVisible()
+  await expect(paciente.getByText(/alta demanda de pacientes/)).toBeVisible()
+  await expect(paciente.getByText(/Atento a tu correo/)).toBeVisible()
+  await expect(paciente.getByRole('button', { name: 'Entrar a la videoconsulta' })).toHaveCount(0)
+
+  // La marca: la barra superior con el logo.
+  await expect(paciente.getByRole('img', { name: 'Médicos por Venezuela' })).toBeVisible()
+
+  // Un médico toma el caso desde su panel.
+  const ctxMedico = await browser.newContext({ storageState: 'e2e/.auth/doc1.json' })
+  const medico = await ctxMedico.newPage()
+  await medico.goto('/panel-medico')
+  const card = medico.locator('.card-flat').filter({ hasText: MARCADOR })
+  await card.getByRole('button', { name: 'Atender paciente' }).click()
+  const popupMedico = medico.waitForEvent('popup')
+  await medico.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
+  await (await popupMedico).close()
+  await expect(medico).toHaveURL(new RegExp(`/panel-medico/consulta/${cid}`))
+
+  // Sin recargar: la sala del paciente cambia sola y ofrece entrar.
+  const entrar = paciente.getByRole('button', { name: 'Entrar a la videoconsulta' })
+  await expect(entrar).toBeVisible({ timeout: 20_000 })
+  await expect(paciente.getByText(/tomó tu caso/)).toBeVisible()
+
+  // Entrar abre la MISMA sala que abrió el médico y registra la entrada.
+  await entrar.click()
+  const popupPaciente = paciente.waitForEvent('popup')
+  const entrada = paciente.waitForResponse(
+    (r) => r.url().includes('/entered-call') && r.request().method() === 'POST'
   )
+  await paciente.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
+  expect((await popupPaciente).url()).toContain('/vamed-')
+  expect((await entrada).status()).toBe(200)
 
-  await expect(page.getByRole('button', { name: 'Entrar a la videoconsulta' })).toBeVisible()
-  await expect(page.getByText(/contactarte por WhatsApp/)).toBeVisible()
+  await ctxMedico.close()
+  await ctxPaciente.close()
+})
 
-  await ctx.close()
+test('recargar la sala de espera no pierde la credencial', async ({ page }) => {
+  const { id: cid, token } = await crearConsultaEnEspera(`${MARCADOR} Recarga`)
+  await page.goto(`/sala-espera?cid=${cid}&t=${token}`)
+  await expect(page.getByText('Estás en la sala de espera')).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByText('Estás en la sala de espera')).toBeVisible()
+  await expect(page.getByText(/enlace de tu sala de espera caducó/)).toHaveCount(0)
 })

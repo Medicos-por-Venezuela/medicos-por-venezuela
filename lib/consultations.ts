@@ -70,7 +70,12 @@ export interface MyConsultation {
   // La sala de la videoconsulta. El backend ya la mandaba en esta vista (el paciente solo ve las
   // suyas, scopeadas por `patients.user_id`); lo que faltaba era pedirla aquí. Es el único enlace
   // permanente a la sala: el de `/sala-espera` vive en aquella pestaña y se pierde al cerrarla.
+  // OJO: que exista NO significa que haya médico; eso lo dice la sala en vivo (lib/waitingRoom.ts).
   video_room_url: string | null
+  // Especialidad de la cola en la que está y, si lo derivaron, la de origen.
+  specialty?: string | null
+  derived_from_specialty?: string | null
+  parent_consultation_id?: string | null
 }
 export async function fetchMyConsultations(token: string): Promise<MyConsultation[]> {
   return getJson<MyConsultation[]>(
@@ -119,13 +124,24 @@ export interface PanelConsultation {
   // es justo lo que ocurre al abrir la sala desde un móvil (ver EstadoPacienteBadge).
   entered_call_at: string | null
   created_at: string
+  // Hora de llegada del paciente a la cola: ordena la cola y dice cuánto lleva esperando. Un caso
+  // derivado conserva la original.
+  queued_at: string
+  specialty_id: string | null
+  // Especialidad desde la que se derivó a esta cola (null si no viene derivado).
+  derived_from_specialty: string | null
   patient: PanelPatient | null
 }
+
+// Por qué el médico no ve ninguna cola: sin especialidad, o con "Otra".
+export type QueueBlockedReason = 'sin_especialidad' | 'especialidad_por_definir'
 
 export interface PanelResponse {
   waiting: PanelConsultation[]
   mine: PanelConsultation[]
   my_closed_count: number
+  // Opcional: una API anterior a la cola por especialidad no lo manda.
+  queue_blocked_reason?: QueueBlockedReason | null
 }
 
 // GET /api/v1/consultations/panel — cola de espera + mis consultas abiertas + cerradas por mí.
@@ -138,16 +154,61 @@ export async function fetchPanel(token: string): Promise<PanelResponse> {
 }
 
 // POST /api/v1/consultations/{id}/claim — toma atómica. Lanza ApiError 409 si otro médico la
-// tomó primero (condición de carrera resuelta en la base, un único ganador).
-export async function claimConsultation(
-  id: string,
-  viaWhatsapp: boolean,
-  token: string
-): Promise<PanelConsultation> {
+// tomó primero (condición de carrera resuelta en la base, un único ganador) y 403 si el caso no es
+// de sus colas. La atención es siempre por video: el MISMO claim deja creada la sala, y la
+// respuesta trae su `video_room_url`.
+export async function claimConsultation(id: string, token: string): Promise<PanelConsultation> {
   return postJson<PanelConsultation>(
     `/api/v1/consultations/${id}/claim`,
-    { via_whatsapp: viaWhatsapp },
+    {},
     'No se pudo tomar la consulta',
+    token
+  )
+}
+
+// --- Derivar a otra especialidad (ver tasks/cola-por-especialidad/spec.md en la API) ---
+
+export interface DerivationTarget {
+  id: string
+  name: string
+}
+
+// GET /consultations/derivation-targets — especialidades con médicos atendiendo su cola.
+export async function fetchDerivationTargets(token: string): Promise<DerivationTarget[]> {
+  return getJson<DerivationTarget[]>(
+    '/api/v1/consultations/derivation-targets',
+    'No se pudieron cargar las especialidades',
+    token
+  )
+}
+
+// POST /consultations/{id}/derive — un caso de la cola (sin tomar) pasa a la cola de otra
+// especialidad. 409 si otro médico lo tomó o lo movió mientras tanto.
+export async function deriveConsultation(
+  id: string,
+  specialtyId: string,
+  token: string
+): Promise<AgendaConsultation> {
+  return postJson<AgendaConsultation>(
+    `/api/v1/consultations/${id}/derive`,
+    { specialty_id: specialtyId },
+    'No se pudo derivar el caso',
+    token
+  )
+}
+
+// POST /consultations/{id}/refer-to-queue — derivar con especialista desde un caso atendido: cierra
+// la parte del médico (firmada, con el motivo) y el paciente entra a la cola de la especialidad,
+// sin cita. Devuelve la consulta nueva.
+export async function referToQueue(
+  id: string,
+  body: { specialty_id: string; reason: string; signature?: string },
+  token: string
+): Promise<AgendaConsultation> {
+  return postJson<AgendaConsultation>(
+    `/api/v1/consultations/${id}/refer-to-queue`,
+    body,
+    'No se pudo derivar con el especialista',
     token
   )
 }
@@ -257,21 +318,6 @@ export async function scheduleFollowUp(
   )
 }
 
-// POST /consultations/{id}/refer — Agendar con especialista: entrega la consulta a OTRO médico (la
-// actual queda 'referred_to_specialist') y crea la hija agendada asignada a ese médico, firmada.
-export async function scheduleReferral(
-  id: string,
-  body: { invited_doctor_id: string; scheduled_at: string; reason: string; signature?: string },
-  token: string
-): Promise<AgendaConsultation> {
-  return postJson<AgendaConsultation>(
-    `/api/v1/consultations/${id}/refer`,
-    body,
-    'No se pudo agendar con el especialista',
-    token
-  )
-}
-
 // GET /consultations/agenda — mi agenda (citas agendadas del médico autenticado).
 export async function fetchAgenda(token: string): Promise<AgendaConsultation[]> {
   return getJson<AgendaConsultation[]>(
@@ -318,9 +364,19 @@ export interface ConsultationDetail {
   internal_note: string | null
   video_room_url: string | null
   patient_last_seen_at: string | null
+  entered_call_at: string | null
   assigned_doctor_id: string | null
   attended_via_whatsapp: boolean
   scheduled_at: string | null
+  specialty?: string | null
+  derived_from_specialty?: string | null
+  // Solo si el caso llegó derivado: quién lo derivó, desde qué especialidad y por qué.
+  derivation?: {
+    from_specialty: string | null
+    by_name: string | null
+    reason: string | null
+    at: string
+  } | null
   patient: ConsultationDetailPatient | null
 }
 

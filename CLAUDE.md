@@ -217,7 +217,9 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `lib/reports.ts` — reports REST client (preview + `.xlsx` download; super_admin only)
 - `lib/marketing.ts` — marketing surveys REST client (public submit + super_admin list/`.xlsx`)
 - `lib/auth.ts` — `signInWithGoogle()` OAuth helper (redirects to `/auth/callback`)
-- `lib/utils.ts` — status labels, specialty list, specialty↔needs matching (`matchesSpecialty`, `canAttend`)
+- `lib/utils.ts` — status labels y helpers de presentación (`tiempoTranscurrido`,
+  `statusBadgeClass`); el matching de especialidades lo decide la API, no el cliente
+- `lib/waitingRoom.ts` — sala de espera en vivo del paciente (SSE + respaldo JSON)
 - `components/` — shared UI (e.g. `GoogleButton.tsx`)
 - `supabase_schema.sql` — **the backend**: tables, triggers, RLS policies, RPCs (run in Supabase)
 
@@ -225,7 +227,10 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 
 - `/` — home (two cards: paciente / médico; no admin link)
 - `/registro-paciente` — patient request form (public; optional account + Google)
-- `/sala-espera` — patient confirmation (anonymous submissions)
+- `/sala-espera` — patient waiting room, **live** (`lib/waitingRoom.ts`: SSE from
+  `GET /consultations/{id}/waiting-room/stream`, JSON fallback). "Entrar a la videoconsulta" only
+  appears once a doctor has taken the case; it follows the case if it was derived. The room token
+  (`?t=`) is moved to sessionStorage and removed from the URL
 - `/registro-medico` — doctor self-registration (email+password). **Antes de crear la cuenta en
   Supabase Auth** pregunta a `POST /doctors/registration-check`: al salir del campo de correo (si ya
   es de un médico, `YaRegistradoModal` con dos enlaces: "inicie sesión" → `/login` y "pida recordar
@@ -241,9 +246,12 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
   (`e2e/terminos.spec.ts`)
 - `/login` — **single sign-in for patients, doctors and admins**; routes by effective role
   (`lib/postLogin.ts`, shared with `/auth/callback` and `/mi-caso`)
-- `/mi-caso` — patient portal, read-only case status (no login form; sends you to `/login`)
+- `/mi-caso` — patient portal, read-only case status (no login form; sends you to `/login`). Open
+  cases show the same live waiting room as `/sala-espera` (`components/SalaEsperaEnVivo.tsx`)
 - `/login-medico` — legacy doctor login, redirects to `/login`
-- `/panel-medico` — doctor/admin panel (queue, active system cases for admin, counters)
+- `/panel-medico` — doctor/admin panel. The queue is **per specialty** (decided by the API,
+  `services/queue_access.py`); cards offer "Atender paciente" (always video) and "Derivar a
+  especialista". Doctors with "Otra" or no specialty get a notice pointing to their profile
 - `/panel-medico/consulta/[id]` — case detail page (patient details, video, note, close/no-show)
 - `/panel-medico/perfil` — doctor self-service profile (view/edit; FastAPI `GET`/`PATCH /doctors/me`);
   also where a `source:"user"` (Google) doctor completes their cédula + professional type to be verified
@@ -302,8 +310,8 @@ Postgres functions / RPCs:
 - `mark_myself_online()` — **legacy/vestigial**: doctor online status now uses Supabase Realtime
   **Presence** (`lib/presence.tsx`, channel `online-doctors`), no DB writes. Nobody calls this RPC
   anymore (cleanup pending); do not base new logic on `profiles.last_seen_at`.
-- `mark_patient_waiting(uuid)` — RPC called by `/sala-espera` to update `patient_last_seen_at`
-  (patient presence is still a DB heartbeat — only the doctor side moved to Presence)
+- `mark_patient_waiting(uuid)` — **legacy/vestigial**: patient presence is Realtime Presence too
+  (`lib/patientPresence.tsx`); nobody calls this RPC anymore
 
 RLS is enabled on all tables. **Desde 2026-09-14 (migración del backend `20260914_111456`) la RLS dice
 lo mismo que la API:** nadie lee `patients` ni `consultation_events` por PostgREST (sin policies ni
@@ -370,19 +378,21 @@ code reads them since `pages/api/videoconsulta.ts` was removed):
 
 ## Video consultations (Jitsi)
 
-Patient self-service flow: a patient submits a request → [registro-paciente.tsx](pages/registro-paciente.tsx)
-POSTs to [pages/api/videoconsulta.ts](pages/api/videoconsulta.ts), which generates a Jitsi room
-([lib/jitsi.ts](lib/jitsi.ts)) and stores it on `consultations.video_room_url`. The patient lands on
-`/sala-espera` with the room link shown **on-screen** (the primary, always-works channel) and waits for a
-doctor. (The route also contains a **parked** Twilio WhatsApp/SMS send — disabled pending Twilio
-compliance; see [.knowledge/TODOs.md](.knowledge/TODOs.md). No links are sent via WhatsApp today.)
+**Attention is always by video (2026-09-17).** A patient submits a request →
+[registro-paciente.tsx](pages/registro-paciente.tsx) creates the consultation in the API (no room yet)
+and lands on `/sala-espera`, which shows the case **waiting in its specialty's queue** — no button to
+enter, a high-demand notice and "watch your email". When a doctor takes the case, the API's claim
+creates the Jitsi room ([lib/jitsi.ts](lib/jitsi.ts) only rewrites the host) in the same atomic UPDATE,
+emails the patient, and the waiting room (SSE) shows "Entrar a la videoconsulta" without reloading.
+The WhatsApp claim path is gone (`via_whatsapp: true` → 422).
 
-Doctors use **"Atender al siguiente paciente"** in [panel-medico.tsx](pages/panel-medico.tsx),
-which assigns the next eligible `waiting` case (preferring present patients; falling back to waiting cases if
-heartbeat failed), opens the same Jitsi room, and navigates to
-`/panel-medico/consulta/[id]` for details/actions. Reserved needs (psychology: _Apoyo emocional_ / _Crisis de
-ansiedad_) only go to Psicología/Psiquiatría and never fall back to general doctors (`canAttend` in
-[lib/utils.ts](lib/utils.ts)). The API route is idempotent (one room per consultation).
+The queue is per specialty (API `services/queue_access.py`): exact specialty, plus
+`specialty_queue_access` extras (Psiquiatría → Psicología, Medicina interna → Medicina general);
+admins see everything unless their specialty is mental-health-only; "Otra"/no specialty sees nothing.
+Doctors use **"Atender paciente"** / **"Atender al siguiente paciente"** in
+[panel-medico.tsx](pages/panel-medico.tsx) and can **derive** a case to another specialty from the
+queue (same case, keeps its place) or, once attended, from the detail page with reason + signature
+(a child consultation enters the target queue, no appointment date).
 
 Every entry to a room goes through [AntesDeEntrarModal](components/AntesDeEntrarModal.tsx) first,
 the "Información importante" notice: wait 15–20 minutes, the patient gets the "tu médico te está
@@ -392,12 +402,11 @@ where the case is claimed only on confirm (closing the notice leaves it in the q
 the detail page's "Unirse a videoconsulta". The room is opened from the confirm click, which is
 the user gesture that keeps `window.open` from being blocked as a pop-up.
 
-Admins/super_admins can also use `/panel-medico`: they keep a link back to `/admin/dashboard`, see admin
-counters plus an admin-only **Casos activos del sistema** section for `in_progress`, `urgent_in_person`, and
-`referred_to_specialist` cases (patient, status, motive, presence, assignment), and open those cases in the
-same `/panel-medico/consulta/[id]` detail page. Closing/no-show actions return to
-`/panel-medico?actualizado=1`; the panel refreshes counters on that flag and focus, and the queue
-itself updates via Supabase Realtime (`postgres_changes` on `consultations`) — no polling.
+Admins/super_admins can also use `/panel-medico`: they keep a link back to `/admin/dashboard` and, in
+the queue, they see every specialty (unless their own is mental-health-only). Closing/no-show/derive
+actions return to `/panel-medico?actualizado=1`; the panel refreshes counters on that flag and focus,
+and the queue itself updates via Supabase Realtime (`postgres_changes` on `consultations`) — no
+polling.
 
 ### Revoking a doctor (operational)
 

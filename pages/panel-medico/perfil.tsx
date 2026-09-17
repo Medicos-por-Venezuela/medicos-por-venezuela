@@ -28,6 +28,10 @@ type Tab = 'perfil' | 'disponibilidad' | 'ajustes'
 
 const soloDigitos = (value: string) => value.replace(/\D/g, '')
 
+// Opción del selector "Mi especialidad no está en la lista": en vez de "Otra", que no identifica a
+// ningún especialista, el médico escribe la suya y un admin la agrega al catálogo.
+const NO_ESTA_EN_LA_LISTA = '__no_esta__'
+
 // Descompone "V-12345678" en { prefijo: 'V', numero: '12345678' }. Tolera formatos sin guion o
 // con datos inesperados: en el peor caso, deja el prefijo en 'V' y conserva solo los dígitos.
 function parseCedula(raw: string | null | undefined): { prefijo: 'V' | 'E'; numero: string } {
@@ -66,6 +70,7 @@ export default function PerfilMedico() {
   const [cedulaNumero, setCedulaNumero] = useState('')
   const [license, setLicense] = useState('')
   const [specialtyId, setSpecialtyId] = useState('')
+  const [requestedSpecialty, setRequestedSpecialty] = useState('')
   // Tipo de profesional: para source:'doctor' viene de la ficha (fijo); para source:'user' el
   // usuario lo elige, y con él decidimos SACS (Médico) vs FPV (Psicólogo) y lo mandamos en el PATCH.
   const [professionalTypeId, setProfessionalTypeId] = useState('')
@@ -91,7 +96,16 @@ export default function PerfilMedico() {
     setCedulaPrefijo(prefijo)
     setCedulaNumero(numero)
     setLicense(p.license || '')
-    setSpecialtyId(p.specialty_id || '')
+    // Con "Otra" el selector NO la preselecciona (ya no se ofrece): queda vacío, o en "no está en
+    // la lista" si ya escribió la suya.
+    setSpecialtyId(
+      p.specialty_is_placeholder
+        ? p.requested_specialty
+          ? NO_ESTA_EN_LA_LISTA
+          : ''
+        : p.specialty_id || ''
+    )
+    setRequestedSpecialty(p.requested_specialty || '')
     setProfessionalTypeId(p.professional_type_id || '')
     setVerifState('idle')
   }
@@ -237,8 +251,12 @@ export default function PerfilMedico() {
     const payload: DoctorSelfUpdate = {}
     if (fullName.trim() !== (profile.full_name || '')) payload.full_name = fullName.trim()
     if (license.trim() !== (profile.license || '')) payload.license = license.trim() || null
-    if (specialtyId && specialtyId !== (profile.specialty_id || ''))
+    if (specialtyId === NO_ESTA_EN_LA_LISTA) {
+      if (requestedSpecialty.trim() !== (profile.requested_specialty || ''))
+        payload.requested_specialty = requestedSpecialty.trim()
+    } else if (specialtyId && specialtyId !== (profile.specialty_id || '')) {
       payload.specialty_id = specialtyId
+    }
     const cedulaCompuesta = cedulaNumero.trim() ? `${cedulaPrefijo}-${cedulaNumero.trim()}` : ''
     if (cedulaCompuesta && cedulaCompuesta !== (profile.cedula || '')) {
       payload.cedula = cedulaCompuesta
@@ -250,7 +268,12 @@ export default function PerfilMedico() {
 
   // Aviso tras guardar. Solo cambia cuando el PATCH llevó cédula: ahí el texto refleja si la
   // verificación oficial (SACS/FPV) pasó o quedó pendiente de revisión manual.
-  function savedNotice(sentCedula: boolean, verified: boolean): Notice {
+  function savedNotice(sentCedula: boolean, verified: boolean, requested?: string): Notice {
+    if (requested)
+      return {
+        kind: 'info',
+        text: `Guardamos tu especialidad “${requested}”. Un administrador la revisará y la agregará; hasta entonces no verás pacientes en tu cola.`
+      }
     if (!sentCedula) return { kind: 'success', text: 'Perfil actualizado.' }
     if (verified)
       return { kind: 'success', text: 'Perfil actualizado. Tu cédula se verificó contra SACS/FPV.' }
@@ -266,6 +289,11 @@ export default function PerfilMedico() {
 
     if (!fullName.trim() || fullName.trim().length < 2) {
       setNotice({ kind: 'danger', text: 'El nombre completo debe tener al menos 2 caracteres.' })
+      return
+    }
+
+    if (specialtyId === NO_ESTA_EN_LA_LISTA && requestedSpecialty.trim().length < 2) {
+      setNotice({ kind: 'danger', text: 'Escribe el nombre de tu especialidad.' })
       return
     }
 
@@ -295,7 +323,7 @@ export default function PerfilMedico() {
     try {
       const updated = await updateMyDoctorProfile(payload, sessionData.session.access_token)
       hydrateForm(updated)
-      setNotice(savedNotice(!!payload.cedula, updated.verified))
+      setNotice(savedNotice(!!payload.cedula, updated.verified, payload.requested_specialty))
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setNotice({ kind: 'danger', text: 'Esa cédula ya pertenece a otro médico.' })
@@ -389,6 +417,21 @@ export default function PerfilMedico() {
                           Debes completar tu perfil profesional para usar el panel:
                           {isUserSource ? ' elige tu tipo,' : ''} ingresa tu cédula y la verificamos
                           contra SACS/FPV.
+                        </div>
+                      )}
+
+                      {profile.specialty_is_placeholder && !profile.requested_specialty && (
+                        <div className="notice notice-warning">
+                          Tu especialidad figura como <strong>“Otra”</strong>. Los pacientes llegan
+                          a la cola de cada especialidad: elige la tuya (o escríbela si no está en
+                          la lista) para poder atender.
+                        </div>
+                      )}
+                      {profile.requested_specialty && (
+                        <div className="notice notice-info">
+                          Escribiste <strong>“{profile.requested_specialty}”</strong>. Un
+                          administrador la revisará y la agregará al catálogo; mientras tanto no
+                          verás pacientes en tu cola.
                         </div>
                       )}
 
@@ -500,18 +543,44 @@ export default function PerfilMedico() {
                       </div>
 
                       <div>
-                        <label className="label">Especialidad</label>
+                        <label className="label" htmlFor="perfil-especialidad">
+                          Especialidad
+                        </label>
                         <select
+                          id="perfil-especialidad"
                           value={specialtyId}
                           onChange={(e) => setSpecialtyId(e.target.value)}
                         >
                           <option value="">Selecciona una especialidad</option>
-                          {specialties.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
+                          {specialties
+                            .filter((s) => !s.is_placeholder && s.status === 'active')
+                            .map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.name}
+                              </option>
+                            ))}
+                          <option value={NO_ESTA_EN_LA_LISTA}>
+                            Mi especialidad no está en la lista
+                          </option>
                         </select>
+                        {specialtyId === NO_ESTA_EN_LA_LISTA && (
+                          <div style={{ marginTop: 10 }}>
+                            <label className="label" htmlFor="perfil-especialidad-escrita">
+                              Escribe tu especialidad *
+                            </label>
+                            <input
+                              id="perfil-especialidad-escrita"
+                              value={requestedSpecialty}
+                              onChange={(e) => setRequestedSpecialty(e.target.value)}
+                              maxLength={120}
+                              placeholder="Ej. Medicina del deporte"
+                            />
+                            <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
+                              Un administrador la revisará y la agregará. Hasta entonces no verás
+                              pacientes en tu cola.
+                            </p>
+                          </div>
+                        )}
                         {profile.source === 'user' && profile.specialty && !specialtyId && (
                           <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
                             Actual: {profile.specialty}

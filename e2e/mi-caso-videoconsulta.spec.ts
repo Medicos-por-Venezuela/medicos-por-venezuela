@@ -1,15 +1,15 @@
 // El paciente vuelve a su sala desde /mi-caso, y el médico se entera de que entró.
 //
-// Reproduce dos reportes reales encadenados:
+// Reproduce reportes reales encadenados:
 //  1. El enlace de la videoconsulta vivía SOLO en la pestaña de `/sala-espera` a la que se cae al
 //     registrarse. Quien la cerró se quedaba sin forma de volver.
-//  2. El médico no sabía si el paciente había entrado. El badge de presencia decía "En sala"
-//     mientras el paciente tuviera abierta una página NUESTRA, y al abrir Jitsi esa pestaña pasa a
-//     segundo plano — así que decía "Sin conexión" justo cuando el paciente acababa de entrar.
+//  2. El paciente entraba a la sala antes de que ningún médico hubiera tomado su caso: ahora
+//     /mi-caso le muestra que sigue en cola y le ofrece entrar solo cuando hay médico.
+//  3. El médico no sabía si el paciente había entrado.
 //
 // Se registra por la UI COMPLETA a propósito, en vez de sembrar por API como `sala-espera.spec`:
-// el botón solo aparece si la consulta está atada a la CUENTA del paciente (el backend scopea
-// `GET /consultations` por `patients.user_id`), y esa atadura solo la crea el formulario real.
+// la sala en vivo de /mi-caso solo existe si la consulta está atada a la CUENTA del paciente, y esa
+// atadura solo la crea el formulario real.
 //
 // El email es único por corrida (los auth users de Supabase no se limpian entre corridas) y el
 // nombre empieza por "E2E Paciente" para que el cleanup del global-setup borre su rastro.
@@ -17,7 +17,7 @@ import { test, expect } from '@playwright/test'
 
 const MOTIVO = 'E2E Paciente Mi Caso: dolor en el cuello y hormigueo en las manos.'
 
-test('el paciente vuelve por /mi-caso, entra a la sala y el médico ve que entró', async ({
+test('desde /mi-caso: en cola no entra; cuando un médico lo toma entra y el médico lo ve', async ({
   browser
 }) => {
   const ctxPaciente = await browser.newContext()
@@ -39,33 +39,35 @@ test('el paciente vuelve por /mi-caso, entra a la sala y el médico ve que entr�
   await page.getByRole('checkbox', { name: /Acepto compartir/ }).check()
   await page.getByRole('checkbox', { name: /acepto los Términos de uso y privacidad/ }).check()
   await page.getByRole('button', { name: 'Registrarse' }).click()
-
-  // Aterriza en la sala de espera con la sala ya creada por el backend.
   await page.waitForURL(/\/sala-espera\?/)
-  await expect(page.getByRole('button', { name: 'Entrar a la videoconsulta' })).toBeVisible()
 
-  // Aquí es donde se perdía el enlace: se abandona esa pestaña (la sesión sigue viva, como en la
-  // vida real) y se vuelve por el portal.
+  // Se abandona esa pestaña (la sesión sigue viva) y se vuelve por el portal.
   await page.goto('/mi-caso')
   await expect(page.getByRole('heading', { name: 'Mi caso' })).toBeVisible()
+  await expect(page.getByText('Estás en la sala de espera')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Entrar a la videoconsulta' })).toHaveCount(0)
 
-  const unirse = page.getByRole('button', { name: 'Unirse a la videoconsulta' })
-  await expect(unirse).toBeVisible()
-  // El caso sigue en cola (ningún médico lo ha tomado): el texto tiene que decir eso y no
-  // prometer un médico que todavía no existe.
-  await expect(page.getByText(/Todavía estás en cola/)).toBeVisible()
+  // Un médico toma el caso.
+  const ctxMedico = await browser.newContext({ storageState: 'e2e/.auth/doc1.json' })
+  const panel = await ctxMedico.newPage()
+  await panel.goto('/panel-medico')
+  const card = panel.locator('.card-flat').filter({ hasText: MOTIVO })
+  await card.getByRole('button', { name: 'Atender paciente' }).click()
+  const popupMedico = panel.waitForEvent('popup')
+  await panel.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
+  await (await popupMedico).close()
 
-  // El modal de instrucciones es el MISMO que el de la sala de espera (componente compartido):
-  // si se hubiera copiado, esta aserción seguiría verde con dos textos divergiendo en paralelo.
-  await unirse.click()
+  // /mi-caso se entera sola y ofrece entrar.
+  const entrar = page.getByRole('button', { name: 'Entrar a la videoconsulta' })
+  await expect(entrar).toBeVisible({ timeout: 20_000 })
+
+  // El modal de instrucciones es el MISMO que el de la sala de espera (componente compartido).
+  await entrar.click()
   const aviso = page.getByRole('dialog')
   await expect(aviso.getByRole('heading', { name: 'Información importante' })).toBeVisible()
-  await expect(aviso.getByText(/espera de 15 a 20 minutos/)).toBeVisible()
-  // Las instrucciones de Jitsi siguen debajo de los avisos: el diseño nuevo no las reemplaza.
+  await expect(aviso.getByText(/Tu médico ya tomó tu caso/)).toBeVisible()
   await expect(aviso.getByText(/Escribe tu nombre completo/)).toBeVisible()
 
-  // Confirmar abre la sala en una pestaña nueva Y registra la entrada. Las dos cosas: sin el
-  // `window.open` el paciente no entra, y sin el POST el médico no se entera.
   const popupPromise = page.waitForEvent('popup')
   const entradaPromise = page.waitForResponse(
     (r) => r.url().includes('/entered-call') && r.request().method() === 'POST'
@@ -79,28 +81,19 @@ test('el paciente vuelve por /mi-caso, entra a la sala y el médico ve que entr�
   await popup.close()
 
   const entrada = await entradaPromise
-  // La sesión del paciente vale como credencial para SU consulta: aquí no hay token de sala (se
-  // entregó una sola vez, en la URL de la sala de espera, y esa pestaña ya se abandonó).
+  // La sesión del paciente vale como credencial para SU consulta.
   expect(entrada.status(), 'la entrada debe quedar registrada').toBe(200)
 
-  // Y el médico lo ve en su panel. Es el punto entero del cambio: antes, en este mismo instante,
-  // la tarjeta decía "Sin conexión".
-  const ctxMedico = await browser.newContext({ storageState: 'e2e/.auth/doc1.json' })
-  const panel = await ctxMedico.newPage()
-  await panel.goto('/panel-medico')
-  const card = panel.locator('.card-flat').filter({ hasText: MOTIVO })
-  await expect(card).toBeVisible()
-  await expect(card.getByText(/Entró a la videollamada/)).toBeVisible()
+  // Y el médico lo ve en el detalle del caso que tomó (la entrada queda en la base).
+  await panel.reload()
+  await expect(panel.getByText(/Entró a la videollamada/)).toBeVisible()
 
   await ctxMedico.close()
   await ctxPaciente.close()
 })
 
-test('sin consultas abiertas con sala, /mi-caso no ofrece entrar', async ({ page }) => {
-  // El botón está gateado por estado (`SALA_ABIERTA`) además de por tener sala: una consulta
-  // cerrada conserva su `video_room_url` en la base, y sin el filtro el portal mandaría al
-  // paciente a una sala a la que ya no va a entrar ningún médico. Esta cuenta de prueba no tiene
-  // ninguna consulta, que es el caso más simple del mismo gating.
+test('sin consultas abiertas, /mi-caso no ofrece entrar', async ({ page }) => {
+  // Esta cuenta de prueba no tiene ninguna consulta: no hay sala que seguir ni a la que entrar.
   await page.goto('/login')
   await page.getByLabel('Email').fill('e2e-patient@example.com')
   await page.getByLabel('Contraseña').fill('e2e-Test-123456')
@@ -108,5 +101,5 @@ test('sin consultas abiertas con sala, /mi-caso no ofrece entrar', async ({ page
 
   await expect(page).toHaveURL(/\/mi-caso/)
   await expect(page.getByRole('heading', { name: 'Mi caso' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Unirse a la videoconsulta' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Entrar a la videoconsulta' })).toHaveCount(0)
 })

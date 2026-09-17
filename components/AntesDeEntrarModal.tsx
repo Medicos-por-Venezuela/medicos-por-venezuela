@@ -138,8 +138,8 @@ export default function AntesDeEntrarModal({
                   <Reloj />
                 </div>
                 <p>
-                  Entra a la videollamada y espera de <mark>15 a 20 minutos</mark> si el médico no
-                  se conecta de inmediato.
+                  Tu médico ya tomó tu caso. Si no lo ves al entrar, espera unos minutos: puede
+                  estar <mark>terminando de conectarse</mark>.
                 </p>
               </div>
               <div className="aviso">
@@ -147,8 +147,8 @@ export default function AntesDeEntrarModal({
                   <Sobre />
                 </div>
                 <p>
-                  Mantente atento a tu correo: te avisaremos en cuanto el médico esté en la sala,
-                  esperando para atenderte.
+                  Si se corta, vuelve a entrar desde esta página o desde el{' '}
+                  <mark>correo que te enviamos</mark> con el enlace de la videoconsulta.
                 </p>
               </div>
 

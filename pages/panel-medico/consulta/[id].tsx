@@ -2,6 +2,7 @@ import Seo from '../../../components/Seo'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import DoctorPoolModal from '../../../components/DoctorPoolModal'
+import DerivarEspecialidadModal from '../../../components/DerivarEspecialidadModal'
 import SignaturePad from '../../../components/SignaturePad'
 import { fmtDateTime, getAccessToken } from '../../../lib/admin'
 import { DoctorPoolItem } from '../../../lib/doctors'
@@ -13,11 +14,14 @@ import {
   fetchConsultationDetail,
   fetchConsultationEvents,
   fetchMyProfile,
+  referToQueue,
   scheduleFollowUp,
-  scheduleReferral,
   updateConsultation,
-  type ConsultationEventItem
+  type ConsultationDetail,
+  type ConsultationEventItem,
+  type DerivationTarget
 } from '../../../lib/consultations'
+import { ensureVideoRoom } from '../../../lib/patients'
 import {
   createInterconsultation,
   fetchInterconsultationForConsultation,
@@ -76,6 +80,10 @@ type Consultation = {
   entered_call_at: string | null
   assigned_doctor_id: string | null
   attended_via_whatsapp: boolean
+  // Especialidad de la cola del caso y, si llegó derivado, de dónde viene, quién y por qué.
+  specialty?: string | null
+  derived_from_specialty?: string | null
+  derivation?: ConsultationDetail['derivation']
   patients: Patient | null
 }
 
@@ -99,7 +107,7 @@ type EventAuthor = Pick<Profile, 'id' | 'full_name' | 'role'>
 
 // Status options shown for WhatsApp-attended cases (the doctor handles these outside video).
 // 'closed' y 'referred_to_specialist' se quitaron a propósito: cerrar es solo vía el botón
-// "Cerrar consulta" (con confirmación + nota guardada); referir será vía "Agendar con especialista".
+// "Cerrar consulta" (con confirmación + nota guardada); derivar, vía "Derivar con especialista".
 const WHATSAPP_STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'in_progress', label: 'Abierta' },
   { value: 'contacted_whatsapp', label: 'Ya contactado vía WhatsApp' },
@@ -110,7 +118,7 @@ const WHATSAPP_STATUS_OPTIONS: { value: string; label: string }[] = [
 // ni los botones de cierre (evita re-cerrar pisando closed_at, y que el select de
 // WhatsApp "mienta" mostrando la primera opción cuando el estado real no está listado).
 // 'referred_to_specialist' cuenta como finalizado: al derivar, el médico actual ya no la atiende
-// (queda en manos del especialista); ver el flujo "Agendar con especialista".
+// (el paciente pasa a la cola del especialista); ver el flujo "Derivar con especialista".
 const FINAL_STATUSES = [
   'closed',
   'patient_no_show',
@@ -124,7 +132,10 @@ function eventLabel(type: string): string {
     opened: 'Consulta abierta',
     closed: 'Consulta cerrada',
     patient_no_show: 'Paciente ausente',
-    admin_update: 'Actualización administrativa'
+    admin_update: 'Actualización administrativa',
+    derived: 'Derivada a esta especialidad',
+    referred_to_specialist: 'Derivada con especialista',
+    scheduled: 'Cita agendada'
   }
   return labels[type] || type
 }
@@ -140,22 +151,20 @@ export default function ConsultaDetalle() {
   const [note, setNote] = useState('')
   // Última nota persistida (para exigir "nota guardada" antes de cerrar la consulta).
   const [savedNote, setSavedNote] = useState('')
+  // Pool de médicos: verlos y pedir una interconsulta (segunda opinión en vivo).
   const [poolOpen, setPoolOpen] = useState(false)
   // El aviso de "antes de entrar" a la sala está arriba.
   const [avisoVideo, setAvisoVideo] = useState(false)
-  // Para qué se abre el pool: 'browse' (ver médicos + asignar interconsulta) o 'referral'
-  // (elegir a quién derivar en "Agendar con especialista").
-  const [poolMode, setPoolMode] = useState<'browse' | 'referral'>('browse')
+  // "Derivar con especialista": primero se elige la especialidad (modal), luego motivo y firma.
   // Interconsulta activa de esta consulta (segunda opinión en vivo). null si aún no tiene.
   const [interconsultation, setInterconsultation] = useState<Interconsultation | null>(null)
   // Firma al cerrar / agendar seguimiento / referir (acto médico firmado). Módulo Agenda.
   const [signMode, setSignMode] = useState<null | 'close' | 'followup' | 'referral'>(null)
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [scheduledAt, setScheduledAt] = useState('')
-  // Agendar con especialista (referencia): médico elegido del pool + motivo + fecha.
-  const [referTarget, setReferTarget] = useState<DoctorPoolItem | null>(null)
+  const [deriveOpen, setDeriveOpen] = useState(false)
+  const [referSpecialty, setReferSpecialty] = useState<DerivationTarget | null>(null)
   const [referReason, setReferReason] = useState('')
-  const [referScheduledAt, setReferScheduledAt] = useState('')
   // Historial de la cadena de seguimiento (padre→hijas).
   const [chain, setChain] = useState<ChainItem[]>([])
   // Preferencias de notificación (para respetar el aviso push de confirmación). null = opt-out.
@@ -532,33 +541,43 @@ export default function ConsultaDetalle() {
     }
   }
 
-  // Agendar con especialista (referencia): entrega esta consulta a OTRO médico (queda derivada) y
-  // crea la hija agendada asignada a ese médico, con el motivo firmado.
-  async function doScheduleReferral(signature: string) {
-    if (!consultation || !referTarget?.user_id || !referReason.trim() || !referScheduledAt) return
+  // Derivar con especialista: esta consulta se cierra como derivada (firmada, con el motivo) y el
+  // paciente entra a la cola de la especialidad elegida, sin cita y conservando su turno. Lo
+  // atiende el primer especialista que lo tome.
+  async function doReferToQueue(signature: string) {
+    if (!consultation || !referSpecialty || !referReason.trim()) return
     setBusy(true)
     try {
-      await scheduleReferral(
+      await referToQueue(
         consultation.id,
-        {
-          invited_doctor_id: referTarget.user_id,
-          scheduled_at: new Date(referScheduledAt).toISOString(),
-          reason: referReason.trim(),
-          signature
-        },
+        { specialty_id: referSpecialty.id, reason: referReason.trim(), signature },
         await getAccessToken()
-      )
-      await notifyAppointment(
-        'Referencia agendada',
-        `${referTarget.full_name} atenderá al paciente el ${new Date(
-          referScheduledAt
-        ).toLocaleString('es-VE')}.`
       )
       router.push('/panel-medico?actualizado=1')
     } catch (e) {
       setBusy(false)
-      setMessage(e instanceof Error ? e.message : 'No se pudo agendar con el especialista.')
+      setMessage(e instanceof Error ? e.message : 'No se pudo derivar con el especialista.')
     }
+  }
+
+  // "Unirse a videoconsulta": la atención es siempre por video. Si el caso no tiene sala (casos
+  // tomados antes por WhatsApp), se crea ahora. La ventana se abre dentro del clic de "Entendido".
+  async function joinVideo() {
+    if (!consultation) return
+    let room = consultation.video_room_url
+    if (!room) {
+      try {
+        const { data } = await supabase.auth.getSession()
+        room =
+          (await ensureVideoRoom(consultation.id, undefined, data.session?.access_token))
+            .video_room_url || null
+        setConsultation((prev) => (prev ? { ...prev, video_room_url: room } : prev))
+      } catch (e) {
+        setMessage(e instanceof Error ? e.message : 'No se pudo abrir la sala de video.')
+        return
+      }
+    }
+    if (room) window.open(browserRoomUrl(room), '_blank', 'noreferrer')
   }
 
   // El canvas de firma resuelve → dispara el cierre / el agendado / la referencia según el modo.
@@ -567,25 +586,14 @@ export default function ConsultaDetalle() {
     setSignMode(null)
     if (mode === 'close') doClose('closed', dataUrl)
     else if (mode === 'followup') doScheduleFollowUp(dataUrl)
-    else if (mode === 'referral') doScheduleReferral(dataUrl)
+    else if (mode === 'referral') doReferToQueue(dataUrl)
   }
 
-  // "Agendar con especialista": abre el pool en modo referencia para elegir a quién derivar.
+  // "Derivar con especialista": primero la especialidad; luego el motivo y la firma.
   function openReferral() {
     setMessage('')
     setCloseError('')
-    setPoolMode('referral')
-    setPoolOpen(true)
-  }
-
-  // Se eligió un médico del pool para derivar → pedir motivo + fecha (luego firma).
-  function startReferral(doctor: DoctorPoolItem) {
-    if (!doctor.user_id) {
-      setMessage('Ese médico no tiene cuenta activa; elige otro.')
-      return
-    }
-    setReferTarget(doctor)
-    setPoolOpen(false)
+    setDeriveOpen(true)
   }
 
   // "Agendar seguimiento": exige la nota guardada (cierra el padre) y abre el selector de fecha.
@@ -649,9 +657,9 @@ export default function ConsultaDetalle() {
           </div>
 
           {/* Unirse a la videoconsulta: acción principal, arriba de todo (antes del paciente).
-              Aparece siempre que exista la sala, aunque el caso se haya tomado por WhatsApp —
-              pero no en casos finalizados (la sala ya no existe operativamente). */}
-          {consultation.video_room_url && !isCaseClosed && (
+              La atención es siempre por video: aparece en todo caso abierto, y si no tiene sala
+              (tomado antes por WhatsApp) se crea al entrar. No en casos finalizados. */}
+          {!isCaseClosed && (
             <button
               className="btn btn-primary btn-full"
               onClick={() => setAvisoVideo(true)}
@@ -666,12 +674,9 @@ export default function ConsultaDetalle() {
             <button
               className="btn btn-outline"
               style={{ flex: '1 1 160px' }}
-              onClick={() => {
-                setPoolMode('browse')
-                setPoolOpen(true)
-              }}
+              onClick={() => setPoolOpen(true)}
             >
-              Ver Pool de médicos
+              Ver Pool de médicos (pedir interconsulta)
             </button>
             <button
               className="btn btn-outline"
@@ -687,9 +692,31 @@ export default function ConsultaDetalle() {
               onClick={openReferral}
               disabled={isCaseClosed}
             >
-              Agendar con especialista
+              Derivar con especialista
             </button>
           </div>
+
+          {consultation.derivation && (
+            <div className="notice notice-info" style={{ marginBottom: 16 }}>
+              ↪ Paciente derivado
+              {consultation.derivation.from_specialty
+                ? ` desde ${consultation.derivation.from_specialty}`
+                : ''}
+              {consultation.derivation.by_name ? (
+                <>
+                  {' '}
+                  por <strong>{consultation.derivation.by_name}</strong>
+                </>
+              ) : null}
+              {consultation.derivation.reason ? (
+                <>
+                  : <em>{consultation.derivation.reason}</em>
+                </>
+              ) : (
+                '.'
+              )}
+            </div>
+          )}
 
           {interconsultation && (
             <div className="notice notice-info" style={{ marginBottom: 16 }}>
@@ -776,6 +803,11 @@ export default function ConsultaDetalle() {
                   consultation.patients?.description ||
                   'Sin descripción'}
               </div>
+              {consultation.specialty && (
+                <p style={{ color: '#64748b', marginBottom: 0 }}>
+                  Especialidad: <strong>{consultation.specialty}</strong>
+                </p>
+              )}
               {consultation.category && (
                 <p style={{ color: '#64748b' }}>Tipo de ayuda: {consultation.category}</p>
               )}
@@ -799,7 +831,10 @@ export default function ConsultaDetalle() {
                   {assignedDoctor?.full_name ||
                     (consultation.assigned_doctor_id ? 'Médico asignado' : 'Sin asignar')}
                   <br />
-                  <strong>Especialidad referida:</strong> {consultation.referred_specialty || '—'}
+                  <strong>Especialidad:</strong> {consultation.specialty || '—'}
+                  {consultation.derived_from_specialty && (
+                    <> (derivada desde {consultation.derived_from_specialty})</>
+                  )}
                   {events[0]?.note && (
                     <>
                       <br />
@@ -929,19 +964,27 @@ export default function ConsultaDetalle() {
             onConfirm={() => {
               setAvisoVideo(false)
               // Dentro del clic de "Entendido": fuera de un gesto el navegador bloquea el pop-up.
-              if (consultation.video_room_url) {
-                window.open(browserRoomUrl(consultation.video_room_url), '_blank', 'noreferrer')
-              }
+              joinVideo()
             }}
           />
 
           <DoctorPoolModal
             open={poolOpen}
             onClose={() => setPoolOpen(false)}
-            onAssignInterconsultation={
-              poolMode === 'browse' && !interconsultation ? assignInterconsultation : undefined
-            }
-            onReferToDoctor={poolMode === 'referral' ? startReferral : undefined}
+            onAssignInterconsultation={!interconsultation ? assignInterconsultation : undefined}
+          />
+
+          <DerivarEspecialidadModal
+            open={deriveOpen}
+            currentSpecialty={consultation.specialty}
+            title="Derivar con especialista"
+            hint="Elige la especialidad. Después escribes el motivo y firmas; el paciente pasa a la cola de esa especialidad, sin cita, y conserva su turno."
+            confirmLabel="Continuar"
+            onClose={() => setDeriveOpen(false)}
+            onPick={(target) => {
+              setReferSpecialty(target)
+              setDeriveOpen(false)
+            }}
           />
 
           {signMode && (
@@ -953,12 +996,12 @@ export default function ConsultaDetalle() {
                 signMode === 'followup'
                   ? 'Firma para agendar el seguimiento'
                   : signMode === 'referral'
-                    ? 'Firma la referencia al especialista'
+                    ? 'Firma la derivación al especialista'
                     : 'Firma para cerrar la consulta'
               }
               hint={
                 signMode === 'referral'
-                  ? 'Firma para dejar constancia de la referencia (motivo y especialista).'
+                  ? 'Firma para dejar constancia de la derivación (motivo y especialidad).'
                   : undefined
               }
             />
@@ -1017,12 +1060,12 @@ export default function ConsultaDetalle() {
             </div>
           )}
 
-          {referTarget && !signMode && (
+          {referSpecialty && !signMode && (
             <div
               role="dialog"
               aria-modal="true"
-              aria-label="Agendar con especialista"
-              onClick={() => setReferTarget(null)}
+              aria-label="Derivar con especialista"
+              onClick={() => setReferSpecialty(null)}
               style={{
                 position: 'fixed',
                 inset: 0,
@@ -1039,35 +1082,41 @@ export default function ConsultaDetalle() {
                 onClick={(e) => e.stopPropagation()}
                 style={{ maxWidth: 460, width: '100%' }}
               >
-                <h2 style={{ marginTop: 0 }}>Agendar con especialista</h2>
+                <h2 style={{ marginTop: 0 }}>Derivar con especialista</h2>
                 <p style={{ color: '#64748b', fontSize: 13, marginTop: -6 }}>
-                  Derivas este caso a <strong>{referTarget.full_name}</strong>. La consulta queda a
-                  su cargo (verá las notas previas) y se agenda para la fecha que elijas. Debes
-                  firmar el motivo.
+                  Derivas este caso a <strong>{referSpecialty.name}</strong>. Tu consulta se cierra
+                  (firmada) y el paciente entra a la cola de esa especialidad, sin cita y
+                  conservando su turno. El especialista que lo tome verá tu motivo.{' '}
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => {
+                      setReferSpecialty(null)
+                      setDeriveOpen(true)
+                    }}
+                  >
+                    Cambiar especialidad
+                  </button>
                 </p>
-                <label className="label">Motivo de la referencia</label>
+                <label className="label" htmlFor="motivo-derivacion">
+                  Motivo de la derivación
+                </label>
                 <textarea
+                  id="motivo-derivacion"
                   rows={3}
                   value={referReason}
                   onChange={(e) => setReferReason(e.target.value)}
-                  placeholder="Por qué refieres al paciente a este especialista."
-                  style={{ width: '100%', marginBottom: 10 }}
-                />
-                <label className="label">Fecha y hora de la cita</label>
-                <input
-                  type="datetime-local"
-                  value={referScheduledAt}
-                  onChange={(e) => setReferScheduledAt(e.target.value)}
+                  placeholder="Por qué derivas al paciente a esta especialidad."
                   style={{ width: '100%', marginBottom: 12 }}
                 />
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button className="btn btn-muted" onClick={() => setReferTarget(null)}>
+                  <button className="btn btn-muted" onClick={() => setReferSpecialty(null)}>
                     Cancelar
                   </button>
                   <button
                     className="btn btn-primary"
                     style={{ marginLeft: 'auto' }}
-                    disabled={!referReason.trim() || !referScheduledAt}
+                    disabled={!referReason.trim()}
                     onClick={() => setSignMode('referral')}
                   >
                     Continuar a la firma

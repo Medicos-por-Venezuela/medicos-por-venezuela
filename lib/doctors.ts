@@ -24,6 +24,9 @@ export interface SpecialtyResponse {
   // ayuda a otro general no es una interconsulta. Mismo criterio que los flags de arriba — la
   // regla vive en el catálogo, no en comparar el nombre.
   available_for_interconsultation: boolean
+  // Especialidad de relleno ("Otra"): no identifica a ningún especialista. Un paciente no la puede
+  // pedir y un médico con ella no ve la cola. Opcional: una API anterior no lo manda.
+  is_placeholder?: boolean
   created_at: string
   updated_at: string
   deleted_at: string | null
@@ -74,6 +77,10 @@ export interface DoctorMeResponse {
   professional_type_id: string | null
   professional_type: string | null
   verified: boolean
+  // Su especialidad es "Otra": no ve la cola hasta elegir una real o escribir la suya.
+  specialty_is_placeholder?: boolean
+  // La que escribió a mano y espera que un admin la agregue (null si no hay ninguna pendiente).
+  requested_specialty?: string | null
 }
 
 // PATCH /api/v1/doctors/me — edición parcial; todos los campos opcionales. status, verified,
@@ -89,6 +96,8 @@ export interface DoctorSelfUpdate {
   specialty_id?: string
   cedula?: string
   professional_type_id?: string
+  // "Mi especialidad no está en la lista". Excluyente con `specialty_id`.
+  requested_specialty?: string
 }
 
 // GET /api/v1/professional-types — público, catálogo para el selector de registro.
@@ -336,6 +345,45 @@ export async function updateMyDoctorProfile(
     '/api/v1/doctors/me',
     payload,
     'No se pudo actualizar tu perfil',
+    token
+  )
+}
+
+// --- Especialidades escritas a mano por médicos ("Mi especialidad no está en la lista") ---
+
+export interface SpecialtyRequestItem {
+  doctor_id: string
+  user_id: string | null
+  full_name: string
+  email: string | null
+  specialty: string | null
+  requested_specialty: string
+  requested_at: string | null
+}
+
+// GET /api/v1/doctors/specialty-requests — permiso doctors.verify. Pendientes, las más antiguas
+// primero. Mientras no se resuelvan, esos médicos no ven la cola.
+export async function fetchSpecialtyRequests(
+  token: string
+): Promise<{ items: SpecialtyRequestItem[]; total: number }> {
+  return getJson<{ items: SpecialtyRequestItem[]; total: number }>(
+    '/api/v1/doctors/specialty-requests?limit=100',
+    'No se pudieron cargar las especialidades pendientes',
+    token
+  )
+}
+
+// POST /api/v1/doctors/{id}/specialty-request/resolve — le asigna una especialidad del catálogo (si
+// era nueva, se crea antes con POST /specialties) y cierra la solicitud.
+export async function resolveSpecialtyRequest(
+  doctorId: string,
+  specialtyId: string,
+  token: string
+): Promise<DoctorResponse> {
+  return postJson<DoctorResponse>(
+    `/api/v1/doctors/${doctorId}/specialty-request/resolve`,
+    { specialty_id: specialtyId },
+    'No se pudo asignar la especialidad',
     token
   )
 }
