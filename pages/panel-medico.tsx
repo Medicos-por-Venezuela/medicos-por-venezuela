@@ -12,15 +12,13 @@ import {
   type DerivationTarget,
   type MyProfile,
   type PanelConsultation,
-  type QueueBlockedReason
+  type QueueBlockedReason,
+  type QueueGroup
 } from '../lib/consultations'
 import {
   STATUS_LABELS,
   isAdminRole,
   isPanelRole,
-  // `canAttendConsultation` ya no se importa: la elegibilidad la decide el backend (get_panel +
-  // claim). Aquí solo queda `matchesConsultation`, que es una preferencia de orden, no un permiso.
-  matchesConsultation,
   tiempoTranscurrido,
   statusBadgeClass
 } from '../lib/utils'
@@ -144,10 +142,13 @@ export default function PanelMedico() {
   const [deriving, setDeriving] = useState(false)
   // Por qué este médico no ve ninguna cola (sin especialidad, o con "Otra"): lo manda a su perfil.
   const [queueBlocked, setQueueBlocked] = useState<QueueBlockedReason | null>(null)
-  // A quién va a atender por video mientras el aviso de "antes de entrar" está arriba: un caso
-  // concreto de la cola, o 'siguiente'. El siguiente se elige al CONFIRMAR y no al abrir el aviso:
-  // mientras lo lee, Realtime puede haber movido la cola y otro médico haberse llevado al primero.
-  const [videoTarget, setVideoTarget] = useState<Consultation | 'siguiente' | null>(null)
+  // Las colas del médico: una por especialidad suya (puede ejercer varias) más la de entrada
+  // (Medicina general). Con más de una, el panel enseña primero las cards con sus contadores y
+  // solo abre la que elija — así no mezcla los pacientes de cada cola.
+  const [queues, setQueues] = useState<QueueGroup[]>([])
+  const [openQueue, setOpenQueue] = useState<string | null>(null)
+  // A qué paciente va a atender mientras el aviso de "antes de entrar" está arriba.
+  const [videoTarget, setVideoTarget] = useState<Consultation | null>(null)
   // Admins have no doctor profile by default. But an admin who is ALSO a doctor (has a `doctors`
   // row) does — this tracks whether /doctors/me resolved for them, so we only show "Mi perfil"
   // when there's actually a profile to open (a pure admin would just hit a 404 there).
@@ -295,6 +296,7 @@ export default function PanelMedico() {
       setConsultations([...panel.waiting, ...panel.mine].map(toConsultationRow))
       setMyClosed(panel.my_closed_count)
       setQueueBlocked(panel.queue_blocked_reason ?? null)
+      setQueues(panel.queues ?? [])
     } else {
       console.error(panelRes.reason)
       setMessage('No se pudieron cargar las consultas.')
@@ -341,9 +343,28 @@ export default function PanelMedico() {
   // Dos contadores: cuántos pacientes esperan en SUS colas (la cola ya viene acotada por el
   // backend a su especialidad) y cuántas consultas cerró.
   const kpis = [
-    { value: waiting.length, label: 'Sin atender en tu cola' },
+    { value: waiting.length, label: 'En espera por atender' },
     { value: myClosed, label: 'Consultas cerradas por mí' }
   ]
+
+  // Cada cola trae los `specialty_ids` de los casos que le tocan (los suyos más sus accesos
+  // extra, p. ej. Psicología dentro de la de Psiquiatría).
+  const porCola = useMemo(
+    () =>
+      queues.map((q) => ({
+        queue: q,
+        casos: waiting.filter((c) => !!c.specialty_id && q.specialty_ids.includes(c.specialty_id))
+      })),
+    [queues, waiting]
+  )
+  // Con una sola cola (o ninguna, como un admin) no hay cards: la lista va directa.
+  const conCards = porCola.length > 1
+  const colaAbierta = porCola.find((g) => g.queue.id === openQueue) || null
+  const visibles = !conCards ? waiting : (colaAbierta?.casos ?? [])
+  const tituloCola = (q: QueueGroup) =>
+    q.is_triage
+      ? `Ver consultas pendientes de ${q.name}`
+      : `Ver consultas pendientes de mi especialidad: ${q.name}`
 
   const waitingEmptyMessage =
     'No hay pacientes esperando en tu cola. Si ya tomaste un caso, aparecerá en “Mis consultas abiertas”.'
@@ -396,29 +417,12 @@ export default function PanelMedico() {
     }
   }
 
-  // Toma el siguiente paciente en espera. `waiting` ya viene del backend acotado a lo que este
-  // médico PUEDE atender y ordenado FIFO, así que aquí no se vuelve a comprobar la elegibilidad:
-  // ese filtro duplicado es justo lo que provocó el bug del psicólogo. Lo único que queda es la
-  // PREFERENCIA por un caso que pida exactamente su especialidad — preferencia, no permiso: si no
-  // hay ninguno, se atiende al más antiguo para que nadie se quede esperando. El permiso lo
-  // revalida el backend en /claim de todas formas.
-  async function attendNext() {
-    setMessage('')
-    if (waiting.length === 0) {
-      setMessage(waitingEmptyMessage)
-      return
-    }
-    const exactMatch = waiting.find((c) => matchesConsultation(profile?.specialty, c.specialty))
-    await openConsultation(isCurrentUserAdmin ? waiting[0] : exactMatch || waiting[0])
-  }
-
   // "Entendido" del aviso. Toma el caso y abre la sala desde ESTE clic: el `window.open` necesita
   // un gesto reciente del usuario, y el de abrir el aviso ya quedó atrás mientras lo leía.
   function confirmVideo() {
     const target = videoTarget
     setVideoTarget(null)
-    if (target === 'siguiente') attendNext()
-    else if (target) openConsultation(target)
+    if (target) openConsultation(target)
   }
   async function logout() {
     await supabase.auth.signOut()
@@ -515,7 +519,7 @@ export default function PanelMedico() {
         noindex
       />
       <main className="page">
-        <div className="container">
+        <div className="container panel-wide">
           <div className="panel-topbar">
             <div>
               <h1 style={{ margin: 0 }}>{profile?.full_name}</h1>
@@ -600,17 +604,6 @@ export default function PanelMedico() {
             ))}
           </div>
 
-          <button
-            className="btn btn-primary btn-full"
-            style={{ marginBottom: 18, fontSize: 16, padding: '15px 18px' }}
-            onClick={() => setVideoTarget('siguiente')}
-            disabled={waiting.length === 0}
-          >
-            {waiting.length
-              ? `Atender al siguiente paciente · ${waiting.length} esperando`
-              : 'No hay pacientes nuevos en cola'}
-          </button>
-
           <div className="panel-sections">
             <section className="card">
               <h2>Mis consultas abiertas</h2>
@@ -636,23 +629,56 @@ export default function PanelMedico() {
               )}
             </section>
             <section className="card">
-              <h2 style={{ marginTop: 0 }}>
-                Pacientes que no han podido ser atendidos hasta ahora
-              </h2>
-              {waiting.length === 0 ? (
-                <p style={{ color: '#64748b' }}>{waitingEmptyMessage}</p>
+              {conCards && !colaAbierta ? (
+                <>
+                  <h2 style={{ marginTop: 0 }}>Pacientes en espera</h2>
+                  <p style={{ color: '#64748b', marginTop: -6 }}>
+                    Tienes una cola por cada especialidad que ejerces, más la de entrada, donde caen
+                    los pacientes que no saben qué especialidad necesitan.
+                  </p>
+                  <div className="cola-cards">
+                    {porCola.map(({ queue, casos }) => (
+                      <button
+                        key={queue.id}
+                        className="cola-card"
+                        onClick={() => setOpenQueue(queue.id)}
+                      >
+                        <span className="cola-card-num">{casos.length}</span>
+                        <span>{tituloCola(queue)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
               ) : (
-                <div className="grid">
-                  {waiting.map((c) => (
-                    <ConsultationCard
-                      key={c.id}
-                      c={c}
-                      inRoom={patientsInRoom.has(c.id)}
-                      onOpen={() => setVideoTarget(c)}
-                      onDerive={() => setDeriveTarget(c)}
-                    />
-                  ))}
-                </div>
+                <>
+                  <div className="panel-card-header">
+                    <h2 style={{ marginTop: 0 }}>
+                      {colaAbierta
+                        ? `Pacientes en espera · ${colaAbierta.queue.name}`
+                        : 'Pacientes que no han podido ser atendidos hasta ahora'}
+                    </h2>
+                    {conCards && (
+                      <button className="link-button" onClick={() => setOpenQueue(null)}>
+                        ← Ver todas mis colas
+                      </button>
+                    )}
+                  </div>
+                  {visibles.length === 0 ? (
+                    <p style={{ color: '#64748b' }}>{waitingEmptyMessage}</p>
+                  ) : (
+                    <div className="grid">
+                      {visibles.map((c) => (
+                        <ConsultationCard
+                          key={c.id}
+                          c={c}
+                          inRoom={patientsInRoom.has(c.id)}
+                          onOpen={() => setVideoTarget(c)}
+                          onDerive={() => setDeriveTarget(c)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </section>
           </div>
@@ -735,6 +761,43 @@ export default function PanelMedico() {
       />
 
       <style jsx global>{`
+        /* El panel médico va a ancho completo: la cola es lo que más espacio necesita. */
+        .panel-wide {
+          max-width: none;
+          margin: 0;
+        }
+
+        .cola-cards {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 12px;
+        }
+        .cola-card {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          text-align: left;
+          width: 100%;
+          padding: 18px;
+          border-radius: 16px;
+          border: 1px solid var(--brand);
+          background: var(--brand-light);
+          color: var(--brand-dark);
+          font-weight: 700;
+          font-size: 16px;
+        }
+        .cola-card:hover,
+        .cola-card:focus-visible {
+          background: var(--brand);
+          color: white;
+        }
+        .cola-card-num {
+          font-size: 30px;
+          font-weight: 900;
+          line-height: 1;
+          min-width: 44px;
+        }
+
         .panel-topbar {
           display: flex;
           flex-direction: column;
@@ -773,6 +836,10 @@ export default function PanelMedico() {
         }
 
         @media (min-width: 640px) {
+          .cola-cards {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
           .panel-topbar {
             flex-direction: row;
             justify-content: space-between;

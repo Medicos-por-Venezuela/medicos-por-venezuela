@@ -25,10 +25,10 @@ test.describe('Médico con especialidad "Otra"', () => {
 
     await page.getByRole('button', { name: 'Actualizar mi especialidad' }).click()
     await expect(page).toHaveURL(/\/panel-medico\/perfil/)
-    const select = page.getByLabel('Especialidad', { exact: true })
-    // "Otra" ya no se ofrece; en su lugar, escribir la propia.
-    await expect(select.locator('option', { hasText: /^Otra$/ })).toHaveCount(0)
-    await select.selectOption({ label: 'Mi especialidad no está en la lista' })
+    // Las especialidades son casillas (puede ejercer varias) y "Otra" ya no se ofrece como una:
+    // se marca "no está en la lista" y se escribe.
+    await expect(page.getByRole('checkbox', { name: 'Otra', exact: true })).toHaveCount(0)
+    await page.getByRole('checkbox', { name: /Otra: mi especialidad no está/ }).check()
     await page.getByLabel('Escribe tu especialidad *').fill(escrita)
     await page.getByRole('button', { name: 'Guardar cambios' }).click()
     await expect(page.getByText(/Guardamos tu especialidad/)).toBeVisible()
@@ -56,8 +56,30 @@ test.describe('Médico con especialidad "Otra"', () => {
     const ctx = await browser.newContext({ storageState: 'e2e/.auth/doc-otra.json' })
     const page = await ctx.newPage()
     await page.goto('/panel-medico')
-    await expect(page.getByText('Sin atender en tu cola')).toBeVisible()
+    await expect(page.getByText('En espera por atender')).toBeVisible()
     await expect(page.locator('.notice[role="alert"]')).toHaveCount(0)
+    await ctx.close()
+  })
+
+  test('puede ejercer varias especialidades y ve una cola por cada una', async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: 'e2e/.auth/doc-otra.json' })
+    const page = await ctx.newPage()
+    await page.goto('/panel-medico/perfil')
+
+    await page.getByRole('checkbox', { name: 'Cardiología', exact: true }).check()
+    await page.getByRole('checkbox', { name: 'Traumatología y ortopedia', exact: true }).check()
+    await page.getByRole('button', { name: 'Guardar cambios' }).click()
+    await expect(page.getByText('Perfil actualizado.')).toBeVisible()
+
+    // Una card por especialidad suya, más la cola de entrada (Medicina general).
+    await page.goto('/panel-medico')
+    await expect(page.getByRole('button', { name: /mi especialidad: Cardiología/ })).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: /mi especialidad: Traumatología y ortopedia/ })
+    ).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: 'Ver consultas pendientes de Medicina general' })
+    ).toBeVisible()
     await ctx.close()
   })
 })

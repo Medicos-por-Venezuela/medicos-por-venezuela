@@ -9,12 +9,15 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 - **feat: cola por especialidad, derivación a la cola y sala de espera en vivo** — spec en la API
   (`tasks/cola-por-especialidad/`). Requiere la API de la rama del mismo nombre.
-  - **Cola:** cada médico ve solo su especialidad (Psiquiatría también Psicología, Medicina interna
-    también Medicina general; un admin ve todo salvo si es de Psicología). La tarjeta se titula con
-    la especialidad y dice "Derivado desde X". Un único botón **"Atender paciente"** (siempre video:
-    el claim crea la sala) y **"Derivar a especialista"** (`DerivarEspecialidadModal` +
-    `ConfirmDialog`). Fuera la atención por WhatsApp. KPIs: "Sin atender en tu cola" y "Consultas
-    cerradas por mí". Aviso para médicos con "Otra" o sin especialidad.
+  - **Cola:** cada médico ve su especialidad (Psiquiatría también Psicología, Medicina interna
+    también Medicina general; un admin ve todo salvo si es de Psicología) y, si atiende salud
+    física, también la **cola de entrada** de Medicina general — el panel se las muestra en dos
+    cards con sus contadores y abre solo la que elija. La tarjeta se titula con la especialidad y
+    dice "Derivado desde X". Un único botón **"Atender paciente"** (siempre video: el claim crea la
+    sala) y **"Derivar a especialista"** (`DerivarEspecialidadModal` + `ConfirmDialog`). Fuera la
+    atención por WhatsApp y el botón "Atender al siguiente paciente". KPIs: "En espera por atender"
+    y "Consultas cerradas por mí". Aviso para médicos con "Otra" o sin especialidad. El panel pasa
+    a ancho completo.
   - **Detalle:** "Ver Pool de médicos (pedir interconsulta)"; "Agendar con especialista" pasa a
     **"Derivar con especialista"** (especialidad → motivo → firma, sin fecha); bloque "Paciente
     derivado desde X por Y: motivo"; "Unirse a videoconsulta" en todo caso abierto (crea la sala si
@@ -29,6 +32,13 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   - **Marca:** los paneles internos usan la de la web pública — barra navy con el logo
     (`components/PanelHeader.tsx`, montada en `_app.tsx`), lateral del admin navy, azul `--brand`
     en las acciones y Nunito Sans. El verde queda para estados de éxito.
+  - **Varias especialidades por médico:** en Mi Perfil, "Especialidad" pasa a **"Especialidades"**
+    (casillas del catálogo: se marcan todas las que ejerza; la primera es la principal) y "Otra: mi
+    especialidad no está en la lista" queda como casilla aparte con el campo libre. Fuera la
+    pestaña "Disponibilidad" (era un "Próximamente" vacío). En la cola, el panel pinta **una card
+    por especialidad** más la de entrada — un internista que además es cardiólogo ve las dos suyas
+    — leyendo `queues[]` del panel (antes `my_specialty`/`triage_specialty`). Con una sola cola (un
+    médico general, Psicología, un admin) no hay cards: la lista va directa.
   - E2E: `derivar-especialista`, `especialidad-otra`, y reescritos `panel-race`, `sala-espera`,
     `mi-caso-videoconsulta`, `panel-atender-video`, `pool-modal`, `registro-paciente`. El seed da a
     doc1 Medicina general y crea `e2e-doc-otra`.

@@ -77,6 +77,8 @@ export interface DoctorMeResponse {
   professional_type_id: string | null
   professional_type: string | null
   verified: boolean
+  // Todas las que ejerce (la principal es `specialty_id`/`specialty`).
+  specialties?: { id: string; name: string }[]
   // Su especialidad es "Otra": no ve la cola hasta elegir una real o escribir la suya.
   specialty_is_placeholder?: boolean
   // La que escribió a mano y espera que un admin la agregue (null si no hay ninguna pendiente).
@@ -94,9 +96,11 @@ export interface DoctorSelfUpdate {
   full_name?: string
   license?: string | null
   specialty_id?: string
+  // Las especialidades que ejerce (puede tener varias). La primera queda como principal.
+  specialty_ids?: string[]
   cedula?: string
   professional_type_id?: string
-  // "Mi especialidad no está en la lista". Excluyente con `specialty_id`.
+  // "Mi especialidad no está en la lista". Puede ir junto con `specialty_ids`.
   requested_specialty?: string
 }
 

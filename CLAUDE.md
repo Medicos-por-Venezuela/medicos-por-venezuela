@@ -249,11 +249,17 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
 - `/mi-caso` — patient portal, read-only case status (no login form; sends you to `/login`). Open
   cases show the same live waiting room as `/sala-espera` (`components/SalaEsperaEnVivo.tsx`)
 - `/login-medico` — legacy doctor login, redirects to `/login`
-- `/panel-medico` — doctor/admin panel. The queue is **per specialty** (decided by the API,
-  `services/queue_access.py`); cards offer "Atender paciente" (always video) and "Derivar a
-  especialista". Doctors with "Otra" or no specialty get a notice pointing to their profile
+- `/panel-medico` — doctor/admin panel, full width. The queue is **per specialty** (decided by the
+  API, `services/queue_access.py`). A specialist gets **one queue per specialty they practise**
+  (they can have several) plus the triage one (Medicina general), shown as cards with counts
+  before the list — the panel just renders `queues[]` from the API. With a single queue (a general
+  practitioner, Psicología, an admin) there are no cards. Cards offer "Atender paciente" (always
+  video) and "Derivar a especialista". Doctors with "Otra" or no specialty get a notice pointing
+  to their profile
 - `/panel-medico/consulta/[id]` — case detail page (patient details, video, note, close/no-show)
-- `/panel-medico/perfil` — doctor self-service profile (view/edit; FastAPI `GET`/`PATCH /doctors/me`);
+- `/panel-medico/perfil` — doctor self-service profile (view/edit; FastAPI `GET`/`PATCH /doctors/me`).
+  **Especialidades** is a checkbox list (several allowed, first one is the primary → `specialty_ids`)
+  plus a separate "Otra: mi especialidad no está en la lista" with a free-text field;
   also where a `source:"user"` (Google) doctor completes their cédula + professional type to be verified
 - `/auth/callback` — OAuth redirect handler (routes by role / role_chosen)
 - `/auth/recuperar` — password recovery, **both halves in one route**: with no token in the URL
@@ -386,11 +392,13 @@ creates the Jitsi room ([lib/jitsi.ts](lib/jitsi.ts) only rewrites the host) in 
 emails the patient, and the waiting room (SSE) shows "Entrar a la videoconsulta" without reloading.
 The WhatsApp claim path is gone (`via_whatsapp: true` → 422).
 
-The queue is per specialty (API `services/queue_access.py`): exact specialty, plus
-`specialty_queue_access` extras (Psiquiatría → Psicología, Medicina interna → Medicina general);
+The queue is per specialty (API `services/queue_access.py`): **every specialty the doctor
+practises** (`doctor_specialties`), plus each one's `specialty_queue_access` extras (Psiquiatría →
+Psicología, Medicina interna → Medicina general) and the triage queue (`is_general_triage`,
+Medicina general) for anyone who treats physical health;
 admins see everything unless their specialty is mental-health-only; "Otra"/no specialty sees nothing.
-Doctors use **"Atender paciente"** / **"Atender al siguiente paciente"** in
-[panel-medico.tsx](pages/panel-medico.tsx) and can **derive** a case to another specialty from the
+Doctors take a case with **"Atender paciente"** on its card in
+[panel-medico.tsx](pages/panel-medico.tsx) and can **derive** it to another specialty from the
 queue (same case, keeps its place) or, once attended, from the detail page with reason + signature
 (a child consultation enters the target queue, no appointment date).
 

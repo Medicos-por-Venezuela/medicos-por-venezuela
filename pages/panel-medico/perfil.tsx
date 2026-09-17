@@ -24,13 +24,9 @@ import {
 } from '../../lib/notificationPrefs'
 
 type Notice = { kind: 'info' | 'success' | 'danger'; text: string }
-type Tab = 'perfil' | 'disponibilidad' | 'ajustes'
+type Tab = 'perfil' | 'ajustes'
 
 const soloDigitos = (value: string) => value.replace(/\D/g, '')
-
-// Opción del selector "Mi especialidad no está en la lista": en vez de "Otra", que no identifica a
-// ningún especialista, el médico escribe la suya y un admin la agrega al catálogo.
-const NO_ESTA_EN_LA_LISTA = '__no_esta__'
 
 // Descompone "V-12345678" en { prefijo: 'V', numero: '12345678' }. Tolera formatos sin guion o
 // con datos inesperados: en el peor caso, deja el prefijo en 'V' y conserva solo los dígitos.
@@ -69,7 +65,11 @@ export default function PerfilMedico() {
   const [cedulaPrefijo, setCedulaPrefijo] = useState<'V' | 'E'>('V')
   const [cedulaNumero, setCedulaNumero] = useState('')
   const [license, setLicense] = useState('')
-  const [specialtyId, setSpecialtyId] = useState('')
+  // Un médico puede ejercer VARIAS especialidades: su cola es la unión de todas. La primera
+  // marcada queda como principal (la que usan el pool, los reportes y el admin).
+  const [specialtyIds, setSpecialtyIds] = useState<string[]>([])
+  // "Mi especialidad no está en la lista": se marca aparte y se escribe.
+  const [pideOtra, setPideOtra] = useState(false)
   const [requestedSpecialty, setRequestedSpecialty] = useState('')
   // Tipo de profesional: para source:'doctor' viene de la ficha (fijo); para source:'user' el
   // usuario lo elige, y con él decidimos SACS (Médico) vs FPV (Psicólogo) y lo mandamos en el PATCH.
@@ -96,15 +96,13 @@ export default function PerfilMedico() {
     setCedulaPrefijo(prefijo)
     setCedulaNumero(numero)
     setLicense(p.license || '')
-    // Con "Otra" el selector NO la preselecciona (ya no se ofrece): queda vacío, o en "no está en
-    // la lista" si ya escribió la suya.
-    setSpecialtyId(
-      p.specialty_is_placeholder
-        ? p.requested_specialty
-          ? NO_ESTA_EN_LA_LISTA
-          : ''
-        : p.specialty_id || ''
+    // Las que ya ejerce (sin "Otra", que no es una cola). El respaldo es la principal, para una
+    // API anterior a las especialidades múltiples.
+    const suyas = p.specialties?.map((s) => s.id) ?? []
+    setSpecialtyIds(
+      suyas.length ? suyas : !p.specialty_is_placeholder && p.specialty_id ? [p.specialty_id] : []
     )
+    setPideOtra(!!p.requested_specialty)
     setRequestedSpecialty(p.requested_specialty || '')
     setProfessionalTypeId(p.professional_type_id || '')
     setVerifState('idle')
@@ -251,11 +249,16 @@ export default function PerfilMedico() {
     const payload: DoctorSelfUpdate = {}
     if (fullName.trim() !== (profile.full_name || '')) payload.full_name = fullName.trim()
     if (license.trim() !== (profile.license || '')) payload.license = license.trim() || null
-    if (specialtyId === NO_ESTA_EN_LA_LISTA) {
-      if (requestedSpecialty.trim() !== (profile.requested_specialty || ''))
-        payload.requested_specialty = requestedSpecialty.trim()
-    } else if (specialtyId && specialtyId !== (profile.specialty_id || '')) {
-      payload.specialty_id = specialtyId
+    const suyas = profile.specialties?.map((s) => s.id) ?? []
+    const mismas =
+      suyas.length === specialtyIds.length && suyas.every((id) => specialtyIds.includes(id))
+    if (!mismas) payload.specialty_ids = specialtyIds
+    const pedida = pideOtra ? requestedSpecialty.trim() : ''
+    if (pedida !== (profile.requested_specialty || '')) {
+      // Desmarcar "no está en la lista" se guarda eligiendo especialidades: el backend descarta
+      // la solicitud pendiente cuando llegan reales.
+      if (pedida) payload.requested_specialty = pedida
+      else if (mismas) payload.specialty_ids = specialtyIds
     }
     const cedulaCompuesta = cedulaNumero.trim() ? `${cedulaPrefijo}-${cedulaNumero.trim()}` : ''
     if (cedulaCompuesta && cedulaCompuesta !== (profile.cedula || '')) {
@@ -292,8 +295,12 @@ export default function PerfilMedico() {
       return
     }
 
-    if (specialtyId === NO_ESTA_EN_LA_LISTA && requestedSpecialty.trim().length < 2) {
+    if (pideOtra && requestedSpecialty.trim().length < 2) {
       setNotice({ kind: 'danger', text: 'Escribe el nombre de tu especialidad.' })
+      return
+    }
+    if (!pideOtra && specialtyIds.length === 0) {
+      setNotice({ kind: 'danger', text: 'Elige al menos una especialidad.' })
       return
     }
 
@@ -374,9 +381,6 @@ export default function PerfilMedico() {
                   onClick={() => openTab('perfil')}
                 >
                   Mi perfil
-                </button>
-                <button disabled title="Próximamente">
-                  Disponibilidad
                 </button>
                 <button
                   className={tab === 'ajustes' ? 'is-active' : ''}
@@ -543,49 +547,65 @@ export default function PerfilMedico() {
                       </div>
 
                       <div>
-                        <label className="label" htmlFor="perfil-especialidad">
-                          Especialidad
-                        </label>
-                        <select
-                          id="perfil-especialidad"
-                          value={specialtyId}
-                          onChange={(e) => setSpecialtyId(e.target.value)}
-                        >
-                          <option value="">Selecciona una especialidad</option>
-                          {specialties
-                            .filter((s) => !s.is_placeholder && s.status === 'active')
-                            .map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.name}
-                              </option>
-                            ))}
-                          <option value={NO_ESTA_EN_LA_LISTA}>
-                            Mi especialidad no está en la lista
-                          </option>
-                        </select>
-                        {specialtyId === NO_ESTA_EN_LA_LISTA && (
-                          <div style={{ marginTop: 10 }}>
-                            <label className="label" htmlFor="perfil-especialidad-escrita">
-                              Escribe tu especialidad *
-                            </label>
-                            <input
-                              id="perfil-especialidad-escrita"
-                              value={requestedSpecialty}
-                              onChange={(e) => setRequestedSpecialty(e.target.value)}
-                              maxLength={120}
-                              placeholder="Ej. Medicina del deporte"
-                            />
-                            <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
-                              Un administrador la revisará y la agregará. Hasta entonces no verás
-                              pacientes en tu cola.
-                            </p>
-                          </div>
-                        )}
-                        {profile.source === 'user' && profile.specialty && !specialtyId && (
-                          <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
-                            Actual: {profile.specialty}
+                        <fieldset className="especialidades">
+                          <legend className="label">Especialidades</legend>
+                          <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 8px' }}>
+                            Marca todas las que ejerzas: verás la cola de cada una. La primera es la
+                            principal.
                           </p>
-                        )}
+                          <div className="especialidades-lista">
+                            {specialties
+                              .filter((s) => !s.is_placeholder && s.status === 'active')
+                              .map((s) => (
+                                <label key={s.id} className="especialidad-opcion">
+                                  <input
+                                    type="checkbox"
+                                    checked={specialtyIds.includes(s.id)}
+                                    onChange={(e) =>
+                                      setSpecialtyIds((prev) =>
+                                        e.target.checked
+                                          ? [...prev, s.id]
+                                          : prev.filter((id) => id !== s.id)
+                                      )
+                                    }
+                                  />
+                                  {s.name}
+                                </label>
+                              ))}
+                          </div>
+                          <label className="especialidad-opcion">
+                            <input
+                              type="checkbox"
+                              checked={pideOtra}
+                              onChange={(e) => setPideOtra(e.target.checked)}
+                            />
+                            Otra: mi especialidad no está en la lista
+                          </label>
+                          {pideOtra && (
+                            <div style={{ marginTop: 10 }}>
+                              <label className="label" htmlFor="perfil-especialidad-escrita">
+                                Escribe tu especialidad *
+                              </label>
+                              <input
+                                id="perfil-especialidad-escrita"
+                                value={requestedSpecialty}
+                                onChange={(e) => setRequestedSpecialty(e.target.value)}
+                                maxLength={120}
+                                placeholder="Ej. Medicina del deporte"
+                              />
+                              <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
+                                Un administrador la revisará y la agregará al catálogo.
+                              </p>
+                            </div>
+                          )}
+                        </fieldset>
+                        {profile.source === 'user' &&
+                          profile.specialty &&
+                          specialtyIds.length === 0 && (
+                            <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>
+                              Actual: {profile.specialty}
+                            </p>
+                          )}
                       </div>
 
                       <button className="btn btn-primary btn-full" onClick={save} disabled={saving}>
@@ -593,13 +613,6 @@ export default function PerfilMedico() {
                       </button>
                     </div>
                   )}
-                </>
-              )}
-
-              {tab === 'disponibilidad' && (
-                <>
-                  <h1 style={{ marginTop: 0 }}>Disponibilidad</h1>
-                  <div className="notice notice-info">Próximamente.</div>
                 </>
               )}
 
@@ -704,6 +717,37 @@ export default function PerfilMedico() {
           text-align: center;
           word-break: break-word;
         }
+        .especialidades {
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          padding: 12px 14px;
+          margin: 0;
+        }
+        .especialidades-lista {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 2px;
+          max-height: 260px;
+          overflow-y: auto;
+          margin-bottom: 8px;
+        }
+        .especialidad-opcion {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 4px;
+          cursor: pointer;
+        }
+        .especialidad-opcion input {
+          width: auto;
+          margin: 0;
+        }
+        @media (min-width: 640px) {
+          .especialidades-lista {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
         .perfil-nav {
           display: flex;
           flex-direction: column;

@@ -1,17 +1,18 @@
-// La cola del panel: un caso nuevo aparece en vivo a los médicos de SU especialidad, no a los de
-// otra, y si dos médicos lo intentan tomar a la vez solo uno gana (claim atómico).
+// La cola del panel: un caso de Medicina general aparece en vivo al médico general y, en su cola
+// de ENTRADA (aparte de la suya), al especialista; si dos lo intentan tomar a la vez solo uno gana
+// (claim atómico).
 import { test, expect } from '@playwright/test'
 import { crearConsultaEnEspera } from './helpers'
 
 const MARCADOR = 'E2E Paciente Carrera'
 
-test('el caso lo ve su especialidad, no otra, y solo un médico lo toma (carrera)', async ({
+test('el caso sale en la cola de entrada del especialista y solo un médico lo toma', async ({
   browser
 }) => {
   const { id: cid } = await crearConsultaEnEspera(MARCADOR)
 
   // doc1 = Medicina general (la del caso). admin = los admins ven todas las colas.
-  // doc2 = Cardiología: no debe verlo.
+  // doc2 = Cardiología: lo ve en su cola de ENTRADA, no en la de su especialidad.
   const ctx1 = await browser.newContext({ storageState: 'e2e/.auth/doc1.json' })
   const ctx2 = await browser.newContext({ storageState: 'e2e/.auth/admin.json' })
   const ctxOtra = await browser.newContext({ storageState: 'e2e/.auth/doc2.json' })
@@ -23,16 +24,30 @@ test('el caso lo ve su especialidad, no otra, y solo un médico lo toma (carrera
   await page2.goto('/panel-medico')
   await cardiologo.goto('/panel-medico')
 
-  // Los contadores del panel: solo "Sin atender en tu cola" y "Consultas cerradas por mí".
-  await expect(page1.getByText('Sin atender en tu cola')).toBeVisible()
+  // Los contadores del panel: solo "En espera por atender" y "Consultas cerradas por mí".
+  await expect(page1.getByText('En espera por atender')).toBeVisible()
   await expect(page1.getByText('Consultas cerradas por mí')).toBeVisible()
   await expect(page1.getByText('En videollamada ahora')).toHaveCount(0)
   await expect(page1.getByText('Esperando para tu especialidad')).toHaveCount(0)
+  // Y ya no hay botón de "atender al siguiente": se atiende desde la tarjeta del paciente.
+  await expect(page1.getByRole('button', { name: /Atender al siguiente/ })).toHaveCount(0)
 
   const cardIn = (page: typeof page1) => page.locator('.card-flat').filter({ hasText: MARCADOR })
   await expect(cardIn(page1)).toBeVisible()
   await expect(cardIn(page2)).toBeVisible()
-  await expect(cardiologo.getByText('Sin atender en tu cola')).toBeVisible()
+
+  // El cardiólogo ve DOS colas; el caso está en la de entrada, no en la de su especialidad.
+  await expect(
+    cardiologo.getByRole('button', { name: /Ver consultas pendientes de mi especialidad/ })
+  ).toBeVisible()
+  await cardiologo
+    .getByRole('button', { name: /Ver consultas pendientes de Medicina general/ })
+    .click()
+  await expect(cardIn(cardiologo)).toBeVisible()
+  await cardiologo.getByRole('button', { name: 'Ver todas mis colas' }).click()
+  await cardiologo
+    .getByRole('button', { name: /Ver consultas pendientes de mi especialidad/ })
+    .click()
   await expect(cardIn(cardiologo)).toHaveCount(0)
 
   // Ambos abren el aviso ANTES de que ninguno confirme: así la carrera es determinista (si doc1

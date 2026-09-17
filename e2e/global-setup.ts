@@ -142,7 +142,11 @@ export const ESPECIALIDAD_GENERAL_E2E = 'Medicina general'
 function setSpecialty(uid: string, specialty: string): void {
   const sql = [
     `update public.users set specialty_id = (select id from public.specialties where name = '${specialty}' and deleted_at is null limit 1), specialty = '${specialty}' where id='${uid}';`,
-    `update public.doctors set specialty_id = (select id from public.specialties where name = '${specialty}' and deleted_at is null limit 1), requested_specialty = null, requested_specialty_at = null where user_id='${uid}';`
+    `update public.doctors set specialty_id = (select id from public.specialties where name = '${specialty}' and deleted_at is null limit 1), requested_specialty = null, requested_specialty_at = null where user_id='${uid}';`,
+    // El conjunto que decide su cola: se reafirma para que una corrida anterior (que puede haber
+    // marcado varias especialidades) no cambie lo que ven los demás specs.
+    `delete from public.doctor_specialties where user_id='${uid}';`,
+    `insert into public.doctor_specialties (user_id, specialty_id) select '${uid}', id from public.specialties where name = '${specialty}' and deleted_at is null limit 1;`
   ].join(' ')
   execSync(`docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c "${sql}"`, {
     stdio: 'pipe'

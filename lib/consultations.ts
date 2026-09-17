@@ -136,12 +136,29 @@ export interface PanelConsultation {
 // Por qué el médico no ve ninguna cola: sin especialidad, o con "Otra".
 export type QueueBlockedReason = 'sin_especialidad' | 'especialidad_por_definir'
 
+export interface SpecialtyRef {
+  id: string
+  name: string
+}
+
+// Una cola del panel: la especialidad que la titula y los `specialty_id` de los casos que entran
+// en ella (los suyos más sus accesos extra, p. ej. Psicología dentro de Psiquiatría).
+export interface QueueGroup extends SpecialtyRef {
+  // Cola de entrada (Medicina general): el panel la nombra distinto.
+  is_triage: boolean
+  specialty_ids: string[]
+}
+
 export interface PanelResponse {
   waiting: PanelConsultation[]
   mine: PanelConsultation[]
   my_closed_count: number
   // Opcional: una API anterior a la cola por especialidad no lo manda.
   queue_blocked_reason?: QueueBlockedReason | null
+  // Las colas que el panel pinta por separado: una por especialidad del médico (puede tener
+  // varias) más la de entrada (Medicina general) si atiende salud física. Con una sola se muestra
+  // la lista directa; un admin (ve todas) no recibe ninguna.
+  queues?: QueueGroup[]
 }
 
 // GET /api/v1/consultations/panel — cola de espera + mis consultas abiertas + cerradas por mí.

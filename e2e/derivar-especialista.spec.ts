@@ -41,6 +41,8 @@ test('desde la cola: confirmar y el caso pasa a la cola del especialista', async
   const ctxCardio = await browser.newContext({ storageState: 'e2e/.auth/doc2.json' })
   const cardio = await ctxCardio.newPage()
   await cardio.goto('/panel-medico')
+  // El especialista tiene dos colas: el caso derivado está en la de SU especialidad.
+  await cardio.getByRole('button', { name: /Ver consultas pendientes de mi especialidad/ }).click()
   const suya = cardio.locator('.card-flat').filter({ hasText: marcador })
   await expect(suya).toBeVisible()
   await expect(suya.getByText(ESPECIALIDAD_E2E, { exact: true })).toBeVisible()
@@ -102,6 +104,7 @@ test('desde el detalle: motivo y firma, sin fecha, y el especialista ve por qué
   const ctxCardio = await browser.newContext({ storageState: 'e2e/.auth/doc2.json' })
   const cardio = await ctxCardio.newPage()
   await cardio.goto('/panel-medico')
+  await cardio.getByRole('button', { name: /Ver consultas pendientes de mi especialidad/ }).click()
   const suya = cardio.locator('.card-flat').filter({ hasText: marcador })
   await expect(suya.getByText('Derivado desde Medicina general')).toBeVisible()
   await suya.getByRole('button', { name: 'Atender paciente' }).click()
