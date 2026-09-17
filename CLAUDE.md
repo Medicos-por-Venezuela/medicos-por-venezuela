@@ -253,7 +253,9 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
   API, `services/queue_access.py`). A specialist gets **one queue per specialty they practise**
   (they can have several) plus the triage one (Medicina general), shown as cards with counts
   before the list — the panel just renders `queues[]` from the API. With a single queue (a general
-  practitioner, Psicología, an admin) there are no cards. Cards offer "Atender paciente" (always
+  practitioner, Psicología, an admin who doesn't practise) there are no cards. An admin who _does_
+  practise gets their own queues plus a last `is_rest` card ("otras especialidades") holding
+  everything else they can see, computed by elimination. Cards offer "Atender paciente" (always
   video) and "Derivar a especialista". Doctors with "Otra" or no specialty get a notice pointing
   to their profile
 - `/panel-medico/consulta/[id]` — case detail page (patient details, video, note, close/no-show)

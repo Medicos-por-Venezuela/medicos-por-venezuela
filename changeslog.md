@@ -38,7 +38,10 @@ Each entry: date, a short summary of what changed and why, and the key files/are
     pestaña "Disponibilidad" (era un "Próximamente" vacío). En la cola, el panel pinta **una card
     por especialidad** más la de entrada — un internista que además es cardiólogo ve las dos suyas
     — leyendo `queues[]` del panel (antes `my_specialty`/`triage_specialty`). Con una sola cola (un
-    médico general, Psicología, un admin) no hay cards: la lista va directa.
+    médico general, Psicología, un admin que no ejerce) no hay cards: la lista va directa. Una
+    admin que además ejerce ve sus colas y una última, "Ver consultas de otras especialidades", con
+    todo lo demás que ve por ser admin (se arma por descarte, así los contadores de las cards
+    suman siempre lo que dice el KPI).
   - E2E: `derivar-especialista`, `especialidad-otra`, y reescritos `panel-race`, `sala-espera`,
     `mi-caso-videoconsulta`, `panel-atender-video`, `pool-modal`, `registro-paciente`. El seed da a
     doc1 Medicina general y crea `e2e-doc-otra`.

@@ -44,7 +44,7 @@ test('el caso sale en la cola de entrada del especialista y solo un médico lo t
     .getByRole('button', { name: /Ver consultas pendientes de Medicina general/ })
     .click()
   await expect(cardIn(cardiologo)).toBeVisible()
-  await cardiologo.getByRole('button', { name: 'Ver todas mis colas' }).click()
+  await cardiologo.getByRole('button', { name: 'Ver todas las consultas' }).click()
   await cardiologo
     .getByRole('button', { name: /Ver consultas pendientes de mi especialidad/ })
     .click()

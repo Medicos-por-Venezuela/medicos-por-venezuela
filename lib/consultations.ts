@@ -143,9 +143,16 @@ export interface SpecialtyRef {
 
 // Una cola del panel: la especialidad que la titula y los `specialty_id` de los casos que entran
 // en ella (los suyos más sus accesos extra, p. ej. Psicología dentro de Psiquiatría).
-export interface QueueGroup extends SpecialtyRef {
+export interface QueueGroup {
+  // null en la cola del resto (`is_rest`): no es una especialidad del catálogo.
+  id: string | null
+  name: string
   // Cola de entrada (Medicina general): el panel la nombra distinto.
   is_triage: boolean
+  // "Otras especialidades": lo que ve un admin que además ejerce y no entra en sus otras colas.
+  // Viene sin ids a propósito — se arma por descarte, para que una especialidad nueva no se caiga
+  // del panel.
+  is_rest?: boolean
   specialty_ids: string[]
 }
 

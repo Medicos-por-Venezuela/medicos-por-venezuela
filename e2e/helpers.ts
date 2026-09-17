@@ -70,13 +70,26 @@ export function accessToken(file: string): string {
   return JSON.parse(entry.value).access_token
 }
 
+/** El id de una especialidad activa por su nombre exacto (para sembrar casos de otra cola). */
+export async function idEspecialidadPorNombre(nombre: string): Promise<string> {
+  const ctx = await request.newContext()
+  const res = await ctx.get(`${API}/specialties`)
+  const cuerpo = await res.json()
+  await ctx.dispose()
+  const lista: Especialidad[] = Array.isArray(cuerpo) ? cuerpo : (cuerpo?.items ?? [])
+  const elegida = lista.find((e) => e.name === nombre && e.status === 'active')
+  if (!elegida) throw new Error(`no hay especialidad activa llamada "${nombre}"`)
+  return elegida.id
+}
+
 /**
- * Paciente + consulta en espera de Medicina general, sembrados por los endpoints públicos. Sin
- * correo a propósito: el backend local no manda correos, pero así ningún flujo intentaría uno.
- * Devuelve el id de la consulta y su token de sala.
+ * Paciente + consulta en espera de Medicina general (o de la especialidad que se pida), sembrados
+ * por los endpoints públicos. Sin correo a propósito: el backend local no manda correos, pero
+ * así ningún flujo intentaría uno. Devuelve el id de la consulta y su token de sala.
  */
 export async function crearConsultaEnEspera(
-  marcador: string
+  marcador: string,
+  especialidad?: string
 ): Promise<{ id: string; token: string }> {
   const ctx = await request.newContext()
   const patient = await ctx.post(`${API}/patients`, {
@@ -93,7 +106,9 @@ export async function crearConsultaEnEspera(
     data: {
       patient_id: patientId,
       chief_complaint: marcador,
-      specialty_id: await idEspecialidadGeneral()
+      specialty_id: especialidad
+        ? await idEspecialidadPorNombre(especialidad)
+        : await idEspecialidadGeneral()
     }
   })
   const body = await cons.json()

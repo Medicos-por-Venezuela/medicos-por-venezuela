@@ -140,13 +140,22 @@ export const ESPECIALIDAD_GENERAL_E2E = 'Medicina general'
 
 // Fija la especialidad de una cuenta (users) y de su ficha (doctors), como lo haría el backend.
 function setSpecialty(uid: string, specialty: string): void {
+  setSpecialties(uid, [specialty])
+}
+
+// El conjunto de especialidades que ejerce (puede tener varias): la primera es la principal.
+function setSpecialties(uid: string, especialidades: string[]): void {
+  const [principal] = especialidades
   const sql = [
-    `update public.users set specialty_id = (select id from public.specialties where name = '${specialty}' and deleted_at is null limit 1), specialty = '${specialty}' where id='${uid}';`,
-    `update public.doctors set specialty_id = (select id from public.specialties where name = '${specialty}' and deleted_at is null limit 1), requested_specialty = null, requested_specialty_at = null where user_id='${uid}';`,
+    `update public.users set specialty_id = (select id from public.specialties where name = '${principal}' and deleted_at is null limit 1), specialty = '${principal}' where id='${uid}';`,
+    `update public.doctors set specialty_id = (select id from public.specialties where name = '${principal}' and deleted_at is null limit 1), requested_specialty = null, requested_specialty_at = null where user_id='${uid}';`,
     // El conjunto que decide su cola: se reafirma para que una corrida anterior (que puede haber
-    // marcado varias especialidades) no cambie lo que ven los demás specs.
+    // marcado otras especialidades) no cambie lo que ven los demás specs.
     `delete from public.doctor_specialties where user_id='${uid}';`,
-    `insert into public.doctor_specialties (user_id, specialty_id) select '${uid}', id from public.specialties where name = '${specialty}' and deleted_at is null limit 1;`
+    ...especialidades.map(
+      (nombre) =>
+        `insert into public.doctor_specialties (user_id, specialty_id) select '${uid}', id from public.specialties where name = '${nombre}' and deleted_at is null limit 1;`
+    )
   ].join(' ')
   execSync(`docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c "${sql}"`, {
     stdio: 'pipe'
@@ -219,13 +228,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   // doc1 es Medicina general: es el médico tratante, y así se comprueba de paso que la bandeja de
   // otra especialidad no muestra los casos de Cardiología.
   const doc2Uid = await ensureAuthUser('e2e-doc2@example.com')
-  execSync(
-    `docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c ` +
-      `"update public.users set specialty_id = (select id from public.specialties ` +
-      `where name = '${ESPECIALIDAD_E2E}' and deleted_at is null limit 1), ` +
-      `specialty = '${ESPECIALIDAD_E2E}' where id='${doc2Uid}';"`,
-    { stdio: 'pipe' }
-  )
+  setSpecialty(doc2Uid, ESPECIALIDAD_E2E)
 
   // DUAL multi-rol: rol legacy 'doctor' + super_admin ADICIONAL en user_roles (RBAC). Reproduce
   // el caso real "primero doctor, luego se le agrega super_admin": el acceso admin debe salir
@@ -239,6 +242,11 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   execSync(`docker exec -i ${DB_CONTAINER} psql -U postgres -d postgres -c "${dualSql}"`, {
     stdio: 'pipe'
   })
+  // Además de admin, EJERCE dos especialidades: es el caso real de una super_admin que también
+  // pasa consulta (ve todas las colas, pero quiere las suyas separadas). Con ficha habilitada,
+  // porque sin ella el panel la manda a completar el perfil profesional.
+  seedDoctorRow(dualUid, 'E2E Dual DoctorAdmin', 'V-88880005', 'MPPS-88880005')
+  setSpecialties(dualUid, [ESPECIALIDAD_GENERAL_E2E, ESPECIALIDAD_E2E])
   await saveSession('e2e-dual@example.com', baseURL, 'e2e/.auth/dual.json')
 
   // Paciente de prueba: el cuarto destino del fan-out de /login (login-fanout.spec.ts). No guarda

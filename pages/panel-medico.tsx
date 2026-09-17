@@ -348,23 +348,32 @@ export default function PanelMedico() {
   ]
 
   // Cada cola trae los `specialty_ids` de los casos que le tocan (los suyos más sus accesos
-  // extra, p. ej. Psicología dentro de la de Psiquiatría).
-  const porCola = useMemo(
-    () =>
-      queues.map((q) => ({
-        queue: q,
-        casos: waiting.filter((c) => !!c.specialty_id && q.specialty_ids.includes(c.specialty_id))
-      })),
-    [queues, waiting]
-  )
-  // Con una sola cola (o ninguna, como un admin) no hay cards: la lista va directa.
+  // extra, p. ej. Psicología dentro de la de Psiquiatría). La del resto (una admin que además
+  // ejerce) no trae ids: es todo lo que no cayó en las otras, así que nada se queda fuera del
+  // panel aunque se agregue una especialidad nueva.
+  const porCola = useMemo(() => {
+    const propias = queues.filter((q) => !q.is_rest).map((q) => q.specialty_ids)
+    return queues.map((q) => ({
+      queue: q,
+      casos: q.is_rest
+        ? waiting.filter((c) => {
+            const sid = c.specialty_id
+            return !sid || !propias.some((ids) => ids.includes(sid))
+          })
+        : waiting.filter((c) => !!c.specialty_id && q.specialty_ids.includes(c.specialty_id))
+    }))
+  }, [queues, waiting])
+  // Con una sola cola (o ninguna) no hay cards: la lista va directa.
   const conCards = porCola.length > 1
-  const colaAbierta = porCola.find((g) => g.queue.id === openQueue) || null
+  const claveCola = (q: QueueGroup) => q.id ?? 'resto'
+  const colaAbierta = porCola.find((g) => claveCola(g.queue) === openQueue) || null
   const visibles = !conCards ? waiting : (colaAbierta?.casos ?? [])
   const tituloCola = (q: QueueGroup) =>
-    q.is_triage
-      ? `Ver consultas pendientes de ${q.name}`
-      : `Ver consultas pendientes de mi especialidad: ${q.name}`
+    q.is_rest
+      ? 'Ver consultas de otras especialidades'
+      : q.is_triage
+        ? `Ver consultas pendientes de ${q.name}`
+        : `Ver consultas pendientes de mi especialidad: ${q.name}`
 
   const waitingEmptyMessage =
     'No hay pacientes esperando en tu cola. Si ya tomaste un caso, aparecerá en “Mis consultas abiertas”.'
@@ -635,13 +644,16 @@ export default function PanelMedico() {
                   <p style={{ color: '#64748b', marginTop: -6 }}>
                     Tienes una cola por cada especialidad que ejerces, más la de entrada, donde caen
                     los pacientes que no saben qué especialidad necesitan.
+                    {porCola.some((g) => g.queue.is_rest)
+                      ? ' La última reúne el resto de especialidades, que ves por ser administradora.'
+                      : ''}
                   </p>
                   <div className="cola-cards">
                     {porCola.map(({ queue, casos }) => (
                       <button
-                        key={queue.id}
+                        key={claveCola(queue)}
                         className="cola-card"
-                        onClick={() => setOpenQueue(queue.id)}
+                        onClick={() => setOpenQueue(claveCola(queue))}
                       >
                         <span className="cola-card-num">{casos.length}</span>
                         <span>{tituloCola(queue)}</span>
@@ -659,7 +671,7 @@ export default function PanelMedico() {
                     </h2>
                     {conCards && (
                       <button className="link-button" onClick={() => setOpenQueue(null)}>
-                        ← Ver todas mis colas
+                        ← Ver todas las consultas
                       </button>
                     )}
                   </div>
