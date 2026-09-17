@@ -9,7 +9,7 @@ import { fetchAffectedZoneCatalog } from '../lib/api'
 // necesitamos el id real para specialty_id (fetchSpecialtyCatalog de lib/api solo
 // devuelve nombres).
 import { fetchSpecialties, type SpecialtyResponse } from '../lib/doctors'
-import { createConsultation, createPatient, ensureVideoRoom, ApiError } from '../lib/patients'
+import { createConsultation, createPatient, ApiError } from '../lib/patients'
 import { useMountEffect } from '../lib/hooks'
 import { trackSolicitudDeConsulta } from '../lib/analytics'
 import AceptaTerminos, { MENSAJE_TERMINOS } from '../components/AceptaTerminos'
@@ -204,7 +204,9 @@ export default function RegistroPaciente() {
       if (data.session) setAuthedPatient(true)
     })
     fetchSpecialties().then((list) => {
-      const activas = list.filter((s) => s.status === 'active')
+      // Sin "Otra" (`is_placeholder`): no es la cola de ningún médico, así que un caso con ella no
+      // lo vería nadie. Quien no sabe su especialidad cae en Medicina general.
+      const activas = list.filter((s) => s.status === 'active' && !s.is_placeholder)
       setSpecialties(activas)
       preseleccionarPsicologia(activas)
     })
@@ -397,17 +399,9 @@ export default function RegistroPaciente() {
         specialty_id: specialtyId
       })
 
-      // Crea la sala Jitsi en el BACKEND (idempotente) y la muestra en la sala de espera. Si
-      // falla, seguimos igual: el caso queda en cola y el médico puede contactar por WhatsApp.
-      // (Antes esto era /api/videoconsulta de Next, que en Amplify moría con 500 por falta del
-      // service_role → el paciente caía SIEMPRE al fallback de WhatsApp sin videollamada.)
-      let room = ''
-      try {
-        room =
-          (await ensureVideoRoom(consultation.id, consultation.access_token)).video_room_url || ''
-      } catch (e) {
-        console.error('No se pudo iniciar la videoconsulta:', e)
-      }
+      // La sala de video ya NO se crea aquí: la crea el backend en el mismo claim con el que un
+      // médico toma el caso. Dársela al paciente desde el registro lo metía en una videollamada
+      // vacía; la sala de espera le muestra el botón cuando hay alguien del otro lado.
 
       // Conversión. Va aquí y no en el submit: el caso ya está en la cola, que es lo único que
       // cuenta como "solicitud realizada". Sin datos de la persona ni de su caso (ver
@@ -415,8 +409,6 @@ export default function RegistroPaciente() {
       trackSolicitudDeConsulta()
 
       const params = new URLSearchParams({ nombre: patientName })
-      if (room) params.set('room', room)
-      if (consultation.code) params.set('code', consultation.code)
       params.set('cid', consultation.id)
       // Credencial de la sala, con caducidad de 24 h. Viaja en la URL porque es la única forma
       // de llevarla a /sala-espera; esa página la saca del historial con replaceState en cuanto

@@ -6,19 +6,19 @@ import { getAccessToken } from '../lib/admin'
 import {
   ApiError,
   claimConsultation,
+  deriveConsultation,
   fetchMyProfile,
   fetchPanel,
+  type DerivationTarget,
   type MyProfile,
-  type PanelConsultation
+  type PanelConsultation,
+  type QueueBlockedReason,
+  type QueueGroup
 } from '../lib/consultations'
 import {
   STATUS_LABELS,
   isAdminRole,
   isPanelRole,
-  // `canAttendConsultation` ya no se importa: la elegibilidad la decide el backend (get_panel +
-  // claim). Aquí solo queda `matchesConsultation`, que es una preferencia de orden, no un permiso.
-  matchesConsultation,
-  minutesSince,
   tiempoTranscurrido,
   statusBadgeClass
 } from '../lib/utils'
@@ -28,10 +28,11 @@ import {
   useInterconsultationAssigned,
   type InterconsultationForInvitee
 } from '../lib/interconsultations'
-import { ensureVideoRoom } from '../lib/patients'
 import { usePatientsInRoom } from '../lib/patientPresence'
 import EstadoPacienteBadge from '../components/EstadoPacienteBadge'
 import AntesDeEntrarModal from '../components/AntesDeEntrarModal'
+import DerivarEspecialidadModal from '../components/DerivarEspecialidadModal'
+import ConfirmDialog from '../components/admin/ConfirmDialog'
 import { fetchMyPermissions } from '../lib/users'
 
 type Patient = {
@@ -58,8 +59,13 @@ type Consultation = {
   priority: string
   category: string | null
   specialty: string | null
+  specialty_id: string | null
+  // Especialidad desde la que se derivó a esta cola (null si no viene derivado).
+  derived_from_specialty: string | null
   chief_complaint: string | null
   created_at: string
+  // Hora de llegada del paciente a la cola (un derivado conserva la original).
+  queued_at: string
   entered_call_at: string | null
   opened_at: string | null
   closed_at: string | null
@@ -86,8 +92,11 @@ function toConsultationRow(c: PanelConsultation): Consultation {
     priority: c.priority,
     category: c.category,
     specialty: c.specialty,
+    specialty_id: c.specialty_id,
+    derived_from_specialty: c.derived_from_specialty,
     chief_complaint: c.chief_complaint,
     created_at: c.created_at,
+    queued_at: c.queued_at || c.created_at,
     entered_call_at: c.entered_call_at,
     opened_at: c.opened_at,
     closed_at: c.closed_at,
@@ -123,12 +132,23 @@ export default function PanelMedico() {
   const [myInterconsultations, setMyInterconsultations] = useState<InterconsultationForInvitee[]>(
     []
   )
-  // Waiting case the doctor wants to attend via WhatsApp — set while the commitment modal is open.
-  const [whatsappTarget, setWhatsappTarget] = useState<Consultation | null>(null)
-  // A quién va a atender por video mientras el aviso de "antes de entrar" está arriba: un caso
-  // concreto de la cola, o 'siguiente'. El siguiente se elige al CONFIRMAR y no al abrir el aviso:
-  // mientras lo lee, Realtime puede haber movido la cola y otro médico haberse llevado al primero.
-  const [videoTarget, setVideoTarget] = useState<Consultation | 'siguiente' | null>(null)
+  // Caso de la cola que el médico quiere derivar (modal de especialidades) y, ya elegida la
+  // especialidad, la confirmación "¿seguro que quieres derivar a X?".
+  const [deriveTarget, setDeriveTarget] = useState<Consultation | null>(null)
+  const [deriveConfirm, setDeriveConfirm] = useState<{
+    c: Consultation
+    target: DerivationTarget
+  } | null>(null)
+  const [deriving, setDeriving] = useState(false)
+  // Por qué este médico no ve ninguna cola (sin especialidad, o con "Otra"): lo manda a su perfil.
+  const [queueBlocked, setQueueBlocked] = useState<QueueBlockedReason | null>(null)
+  // Las colas del médico: una por especialidad suya (puede ejercer varias) más la de entrada
+  // (Medicina general). Con más de una, el panel enseña primero las cards con sus contadores y
+  // solo abre la que elija — así no mezcla los pacientes de cada cola.
+  const [queues, setQueues] = useState<QueueGroup[]>([])
+  const [openQueue, setOpenQueue] = useState<string | null>(null)
+  // A qué paciente va a atender mientras el aviso de "antes de entrar" está arriba.
+  const [videoTarget, setVideoTarget] = useState<Consultation | null>(null)
   // Admins have no doctor profile by default. But an admin who is ALSO a doctor (has a `doctors`
   // row) does — this tracks whether /doctors/me resolved for them, so we only show "Mi perfil"
   // when there's actually a profile to open (a pure admin would just hit a 404 there).
@@ -275,6 +295,8 @@ export default function PanelMedico() {
       const panel = panelRes.value
       setConsultations([...panel.waiting, ...panel.mine].map(toConsultationRow))
       setMyClosed(panel.my_closed_count)
+      setQueueBlocked(panel.queue_blocked_reason ?? null)
+      setQueues(panel.queues ?? [])
     } else {
       console.error(panelRes.reason)
       setMessage('No se pudieron cargar las consultas.')
@@ -318,92 +340,90 @@ export default function PanelMedico() {
   //
   // Everyone — including admins/super_admins — sees /panel-medico as a doctor: the waiting queue and
   // their own open cases, no admin-only "system cases" section.
-  // "Pacientes esperando" partido en dos (PR #27 de main, recreado con la presencia real): en la
-  // sala AHORA (badge "● En sala", vía Realtime Presence) vs. +20 min sin atender.
+  // Dos contadores: cuántos pacientes esperan en SUS colas (la cola ya viene acotada por el
+  // backend a su especialidad) y cuántas consultas cerró.
   const kpis = [
-    {
-      value: waiting.filter((c) => patientsInRoom.has(c.id)).length,
-      label: 'En videollamada ahora'
-    },
-    {
-      value: waiting.filter((c) => minutesSince(c.created_at) > 20).length,
-      label: 'Sin atender (+20 min)'
-    },
-    { value: waiting.length, label: 'Esperando para tu especialidad' },
+    { value: waiting.length, label: 'En espera por atender' },
     { value: myClosed, label: 'Consultas cerradas por mí' }
   ]
 
-  const waitingEmptyMessage =
-    'No hay pacientes nuevos en cola (waiting). Si ya tomaste un caso, aparecerá en “Mis consultas abiertas”.'
+  // Cada cola trae los `specialty_ids` de los casos que le tocan (los suyos más sus accesos
+  // extra, p. ej. Psicología dentro de la de Psiquiatría). La del resto (una admin que además
+  // ejerce) no trae ids: es todo lo que no cayó en las otras, así que nada se queda fuera del
+  // panel aunque se agregue una especialidad nueva.
+  const porCola = useMemo(() => {
+    const propias = queues.filter((q) => !q.is_rest).map((q) => q.specialty_ids)
+    return queues.map((q) => ({
+      queue: q,
+      casos: q.is_rest
+        ? waiting.filter((c) => {
+            const sid = c.specialty_id
+            return !sid || !propias.some((ids) => ids.includes(sid))
+          })
+        : waiting.filter((c) => !!c.specialty_id && q.specialty_ids.includes(c.specialty_id))
+    }))
+  }, [queues, waiting])
+  // Con una sola cola (o ninguna) no hay cards: la lista va directa.
+  const conCards = porCola.length > 1
+  const claveCola = (q: QueueGroup) => q.id ?? 'resto'
+  const colaAbierta = porCola.find((g) => claveCola(g.queue) === openQueue) || null
+  const visibles = !conCards ? waiting : (colaAbierta?.casos ?? [])
+  const tituloCola = (q: QueueGroup) =>
+    q.is_rest
+      ? 'Ver consultas de otras especialidades'
+      : q.is_triage
+        ? `Ver consultas pendientes de ${q.name}`
+        : `Ver consultas pendientes de mi especialidad: ${q.name}`
 
-  // Claim atómico por el backend: POST /consultations/{id}/claim solo asigna si el caso sigue sin
-  // médico; si otro lo tomó primero responde 409 y NO abrimos la sala (dos médicos jamás caen en la
-  // misma reunión). El evento 'opened' lo registra el backend. Devuelve true si el claim fue nuestro.
-  async function claimCase(c: Consultation, viaWhatsapp: boolean): Promise<boolean> {
+  const waitingEmptyMessage =
+    'No hay pacientes esperando en tu cola. Si ya tomaste un caso, aparecerá en “Mis consultas abiertas”.'
+
+  // Claim atómico por el backend: POST /consultations/{id}/claim solo asigna si el caso sigue en
+  // espera y sin médico; si otro lo tomó primero responde 409 y NO abrimos la sala (dos médicos
+  // jamás caen en la misma reunión). La atención es siempre por video: el mismo claim crea la sala
+  // y la devuelve. Devuelve el caso tomado, o null si no fue nuestro.
+  async function claimCase(c: Consultation): Promise<PanelConsultation | null> {
     try {
-      await claimConsultation(c.id, viaWhatsapp, await getAccessToken())
-      return true
+      return await claimConsultation(c.id, await getAccessToken())
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
+      if (e instanceof ApiError && (e.status === 409 || e.status === 403)) {
         setMessage(
-          viaWhatsapp
-            ? 'Ya fue asignado a otro doctor.'
-            : 'Este paciente ya fue tomado por otro médico.'
+          e.status === 409
+            ? 'Este paciente ya fue tomado por otro médico.'
+            : 'Este caso ya no corresponde a tu especialidad.'
         )
         await loadConsultations()
-        return false
+        return null
       }
-      setMessage(viaWhatsapp ? 'No se pudo asignar la consulta.' : 'No se pudo abrir la consulta.')
-      return false
+      setMessage('No se pudo abrir la consulta.')
+      return null
     }
   }
 
   async function openConsultation(c: Consultation) {
     if (!profile) return
-    // Si el caso no tiene sala, créala ANTES del claim (el backend solo la genera mientras
-    // sigue en espera; es idempotente): sana consultas viejas sin video_room_url — casos
-    // tomados por WhatsApp que se liberaron, o creados mientras el hosting rompía la creación.
-    let room = c.video_room_url
-    if (!room) {
-      try {
-        // Con la sesión del médico: la sala exige el token del paciente O una sesión de staff, y
-        // el médico obviamente no tiene el token del paciente.
-        const { data: sessionData } = await supabase.auth.getSession()
-        room =
-          (await ensureVideoRoom(c.id, undefined, sessionData.session?.access_token))
-            .video_room_url || null
-      } catch {
-        // 409 (ya no está en espera) u otro fallo: se sigue sin sala, como antes.
-      }
-    }
-    if (!(await claimCase(c, false))) return
+    const claimed = await claimCase(c)
+    if (!claimed) return
+    const room = claimed.video_room_url || c.video_room_url
     if (room) window.open(browserRoomUrl(room), '_blank')
     await router.push(`/panel-medico/consulta/${c.id}`)
   }
 
-  // Toma un paciente en espera para atenderlo por WhatsApp (sin video). Solo tras aceptar el modal
-  // de compromiso.
-  async function attendViaWhatsapp(c: Consultation) {
-    if (!profile) return
-    setWhatsappTarget(null)
-    if (!(await claimCase(c, true))) return
-    await router.push(`/panel-medico/consulta/${c.id}`)
-  }
-
-  // Toma el siguiente paciente en espera. `waiting` ya viene del backend acotado a lo que este
-  // médico PUEDE atender y ordenado FIFO, así que aquí no se vuelve a comprobar la elegibilidad:
-  // ese filtro duplicado es justo lo que provocó el bug del psicólogo. Lo único que queda es la
-  // PREFERENCIA por un caso que pida exactamente su especialidad — preferencia, no permiso: si no
-  // hay ninguno, se atiende al más antiguo para que nadie se quede esperando. El permiso lo
-  // revalida el backend en /claim de todas formas.
-  async function attendNext() {
-    setMessage('')
-    if (waiting.length === 0) {
-      setMessage(waitingEmptyMessage)
-      return
+  // Derivar un caso de la cola (sin tomarlo) a otra especialidad, tras confirmar.
+  async function confirmDerive() {
+    if (!deriveConfirm) return
+    const { c, target } = deriveConfirm
+    setDeriving(true)
+    try {
+      await deriveConsultation(c.id, target.id, await getAccessToken())
+      setMessage(`Derivaste el caso a ${target.name}. Ya está en la cola de esa especialidad.`)
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : 'No se pudo derivar el caso.')
+    } finally {
+      setDeriving(false)
+      setDeriveConfirm(null)
+      await loadConsultations()
     }
-    const exactMatch = waiting.find((c) => matchesConsultation(profile?.specialty, c.specialty))
-    await openConsultation(isCurrentUserAdmin ? waiting[0] : exactMatch || waiting[0])
   }
 
   // "Entendido" del aviso. Toma el caso y abre la sala desde ESTE clic: el `window.open` necesita
@@ -411,8 +431,7 @@ export default function PanelMedico() {
   function confirmVideo() {
     const target = videoTarget
     setVideoTarget(null)
-    if (target === 'siguiente') attendNext()
-    else if (target) openConsultation(target)
+    if (target) openConsultation(target)
   }
   async function logout() {
     await supabase.auth.signOut()
@@ -509,7 +528,7 @@ export default function PanelMedico() {
         noindex
       />
       <main className="page">
-        <div className="container">
+        <div className="container panel-wide">
           <div className="panel-topbar">
             <div>
               <h1 style={{ margin: 0 }}>{profile?.full_name}</h1>
@@ -564,6 +583,27 @@ export default function PanelMedico() {
             </div>
           )}
 
+          {queueBlocked && (
+            <div className="notice notice-warning" role="alert" style={{ marginBottom: 16 }}>
+              <strong>
+                {queueBlocked === 'especialidad_por_definir'
+                  ? 'Tu especialidad figura como “Otra”.'
+                  : 'No tienes una especialidad registrada.'}
+              </strong>{' '}
+              Los pacientes llegan a la cola de cada especialidad, así que no puedes ver ni atender
+              casos hasta que la indiques. Si tu especialidad no está en la lista, escríbela y un
+              administrador la agregará.
+              <div style={{ marginTop: 10 }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => router.push('/panel-medico/perfil')}
+                >
+                  Actualizar mi especialidad
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="panel-kpis">
             {kpis.map((kpi) => (
               <div key={kpi.label} className="kpi">
@@ -572,17 +612,6 @@ export default function PanelMedico() {
               </div>
             ))}
           </div>
-
-          <button
-            className="btn btn-primary btn-full"
-            style={{ marginBottom: 18, fontSize: 16, padding: '15px 18px' }}
-            onClick={() => setVideoTarget('siguiente')}
-            disabled={waiting.length === 0}
-          >
-            {waiting.length
-              ? `Atender al siguiente paciente · ${waiting.length} esperando`
-              : 'No hay pacientes nuevos en cola'}
-          </button>
 
           <div className="panel-sections">
             <section className="card">
@@ -609,23 +638,59 @@ export default function PanelMedico() {
               )}
             </section>
             <section className="card">
-              <h2 style={{ marginTop: 0 }}>
-                Pacientes que no han podido ser atendidos hasta ahora
-              </h2>
-              {waiting.length === 0 ? (
-                <p style={{ color: '#64748b' }}>{waitingEmptyMessage}</p>
+              {conCards && !colaAbierta ? (
+                <>
+                  <h2 style={{ marginTop: 0 }}>Pacientes en espera</h2>
+                  <p style={{ color: '#64748b', marginTop: -6 }}>
+                    Tienes una cola por cada especialidad que ejerces, más la de entrada, donde caen
+                    los pacientes que no saben qué especialidad necesitan.
+                    {porCola.some((g) => g.queue.is_rest)
+                      ? ' La última reúne el resto de especialidades, que ves por ser administradora.'
+                      : ''}
+                  </p>
+                  <div className="cola-cards">
+                    {porCola.map(({ queue, casos }) => (
+                      <button
+                        key={claveCola(queue)}
+                        className="cola-card"
+                        onClick={() => setOpenQueue(claveCola(queue))}
+                      >
+                        <span className="cola-card-num">{casos.length}</span>
+                        <span>{tituloCola(queue)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
               ) : (
-                <div className="grid">
-                  {waiting.map((c) => (
-                    <ConsultationCard
-                      key={c.id}
-                      c={c}
-                      inRoom={patientsInRoom.has(c.id)}
-                      onOpen={() => setVideoTarget(c)}
-                      onWhatsapp={() => setWhatsappTarget(c)}
-                    />
-                  ))}
-                </div>
+                <>
+                  <div className="panel-card-header">
+                    <h2 style={{ marginTop: 0 }}>
+                      {colaAbierta
+                        ? `Pacientes en espera · ${colaAbierta.queue.name}`
+                        : 'Pacientes que no han podido ser atendidos hasta ahora'}
+                    </h2>
+                    {conCards && (
+                      <button className="link-button" onClick={() => setOpenQueue(null)}>
+                        ← Ver todas las consultas
+                      </button>
+                    )}
+                  </div>
+                  {visibles.length === 0 ? (
+                    <p style={{ color: '#64748b' }}>{waitingEmptyMessage}</p>
+                  ) : (
+                    <div className="grid">
+                      {visibles.map((c) => (
+                        <ConsultationCard
+                          key={c.id}
+                          c={c}
+                          inRoom={patientsInRoom.has(c.id)}
+                          onOpen={() => setVideoTarget(c)}
+                          onDerive={() => setDeriveTarget(c)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </section>
           </div>
@@ -680,54 +745,71 @@ export default function PanelMedico() {
         onConfirm={confirmVideo}
       />
 
-      {whatsappTarget && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setWhatsappTarget(null)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.55)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-            zIndex: 1000
-          }}
-        >
-          <div
-            className="card"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: 460, width: '100%' }}
-          >
-            <h2 style={{ marginTop: 0 }}>Atender vía WhatsApp</h2>
-            <p>
-              Al cliquear aquí te comprometes a contactar al paciente vía WhatsApp con el número
-              disponible, de no ser posible por favor contacta a nuestro equipo al{' '}
-              <strong>+4915203003171</strong>.
-            </p>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
-              <button
-                className="btn btn-primary"
-                style={{ flex: 1 }}
-                onClick={() => attendViaWhatsapp(whatsappTarget)}
-              >
-                Aceptar
-              </button>
-              <button
-                className="btn btn-muted"
-                style={{ flex: 1 }}
-                onClick={() => setWhatsappTarget(null)}
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DerivarEspecialidadModal
+        open={deriveTarget !== null}
+        currentSpecialty={deriveTarget?.specialty}
+        hint="El paciente pasa a la cola de la especialidad que elijas y conserva su lugar en la fila. Se le avisa por correo."
+        onClose={() => setDeriveTarget(null)}
+        onPick={(target) => {
+          if (deriveTarget) setDeriveConfirm({ c: deriveTarget, target })
+          setDeriveTarget(null)
+        }}
+      />
+
+      <ConfirmDialog
+        open={deriveConfirm !== null}
+        title="Derivar paciente"
+        message={
+          <p>
+            ¿Seguro que quieres derivar este paciente a{' '}
+            <strong>{deriveConfirm?.target.name}</strong>? Saldrá de tu cola y lo atenderá un médico
+            de esa especialidad.
+          </p>
+        }
+        confirmLabel="Sí, derivar"
+        busy={deriving}
+        onConfirm={confirmDerive}
+        onCancel={() => setDeriveConfirm(null)}
+      />
 
       <style jsx global>{`
+        /* El panel médico va a ancho completo: la cola es lo que más espacio necesita. */
+        .panel-wide {
+          max-width: none;
+          margin: 0;
+        }
+
+        .cola-cards {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 12px;
+        }
+        .cola-card {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          text-align: left;
+          width: 100%;
+          padding: 18px;
+          border-radius: 16px;
+          border: 1px solid var(--brand);
+          background: var(--brand-light);
+          color: var(--brand-dark);
+          font-weight: 700;
+          font-size: 16px;
+        }
+        .cola-card:hover,
+        .cola-card:focus-visible {
+          background: var(--brand);
+          color: white;
+        }
+        .cola-card-num {
+          font-size: 30px;
+          font-weight: 900;
+          line-height: 1;
+          min-width: 44px;
+        }
+
         .panel-topbar {
           display: flex;
           flex-direction: column;
@@ -766,6 +848,10 @@ export default function PanelMedico() {
         }
 
         @media (min-width: 640px) {
+          .cola-cards {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
           .panel-topbar {
             flex-direction: row;
             justify-content: space-between;
@@ -779,7 +865,7 @@ export default function PanelMedico() {
           }
 
           .panel-kpis {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
           }
 
           .panel-card-header {
@@ -802,24 +888,31 @@ export default function PanelMedico() {
 function ConsultationCard({
   c,
   onOpen,
-  onWhatsapp,
+  onDerive,
   inRoom
 }: {
   c: Consultation
   onOpen: () => void
-  onWhatsapp: () => void
+  onDerive: () => void
   inRoom: boolean
 }) {
   return (
     <div className="card-flat">
       <div className="panel-card-header">
         <div>
-          <strong>{c.patients?.full_name || 'Paciente'}</strong>
+          {/* La cola no muestra quién es el paciente (el nombre llega al tomar el caso): el título
+              es la especialidad de la cola en la que está. */}
+          <strong>{c.specialty || 'Paciente'}</strong>
           <div style={{ color: '#64748b', fontSize: 13 }}>
             {c.patients?.affected_zone}
             {c.patients?.age_range ? ` · Edad ${c.patients.age_range}` : ''} · hace{' '}
-            {tiempoTranscurrido(c.created_at)}
+            {tiempoTranscurrido(c.queued_at)}
           </div>
+          {c.derived_from_specialty && (
+            <div style={{ marginTop: 4 }}>
+              <span className="badge badge-blue">Derivado desde {c.derived_from_specialty}</span>
+            </div>
+          )}
           <div style={{ marginTop: 4 }}>
             <EstadoPacienteBadge enteredCallAt={c.entered_call_at} inRoom={inRoom} />
           </div>
@@ -847,12 +940,12 @@ function ConsultationCard({
           </span>
         ))}
       </div>
-      {/* Acción principal: tomar a ESTE paciente por video (abre la sala). WhatsApp es el fallback. */}
+      {/* Tomar a ESTE paciente: siempre por videoconsulta (el claim crea la sala). */}
       <button className="btn btn-primary btn-full" onClick={onOpen}>
-        Atender por videoconsulta
+        Atender paciente
       </button>
-      <button className="btn btn-secondary btn-full" style={{ marginTop: 8 }} onClick={onWhatsapp}>
-        Puedo atender a este paciente vía WhatsApp con mi número personal
+      <button className="btn btn-outline btn-full" style={{ marginTop: 8 }} onClick={onDerive}>
+        Derivar a especialista
       </button>
     </div>
   )

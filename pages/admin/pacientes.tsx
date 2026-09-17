@@ -30,7 +30,7 @@ import { ApiUser, fetchProfiles } from '../../lib/users'
 const CASE_COLS: { key: string; label: string; width: string }[] = [
   { key: 'patient', label: 'Paciente', width: '10%' },
   { key: 'phone', label: 'Contacto', width: '12%' },
-  { key: 'need', label: 'Categoría / motivo', width: '15%' },
+  { key: 'need', label: 'Especialidad / motivo', width: '15%' },
   { key: 'status', label: 'Estado', width: '11%' },
   { key: 'contacted', label: 'Admin panel', width: '15%' },
   { key: 'doctor', label: 'Médico', width: '15%' },
@@ -192,7 +192,9 @@ export default function AdminPacientes() {
         case 'phone':
           return c.patients?.phone_whatsapp || ''
         case 'need':
-          return c.category || c.chief_complaint || ''
+          // Por lo que muestra la columna: la especialidad de AHORA, no la categoría que el
+          // paciente eligió al registrarse.
+          return specialtyName(c.specialty_id) || c.chief_complaint || ''
         case 'status':
           return STATUS_LABELS[c.status] || c.status
         case 'contacted':
@@ -214,7 +216,8 @@ export default function AdminPacientes() {
           : String(av).localeCompare(String(bv), 'es')
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [filteredConsultations, sortKey, sortDir])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredConsultations, sortKey, sortDir, specialtyCatalog])
 
   function toggleSort(key: string) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -579,13 +582,15 @@ export default function AdminPacientes() {
                       )}
                     </td>
                     <td>
-                      <Line label="Categoría" value={c.category} />
+                      {/* La especialidad del caso AHORA (`consultations.specialty_id`): si lo
+                          derivaron, es la nueva. `category` era lo que el paciente eligió al
+                          registrarse y no cambia nunca, así que un caso derivado seguía anunciando
+                          la especialidad vieja. Los casos viejos sin `specialty_id` quedan en
+                          blanco a propósito: antes se adivinaba con un mapa de necesidades
+                          hardcodeado que se desincronizó del catálogo, y una sugerencia inventada
+                          es peor que ninguna. */}
+                      <Line label="Especialidad" value={specialtyName(c.specialty_id)} strong />
                       <Line label="Motivo" value={c.chief_complaint} />
-                      {/* Especialidad asignada: `consultations.specialty_id` ES el match. Los
-                          casos viejos sin esa columna quedan en blanco a proposito -- antes se
-                          adivinaba con un mapa hardcodeado de necesidades que se desincronizo del
-                          catalogo real; una sugerencia inventada es peor que ninguna. */}
-                      <Line label="La pueden atender" value={specialtyName(c.specialty_id)} />
                     </td>
                     <td>
                       <select

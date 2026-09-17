@@ -1,6 +1,7 @@
 import type { AppProps } from 'next/app'
 import { useRouter } from 'next/router'
 import '../styles/globals.css'
+import PanelHeader, { llevaBarraDeMarca } from '../components/PanelHeader'
 import { esProduccion, urlSinParamsPrivados } from '../lib/analytics'
 import { useMountEffect } from '../lib/hooks'
 import { PresenceProvider } from '../lib/presence'
@@ -77,6 +78,7 @@ export default function App({ Component, pageProps }: AppProps) {
   // o donde navegue, en vez de caerse al salir del panel.
   return (
     <PresenceProvider>
+      {llevaBarraDeMarca(router.pathname) && <PanelHeader />}
       <Component {...pageProps} />
     </PresenceProvider>
   )

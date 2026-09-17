@@ -27,21 +27,22 @@ async function createWaitingConsultation(): Promise<void> {
 
 test('pool de médicos: tabs, buscador y ojo de WhatsApp (auditado)', async ({ browser }) => {
   await createWaitingConsultation()
-  const ctx = await browser.newContext({ storageState: 'e2e/.auth/doc2.json' })
+  // doc1: el caso es de Medicina general, y la cola solo se la muestra a esa especialidad.
+  const ctx = await browser.newContext({ storageState: 'e2e/.auth/doc1.json' })
   const page = await ctx.newPage()
 
   // Para llegar al modal del pool, el médico toma un caso (el modal vive en la consulta).
   await page.goto('/panel-medico')
-  await expect(page.getByText('E2E Paciente Pool')).toBeVisible()
-  await page
-    .getByRole('button', { name: /Puedo atender a este paciente vía WhatsApp/i })
-    .first()
-    .click()
-  await page.getByRole('button', { name: /^Aceptar$/ }).click()
+  const card = page.locator('.card-flat').filter({ hasText: 'E2E Paciente Pool' }).first()
+  await expect(card).toBeVisible()
+  await card.getByRole('button', { name: 'Atender paciente' }).click()
+  const popup = page.waitForEvent('popup')
+  await page.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
+  await (await popup).close()
   await expect(page).toHaveURL(/\/panel-medico\/consulta\//)
 
-  // Abre el pool.
-  await page.getByRole('button', { name: 'Ver Pool de médicos' }).click()
+  // Abre el pool: el botón dice para qué sirve (pedir una interconsulta).
+  await page.getByRole('button', { name: 'Ver Pool de médicos (pedir interconsulta)' }).click()
   await expect(page.getByRole('heading', { name: 'Pool de médicos' })).toBeVisible()
 
   // Tabs restaurados (En línea / Desconectados / Todos) + buscador por nombre.

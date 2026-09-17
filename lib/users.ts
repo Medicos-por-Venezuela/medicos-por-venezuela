@@ -10,7 +10,9 @@ export interface ApiUser {
   email: string
   full_name: string
   role: string
+  // La principal; `specialties` trae todas las que ejerce (puede tener varias).
   specialty: string | null
+  specialties?: string[]
   active: boolean
   // OJO: este es `users.verified`, que nace true y ningún camino la baja — no significa nada. El
   // dato real de credencial es `doctor_verified`. Se conserva porque el backend lo sigue
@@ -87,6 +89,8 @@ export async function fetchProfiles(
     roles?: string[]
     search?: string
     active?: boolean
+    // Cualquiera de las que ejerce, no solo la principal (lo resuelve el backend).
+    specialtyId?: string
     createdFrom?: string
     createdTo?: string
   }
@@ -98,6 +102,7 @@ export async function fetchProfiles(
   if (params.roles) for (const r of params.roles) qs.append('roles', r)
   if (params.search?.trim()) qs.set('search', params.search.trim())
   if (params.active != null) qs.set('active', String(params.active))
+  if (params.specialtyId) qs.set('specialty_id', params.specialtyId)
   if (params.createdFrom) qs.set('created_from', params.createdFrom)
   if (params.createdTo) qs.set('created_to', params.createdTo)
   return getJson<ProfileListResult>(

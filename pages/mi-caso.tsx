@@ -10,19 +10,17 @@ import { STATUS_LABELS } from '../lib/utils'
 import { requestNotifyPermission, scheduleLocalReminders } from '../lib/nativeNotifications'
 import CalendarSync from '../components/CalendarSync'
 import AntesDeEntrarModal from '../components/AntesDeEntrarModal'
+import SalaEsperaEnVivo from '../components/SalaEsperaEnVivo'
 import { downloadIcs } from '../lib/calendar'
 import { browserRoomUrl } from '../lib/jitsi'
 import { trackPatientInRoom } from '../lib/patientPresence'
+import { useWaitingRoom, type WaitingRoomState } from '../lib/waitingRoom'
 
-// Estados en los que entrar a la sala todavía significa algo. Son los MISMOS dos que usa el
-// backend para decidir si cuenta la entrada del paciente (`_HEARTBEAT_OPEN_STATUSES` en
-// services/consultations.py): un caso cerrado o derivado conserva su `video_room_url` en la base,
-// y ofrecer ahí un botón mandaría al paciente a una sala a la que no va a entrar nadie.
-const SALA_ABIERTA = new Set(['waiting', 'in_progress'])
-
-function puedeEntrarASala(c: MyConsultation): boolean {
-  return Boolean(c.video_room_url) && SALA_ABIERTA.has(c.status)
-}
+// Casos que siguen abiertos para el paciente: en cola o en atención. Solo en esos se sigue la sala
+// en vivo; el botón de entrar lo decide la sala (`phase === 'ready'`, un médico tomó el caso), no
+// que la consulta tenga `video_room_url` — la tenían desde el registro y el paciente entraba a una
+// videollamada vacía.
+const CASO_ABIERTO = new Set(['waiting', 'in_progress', 'contacted_whatsapp'])
 
 export default function MiCaso() {
   const router = useRouter()
@@ -30,8 +28,9 @@ export default function MiCaso() {
   const [authed, setAuthed] = useState(false)
   const [patientName, setPatientName] = useState('')
   const [consultations, setConsultations] = useState<MyConsultation[]>([])
-  // La consulta cuya sala pidió abrir (mientras el modal de instrucciones está arriba).
-  const [salaPendiente, setSalaPendiente] = useState<MyConsultation | null>(null)
+  const [conSesion, setConSesion] = useState(false)
+  // La sala que pidió abrir (mientras el modal de instrucciones está arriba).
+  const [salaPendiente, setSalaPendiente] = useState<WaitingRoomState | null>(null)
   // La consulta cuya sala ya abrió. Mientras esta página siga abierta, se anuncia al médico que
   // el paciente está en sala (mismo criterio que `/sala-espera`, que anuncia mientras ELLA está
   // abierta y no mientras lo está la pestaña de Jitsi — que no hay forma de vigilar).
@@ -56,7 +55,7 @@ export default function MiCaso() {
     const consulta = salaPendiente
     setSalaPendiente(null)
     if (!consulta?.video_room_url) return
-    setEnSala(consulta.id)
+    setEnSala(consulta.consultation_id)
     // La ventana se abre PRIMERO y sin esperar a nada: en cuanto haya un `await` de por medio,
     // el navegador deja de considerar esto un gesto del usuario y bloquea el pop-up.
     window.open(browserRoomUrl(consulta.video_room_url), '_blank', 'noopener,noreferrer')
@@ -64,7 +63,7 @@ export default function MiCaso() {
     // videollamada"): la presencia por Realtime se cae en cuanto esta pestaña pasa a segundo
     // plano, que es exactamente lo que ocurre al abrir la sala desde un móvil. Fire-and-forget:
     // que no se registre no puede impedir que el paciente entre a su consulta.
-    marcarEntrada(consulta.id)
+    marcarEntrada(consulta.consultation_id)
   }
 
   async function marcarEntrada(consultationId: string) {
@@ -107,6 +106,7 @@ export default function MiCaso() {
     // Todo por el backend (no lecturas directas a Supabase): rol/estado por /auth/me, y los datos
     // del paciente + sus consultas por sus endpoints (el backend los scopea a la propia cuenta).
     const token = session.access_token
+    setConSesion(true)
     try {
       const profile = await fetchMyProfile(token)
       // Mismo resolvedor que /login y /auth/callback: si a este usuario le toca otro sitio, se va
@@ -219,7 +219,7 @@ export default function MiCaso() {
                     }}
                   >
                     <div>
-                      <strong>{c.category || 'Consulta'}</strong>
+                      <strong>{c.specialty || c.category || 'Consulta'}</strong>
                       <div style={{ color: '#64748b', fontSize: 13 }}>Código {c.code}</div>
                     </div>
                     <span className="badge badge-green">{STATUS_LABELS[c.status] || c.status}</span>
@@ -246,29 +246,23 @@ export default function MiCaso() {
                     </p>
                   )}
                   {c.chief_complaint && <p style={{ color: '#475569' }}>{c.chief_complaint}</p>}
-                  {c.referred_specialty && (
+                  {c.derived_from_specialty && (
                     <p>
-                      <span className="badge badge-blue">Derivado a {c.referred_specialty}</span>
+                      <span className="badge badge-blue">
+                        Derivado desde {c.derived_from_specialty}
+                      </span>
                     </p>
                   )}
-                  {/* El enlace PERMANENTE a la sala. El de `/sala-espera` vive en aquella pestaña
-                      y se pierde al cerrarla; hasta ahora, quien la cerraba no tenía forma de
-                      volver a entrar y el médico se encontraba una sala vacía. */}
-                  {puedeEntrarASala(c) && (
-                    <>
-                      <button
-                        className="btn btn-primary btn-full"
-                        style={{ marginTop: 4 }}
-                        onClick={() => setSalaPendiente(c)}
-                      >
-                        Unirse a la videoconsulta
-                      </button>
-                      <p style={{ color: '#64748b', fontSize: 13, margin: '8px 0 0' }}>
-                        {c.status === 'in_progress'
-                          ? 'Un médico ya tomó tu caso y entra por esta misma sala.'
-                          : 'Todavía estás en cola: puedes entrar y esperar dentro de la sala.'}
-                      </p>
-                    </>
+                  {c.status === 'referred_to_specialist' && (
+                    <p style={{ color: '#64748b', fontSize: 13 }}>
+                      Tu médico te derivó a un especialista. Sigue el estado en tu solicitud nueva,
+                      no hace falta que vuelvas a registrarte.
+                    </p>
+                  )}
+                  {/* La sala EN VIVO: dice si ya hay médico y solo entonces ofrece entrar. Es el
+                      enlace permanente a la sala: el de `/sala-espera` vive en aquella pestaña. */}
+                  {CASO_ABIERTO.has(c.status) && conSesion && (
+                    <SalaDeLaConsulta consultationId={c.id} onEnter={setSalaPendiente} />
                   )}
                 </div>
               ))}
@@ -287,5 +281,23 @@ export default function MiCaso() {
         onConfirm={abrirSala}
       />
     </>
+  )
+}
+
+// Una suscripción por caso abierto (normalmente uno). Componente aparte porque el hook va por caso.
+const CON_SESION = { useSession: true }
+
+function SalaDeLaConsulta({
+  consultationId,
+  onEnter
+}: {
+  consultationId: string
+  onEnter: (state: WaitingRoomState) => void
+}) {
+  const { state, error } = useWaitingRoom(consultationId, CON_SESION)
+  return (
+    <div style={{ marginTop: 8 }}>
+      <SalaEsperaEnVivo state={state} error={error} onEnter={() => state && onEnter(state)} />
+    </div>
   )
 }

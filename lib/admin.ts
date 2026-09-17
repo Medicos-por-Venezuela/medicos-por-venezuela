@@ -13,7 +13,9 @@ export type Profile = {
   email: string
   full_name: string
   role: string
+  // La principal; `specialties` son todas las que ejerce (un médico puede tener varias).
   specialty: string | null
+  specialties?: string[]
   medical_license: string | null
   country: string | null
   whatsapp_number: string | null
