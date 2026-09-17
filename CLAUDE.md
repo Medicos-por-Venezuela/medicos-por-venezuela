@@ -270,6 +270,13 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
   says so instead of trying to detect it — detecting it would leak which emails have an account
 - `/admin` (+ `/admin/login` alias) — legacy admin entrance, redirects to `/login` (still `noindex`)
 - `/admin/dashboard` — admin dashboard (metrics, doctor revoke, case oversight)
+- `/admin/doctores` — two tabs: **Todos los doctores** (the staff accounts table, with the
+  specialties each one practises and a filter by specialty resolved server-side against
+  `doctor_specialties`) and **Doctores por aprobar** (`components/admin/DoctorCredentials.tsx`,
+  the credential inbox)
+- `/admin/pacientes` — cases table. The "Especialidad / motivo" column shows the case's CURRENT
+  specialty (`consultations.specialty_id`, the new one if it was derived), not the `category` the
+  patient picked when registering, which never changes
 - `/admin/reportes` — **super_admin only**: filterable listing reports of doctors and patients,
   exported to Excel. The table is rendered generically from the `columns` the backend sends
   (`GET /api/v1/reports/{doctors,patients}`), so the preview and the `.xlsx` can never show

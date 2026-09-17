@@ -611,6 +611,35 @@ input[readonly] {
 .admin-main .container {
   max-width: 1400px;
 }
+/* Pestañas de una página del admin (p. ej. /admin/doctores: cuentas vs. credenciales por
+   aprobar). Botones de verdad, no enlaces: no cambian de ruta. */
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.admin-tabs button {
+  width: auto;
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--navy);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+}
+.admin-tabs button:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.admin-tabs button.is-active {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
 .dash-kpis {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

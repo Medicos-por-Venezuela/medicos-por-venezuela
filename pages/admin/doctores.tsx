@@ -10,13 +10,19 @@ import {
   useAdminGuard,
   USERS_PAGE_SIZE
 } from '../../lib/admin'
+import { fetchSpecialties, type SpecialtyResponse } from '../../lib/doctors'
 import { useOnlineDoctors } from '../../lib/presence'
 import { isAdminRole } from '../../lib/utils'
 import { fetchProfiles, setProfileActive } from '../../lib/users'
 
+type Tab = 'todos' | 'aprobar'
+
 export default function AdminDoctores() {
   const { profile, loading } = useAdminGuard()
   const [message, setMessage] = useState('')
+  // Dos pantallas distintas: la lista de cuentas y la bandeja de credenciales por aprobar. Antes
+  // iban una encima de la otra y la que importaba quedaba enterrada.
+  const [tab, setTab] = useState<Tab>('todos')
 
   // Médicos online en vivo por Realtime Presence (el admin solo observa, no se anuncia).
   const onlineDoctors = useOnlineDoctors()
@@ -25,6 +31,8 @@ export default function AdminDoctores() {
   // Users (doctors/admins) table filters
   const [userSearch, setUserSearch] = useState('')
   const [userRole, setUserRole] = useState('all')
+  const [userSpecialty, setUserSpecialty] = useState('all')
+  const [specialties, setSpecialties] = useState<SpecialtyResponse[]>([])
   const [userState, setUserState] = useState('all') // all | active | revoked
   const [userFrom, setUserFrom] = useState('')
   const [userTo, setUserTo] = useState('')
@@ -44,13 +52,29 @@ export default function AdminDoctores() {
   // Any filter change resets to the first page.
   useEffect(() => {
     setUsersPage(0)
-  }, [debouncedUserSearch, userRole, userState, userFrom, userTo])
+  }, [debouncedUserSearch, userRole, userSpecialty, userState, userFrom, userTo])
 
   // (Re)load the current page of staff users when the profile is ready or filters/page change.
   useEffect(() => {
     if (profile) loadUsers()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, debouncedUserSearch, userRole, userState, userFrom, userTo, usersPage])
+  }, [
+    profile,
+    debouncedUserSearch,
+    userRole,
+    userSpecialty,
+    userState,
+    userFrom,
+    userTo,
+    usersPage
+  ])
+
+  // Catálogo para el filtro por especialidad (público, sin token).
+  useEffect(() => {
+    fetchSpecialties()
+      .then(setSpecialties)
+      .catch(() => setSpecialties([]))
+  }, [])
 
   // Staff-only, server-side filtered + paginated list for the Médicos y administradores table.
   async function loadUsers() {
@@ -62,6 +86,7 @@ export default function AdminDoctores() {
         roles: userRole === 'all' ? STAFF_ROLES : [userRole],
         search: debouncedUserSearch || undefined,
         active: userState === 'active' ? true : userState === 'revoked' ? false : undefined,
+        specialtyId: userSpecialty === 'all' ? undefined : userSpecialty,
         createdFrom: userFrom || undefined,
         createdTo: userTo || undefined,
         skip: usersPage * USERS_PAGE_SIZE,
@@ -97,12 +122,29 @@ export default function AdminDoctores() {
         </div>
       )}
 
-      {/* Aprobación de credenciales (backend: GET /doctors + POST /doctors/{id}/approve). Va antes
-          de la tabla de cuentas porque es la acción pendiente: un médico bloqueado por credencial
-          aparece "Activo" en la tabla de abajo y aun así no puede atender. */}
-      <DoctorCredentials />
+      <div className="admin-tabs">
+        <button
+          className={tab === 'todos' ? 'is-active' : ''}
+          onClick={() => setTab('todos')}
+          aria-current={tab === 'todos' ? 'page' : undefined}
+        >
+          Todos los doctores
+        </button>
+        <button
+          className={tab === 'aprobar' ? 'is-active' : ''}
+          onClick={() => setTab('aprobar')}
+          aria-current={tab === 'aprobar' ? 'page' : undefined}
+        >
+          Doctores por aprobar
+        </button>
+      </div>
 
-      <section className="card">
+      {/* Aprobación de credenciales (backend: GET /doctors + POST /doctors/{id}/approve). Un
+          médico bloqueado por credencial aparece "Activo" en la otra pestaña y aun así no puede
+          atender: por eso tiene la suya. */}
+      {tab === 'aprobar' && <DoctorCredentials />}
+
+      <section className="card" style={{ display: tab === 'todos' ? undefined : 'none' }}>
         <h2 style={{ marginTop: 0 }}>
           Médicos y administradores{' '}
           <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 14 }}>({usersTotal})</span>
@@ -124,6 +166,21 @@ export default function AdminDoctores() {
                 {r === 'all' ? 'Todos los roles' : r}
               </option>
             ))}
+          </select>
+          <select
+            style={{ flex: '0 1 170px' }}
+            value={userSpecialty}
+            onChange={(e) => setUserSpecialty(e.target.value)}
+            title="Especialidad"
+          >
+            <option value="all">Todas las especialidades</option>
+            {specialties
+              .filter((s) => s.status === 'active')
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
           </select>
           <select
             style={{ flex: '0 1 130px' }}
@@ -154,7 +211,7 @@ export default function AdminDoctores() {
             <thead>
               <tr>
                 <th>Usuario</th>
-                <th>Rol</th>
+                <th>Especialidad</th>
                 <th>Estado</th>
                 <th>Registrado</th>
                 <th>Online</th>
@@ -174,12 +231,17 @@ export default function AdminDoctores() {
                     <td>
                       <strong>{p.full_name}</strong>
                       <div style={{ fontSize: 12, color: '#64748b' }}>{p.email}</div>
-                      <Line label="Especialidad" value={p.specialty} />
                       <Line label="País" value={p.country} />
                       <Line label="WhatsApp" value={p.whatsapp_number} />
                       <Line label="Licencia" value={p.medical_license} />
                     </td>
-                    <td>{p.role}</td>
+                    {/* Todas las que ejerce: desde que un médico puede tener varias, enseñar solo
+                        la principal escondía la mitad de su cola. */}
+                    <td style={{ fontSize: 13 }}>
+                      {p.specialties?.length
+                        ? p.specialties.join(', ')
+                        : p.specialty || <span style={{ color: '#94a3b8' }}>—</span>}
+                    </td>
                     <td>
                       {p.active ? (
                         <span className="badge badge-green">Activo</span>

@@ -7,6 +7,17 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-09-17
 
+- **feat(admin): la especialidad manda en las dos pantallas del admin** — en Pacientes / Casos, la
+  columna deja de ser "Categoría / motivo" y pasa a **"Especialidad / motivo"**: muestra en negrita
+  la especialidad que el caso tiene AHORA (`consultations.specialty_id`, la nueva si lo derivaron)
+  en lugar de la categoría que el paciente eligió al registrarse, que no cambia nunca; fuera la
+  línea "La pueden atender", que decía lo mismo. En `/admin/doctores`, dos pestañas
+  (**Todos los doctores** | **Doctores por aprobar**) en vez de las dos tablas apiladas; la lista
+  de cuentas cambia la columna "Rol" por **"Especialidad"** (todas las que ejerce) y gana un filtro
+  por especialidad, que el backend resuelve contra `doctor_specialties` — así el internista que
+  además es cardiólogo sale al filtrar por Cardiología. E2E:
+  `admin-doctores-especialidad.spec.ts`.
+
 - **feat: cola por especialidad, derivación a la cola y sala de espera en vivo** — spec en la API
   (`tasks/cola-por-especialidad/`). Requiere la API de la rama del mismo nombre.
   - **Cola:** cada médico ve su especialidad (Psiquiatría también Psicología, Medicina interna

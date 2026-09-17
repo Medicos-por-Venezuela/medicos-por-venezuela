@@ -128,11 +128,19 @@ export function AdminLoading() {
   )
 }
 
-export function Line({ label, value }: { label: string; value?: string | null }) {
+export function Line({
+  label,
+  value,
+  strong
+}: {
+  label: string
+  value?: string | null
+  strong?: boolean
+}) {
   if (!value) return null
   return (
-    <div style={{ fontSize: 12, color: '#64748b' }}>
-      <span style={{ color: '#94a3b8' }}>{label}:</span> {value}
+    <div style={{ fontSize: 12, color: strong ? '#0f172a' : '#64748b' }}>
+      <span style={{ color: '#94a3b8' }}>{label}:</span> {strong ? <strong>{value}</strong> : value}
     </div>
   )
 }
