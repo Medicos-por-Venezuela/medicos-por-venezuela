@@ -90,6 +90,10 @@ export const IN_PROGRESS_STATUSES = [
   'cancelled',
   'contacted_whatsapp'
 ]
+// "En progreso" del dashboard = casos con médico encima AHORA (mismo set que el panel médico
+// en "mis consultas abiertas": in_progress + contacted_whatsapp). No confundir con
+// IN_PROGRESS_STATUSES, que es el preset amplio de reportes (incluye derivadas y no-show).
+export const ATTENDING_STATUSES = ['in_progress', 'contacted_whatsapp']
 export const ROLE_OPTIONS = ['all', 'doctor', 'specialist', 'admin', 'super_admin']
 // The "Médicos y administradores" table is staff-only — patients never appear there.
 export const STAFF_ROLES = ['doctor', 'specialist', 'admin', 'super_admin']
