@@ -9,8 +9,14 @@ export interface DashboardStats {
   patients_registered: number
   consultations_waiting: number
   consultations_in_progress: number
+  consultations_scheduled: number
+  consultations_referred: number
+  consultations_no_show: number
+  consultations_cancelled: number
   consultations_closed: number
   consultations_urgent: number
+  consultations_by_zone: { zone: string; total: number }[]
+  consultations_by_specialty: { specialty: string; total: number }[]
 }
 
 // GET /api/v1/stats/dashboard — requiere Bearer (permiso `stats.read`; admin y super_admin lo
