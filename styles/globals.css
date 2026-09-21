@@ -646,6 +646,30 @@ input[readonly] {
   gap: 12px;
   margin-bottom: 16px;
 }
+.dash-section-title {
+  margin: 18px 0 8px;
+  font-size: 15px;
+  color: var(--navy);
+}
+.dash-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.chart-card h3 {
+  margin: 0 0 2px;
+  font-size: 15px;
+}
+.chart-sub {
+  margin: 0 0 10px;
+  color: #64748b;
+  font-size: 12px;
+}
+.chart-canvas {
+  position: relative;
+  height: 260px;
+}
 .admin-main .cases-table {
   min-width: 900px;
 }
@@ -715,6 +739,9 @@ input[readonly] {
   .dash-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+  }
+  .dash-charts {
+    grid-template-columns: 1fr;
   }
   .admin-main .topbar {
     flex-wrap: wrap;

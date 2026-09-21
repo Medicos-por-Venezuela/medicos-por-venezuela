@@ -1,9 +1,9 @@
 // Modal de solo lectura para el KPI "Consultas en progreso" del dashboard admin: lista las
-// consultas del set amplio "en progreso" (lib/admin.ts::IN_PROGRESS_STATUSES) con su médico
-// asignado, paciente y tiempo transcurrido. Datos vía backend (lib/consultations.ts), NO
-// Supabase directo. Sin acciones (no cambia estado, no reasigna) — ver spec `admin-consultations-
-// monitor`. Reusa el patrón de overlay inline role="dialog" de components/DoctorPoolModal.tsx /
-// components/admin/ConfirmDialog.tsx.
+// consultas con médico encima AHORA (lib/admin.ts::ATTENDING_STATUSES = in_progress +
+// contacted_whatsapp) con su médico asignado, paciente y tiempo transcurrido. Datos vía backend
+// (lib/consultations.ts), NO Supabase directo. Sin acciones (no cambia estado, no reasigna) —
+// ver spec `admin-consultations-monitor`. Reusa el patrón de overlay inline role="dialog" de
+// components/DoctorPoolModal.tsx / components/admin/ConfirmDialog.tsx.
 //
 // El listener de Escape usa `useMountEffect` (no un useEffect crudo — ver el skill
 // no-use-effect) para suscribirse al DOM: es "true mount-time external system sync" (Regla 4).
@@ -12,7 +12,7 @@
 // (`Dialog`) que el padre monta/desmonta condicionalmente según `open` — así el mount real
 // coincide con la apertura del modal.
 import { useState } from 'react'
-import { getAccessToken, IN_PROGRESS_STATUSES } from '../../lib/admin'
+import { getAccessToken, ATTENDING_STATUSES } from '../../lib/admin'
 import { useMountEffect } from '../../lib/hooks'
 import { downloadReport } from '../../lib/reports'
 import { ConsultationMonitorItem } from '../../lib/consultations'
@@ -70,7 +70,7 @@ function Dialog({
     try {
       await downloadReport(
         'consultations',
-        { status: [...IN_PROGRESS_STATUSES] },
+        { status: [...ATTENDING_STATUSES] },
         await getAccessToken()
       )
     } catch (e) {
@@ -122,8 +122,7 @@ function Dialog({
               Consultas en progreso
             </h2>
             <small style={{ color: '#64748b' }}>
-              Incluye derivadas, urgentes presenciales, no-show, canceladas y contactadas por
-              WhatsApp.
+              Casos con médico asignado ahora (en progreso + contactadas por WhatsApp).
             </small>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

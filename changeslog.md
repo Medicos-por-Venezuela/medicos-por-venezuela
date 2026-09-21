@@ -58,6 +58,20 @@ Each entry: date, a short summary of what changed and why, and the key files/are
   `e2e/registro-paciente.spec.ts`, `e2e/mi-caso-videoconsulta.spec.ts`,
   `e2e/terminos.spec.ts`, `e2e/direccion-cifrada.spec.ts`.
 
+- **fix(admin): dashboard con KPIs correctos y gráficos de zona/especialidad** — los números no
+  cuadraban con la operación: "Consultas esperando" filtraba por `entered_call_at` (mostraba 13 en
+  vez de 95, la cola real que ve el médico) y "Consultas en progreso" era un bucket amplio que
+  mezclaba derivadas, no-shows y urgentes (320). Ahora los buckets son disjuntos: Esperando, En
+  progreso (`in_progress` + `contacted_whatsapp`), Agendadas, Derivadas, No se presentaron y
+  Cerradas, más el banner de urgentes. "Médicos registrados" cuenta cuentas con rol clínico
+  (cuadra con la página Doctores) y "Pacientes registrados" fichas vivas. Se agregan dos gráficos
+  con `chart.js` (`DashboardCharts.tsx`): doughnut de consultas por zona (todas, sin importar el
+  estado; top 8 + "Otras zonas") y barras horizontales de especialidad más buscada (top 10 +
+  "Otras especialidades"). Requiere el backend con los campos nuevos de `GET /stats/dashboard`.
+  Áreas: `pages/admin/dashboard.tsx`, `components/admin/DashboardCharts.tsx`,
+  `components/admin/ConsultationsMonitorModal.tsx`, `lib/stats.ts`, `lib/admin.ts`,
+  `lib/consultations.ts`, `styles/globals.css`, `package.json`.
+
 ## 2026-09-17
 
 - **feat(admin): la especialidad manda en las dos pantallas del admin** — en Pacientes / Casos, la

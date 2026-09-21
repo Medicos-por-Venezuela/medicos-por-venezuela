@@ -3,7 +3,7 @@
 // del panel — el único acceso directo que queda es Realtime (solo para avisar que algo cambió) y
 // Auth. Los datos siempre vienen por el backend.
 import { getJson, patchJson, postJson } from './apiClient'
-import { Consultation, IN_PROGRESS_STATUSES, Patient } from './admin'
+import { Consultation, ATTENDING_STATUSES, Patient } from './admin'
 
 export { ApiError } from './apiClient'
 
@@ -256,8 +256,9 @@ export interface ConsultationMonitorItem {
 
 // El endpoint solo acepta un `status` a la vez (ver src/routers/consultations.py::list_consultations
 // del backend — no hay filtro multi-status), así que se pide una página por cada status del set
-// amplio "en progreso" (mismo set que usa el KPI, `lib/admin.ts::IN_PROGRESS_STATUSES`) y se
-// combinan los resultados. 100 es el límite máximo permitido por el backend (`le=100`).
+// "en progreso" del dashboard (mismo set que el panel médico en "mis consultas abiertas":
+// ATTENDING_STATUSES = in_progress + contacted_whatsapp) y se combinan los resultados.
+// 100 es el límite máximo permitido por el backend (`le=100`).
 const PAGE_LIMIT = 100
 
 export async function fetchInProgressConsultations(
@@ -267,7 +268,7 @@ export async function fetchInProgressConsultations(
   // el modal. Si TODAS fallan, propagamos el primer error para que el modal lo muestre;
   // si al menos una responde, mostramos lo que se pudo cargar.
   const results = await Promise.allSettled(
-    IN_PROGRESS_STATUSES.map((status) =>
+    ATTENDING_STATUSES.map((status) =>
       getJson<ConsultationMonitorItem[]>(
         `/api/v1/consultations?status=${encodeURIComponent(status)}&limit=${PAGE_LIMIT}`,
         'No se pudieron cargar las consultas en progreso',

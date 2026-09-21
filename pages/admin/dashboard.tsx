@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import AdminLayout, { AdminLoading, Kpi } from '../../components/admin/AdminLayout'
 import ConsultationsMonitorModal from '../../components/admin/ConsultationsMonitorModal'
+import DashboardCharts from '../../components/admin/DashboardCharts'
 import EspecialidadesPendientes from '../../components/admin/EspecialidadesPendientes'
 import DoctorPoolModal from '../../components/DoctorPoolModal'
 import { getAccessToken, useAdminGuard } from '../../lib/admin'
@@ -70,6 +71,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      <h2 className="dash-section-title">Equipo y pacientes</h2>
       <div className="dash-kpis">
         <Kpi value={stats?.doctors_registered ?? '—'} label="Médicos registrados" />
         <Kpi
@@ -78,14 +80,28 @@ export default function AdminDashboard() {
           onClick={() => setPoolOpen(true)}
         />
         <Kpi value={stats?.patients_registered ?? '—'} label="Pacientes registrados" />
-        <Kpi value={stats?.consultations_waiting ?? '—'} label="Consultas esperando" />
+      </div>
+
+      <h2 className="dash-section-title">Consultas</h2>
+      <div className="dash-kpis">
+        <Kpi value={stats?.consultations_waiting ?? '—'} label="Esperando" />
         <Kpi
           value={stats?.consultations_in_progress ?? '—'}
-          label="Consultas en progreso"
+          label="En progreso"
           onClick={openMonitor}
         />
-        <Kpi value={stats?.consultations_closed ?? '—'} label="Consultas cerradas" />
+        <Kpi value={stats?.consultations_scheduled ?? '—'} label="Agendadas" />
+        <Kpi value={stats?.consultations_referred ?? '—'} label="Derivadas a especialista" />
+        <Kpi value={stats?.consultations_no_show ?? '—'} label="Pacientes no se presentaron" />
+        <Kpi value={stats?.consultations_closed ?? '—'} label="Cerradas" />
       </div>
+
+      {stats && (
+        <DashboardCharts
+          byZone={stats.consultations_by_zone}
+          bySpecialty={stats.consultations_by_specialty}
+        />
+      )}
 
       <EspecialidadesPendientes />
 
