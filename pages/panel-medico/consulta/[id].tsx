@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import DoctorPoolModal from '../../../components/DoctorPoolModal'
 import DerivarEspecialidadModal from '../../../components/DerivarEspecialidadModal'
 import SignaturePad from '../../../components/SignaturePad'
+import UnlockClinicalKeyModal from '../../../components/UnlockClinicalKeyModal'
 import { fmtDateTime, getAccessToken } from '../../../lib/admin'
 import { DoctorPoolItem } from '../../../lib/doctors'
 import {
@@ -16,12 +17,14 @@ import {
   fetchMyProfile,
   referToQueue,
   scheduleFollowUp,
+  startConsultation,
   updateConsultation,
   type ConsultationDetail,
   type ConsultationEventItem,
   type DerivationTarget
 } from '../../../lib/consultations'
-import { ensureVideoRoom } from '../../../lib/patients'
+import { ensureVideoRoom, fetchPatientAddress } from '../../../lib/patients'
+import { decryptAddress, isClinicalKeyUnlocked } from '../../../lib/patientAddressCrypto'
 import {
   createInterconsultation,
   fetchInterconsultationForConsultation,
@@ -53,6 +56,7 @@ type Patient = {
   full_name: string
   cedula: string | null
   phone_whatsapp: string
+  emergency_phone: string | null
   email: string | null
   affected_zone: string
   age_range: string | null
@@ -80,6 +84,7 @@ type Consultation = {
   entered_call_at: string | null
   assigned_doctor_id: string | null
   attended_via_whatsapp: boolean
+  can_view_patient_address: boolean
   // Especialidad de la cola del caso y, si llegó derivado, de dónde viene, quién y por qué.
   specialty?: string | null
   derived_from_specialty?: string | null
@@ -177,6 +182,11 @@ export default function ConsultaDetalle() {
   const [closeError, setCloseError] = useState('')
   // Titila el borde de "Notas del médico" ~3s cuando el cierre se bloquea por falta de nota.
   const [notesBlink, setNotesBlink] = useState(false)
+  // Dirección cifrada del paciente (solo si can_view_patient_address).
+  const [address, setAddress] = useState<string | null>(null)
+  const [addressLoading, setAddressLoading] = useState(false)
+  const [addressError, setAddressError] = useState('')
+  const [unlockOpen, setUnlockOpen] = useState(false)
   // Consultas con el paciente EN SALA por Realtime Presence (reemplaza el heartbeat + la ventana de
   // tiempo). Es un Set global; abajo se consulta por el id de esta consulta.
   const patientsInRoom = usePatientsInRoom()
@@ -428,6 +438,38 @@ export default function ConsultaDetalle() {
     setEventAuthorsById(authors)
   }
 
+  // Carga y descifra la dirección del paciente (solo si can_view_patient_address).
+  async function loadAddress() {
+    if (!consultation?.patients?.id) return
+    setAddressLoading(true)
+    setAddressError('')
+    try {
+      const token = await getAccessToken()
+      const { address_encrypted } = await fetchPatientAddress(consultation.patients.id, token)
+      if (!address_encrypted) {
+        setAddress('Sin dirección registrada.')
+        return
+      }
+      // Intenta descifrar; devuelve null si la clave está bloqueada.
+      const decrypted = await decryptAddress(address_encrypted)
+      if (decrypted === null) {
+        // Clave bloqueada: abre el modal de passphrase.
+        setUnlockOpen(true)
+        return
+      }
+      setAddress(decrypted)
+    } catch (e) {
+      setAddressError(e instanceof Error ? e.message : 'No se pudo obtener la dirección.')
+    } finally {
+      setAddressLoading(false)
+    }
+  }
+
+  // Callback cuando el modal de passphrase se cierra con éxito: reintenta descifrar.
+  function onAddressUnlocked() {
+    loadAddress()
+  }
+
   async function addEvent(consultationId: string, eventType: string, eventNote?: string) {
     await addConsultationEvent(
       consultationId,
@@ -560,12 +602,25 @@ export default function ConsultaDetalle() {
     }
   }
 
-  // "Unirse a videoconsulta": la atención es siempre por video. Si el caso no tiene sala (casos
-  // tomados antes por WhatsApp), se crea ahora. La ventana se abre dentro del clic de "Entendido".
+  // "Unirse a videoconsulta": la atención es siempre por video. Una cita AGENDADA se inicia aquí
+  // (`scheduled` → `in_progress` + sala): es el clic que además dispara el correo "tu médico ya
+  // está en la sala" al paciente, igual que el claim de la cola. Si el caso no tiene sala (tomado
+  // antes por WhatsApp), se crea ahora. La ventana se abre dentro del clic de "Entendido".
   async function joinVideo() {
     if (!consultation) return
     let room = consultation.video_room_url
-    if (!room) {
+    if (consultation.status === 'scheduled') {
+      try {
+        const started = await startConsultation(consultation.id, await getAccessToken())
+        room = started.video_room_url
+        setConsultation((prev) =>
+          prev ? { ...prev, status: started.status, video_room_url: room } : prev
+        )
+      } catch (e) {
+        setMessage(e instanceof Error ? e.message : 'No se pudo iniciar la cita agendada.')
+        return
+      }
+    } else if (!room) {
       try {
         const { data } = await supabase.auth.getSession()
         room =
@@ -778,6 +833,11 @@ export default function ConsultaDetalle() {
               <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
                 Tel. (solo seguimiento): {consultation.patients?.phone_whatsapp || '—'}
               </p>
+              {consultation.patients?.emergency_phone && (
+                <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
+                  Tel. emergencia: {consultation.patients.emergency_phone}
+                </p>
+              )}
               <p style={{ margin: '4px 0', color: '#64748b', fontSize: 13 }}>
                 Email (opcional): {consultation.patients?.email || '—'}
               </p>
@@ -795,6 +855,45 @@ export default function ConsultaDetalle() {
                 ))}
               </div>
             </section>
+
+            {/* Dirección: solo si el backend dice que este médico la puede ver. */}
+            {consultation.can_view_patient_address && (
+              <section className="card">
+                <h2 style={{ marginTop: 0 }}>Dirección</h2>
+                <p style={{ color: '#64748b', fontSize: 13, marginTop: -6 }}>
+                  Esta dirección va cifrada de extremo a extremo; solo la ve el médico tratante.
+                  Para leerla necesitas la clave de descifrado.
+                </p>
+                {!address && !addressLoading && !addressError && (
+                  <button
+                    className="btn btn-outline"
+                    onClick={loadAddress}
+                    disabled={busy}
+                    style={{ marginTop: 8 }}
+                  >
+                    Ver dirección
+                  </button>
+                )}
+                {addressLoading && <p style={{ marginTop: 8, color: '#64748b' }}>Cargando…</p>}
+                {address && (
+                  <div style={{ marginTop: 8 }}>
+                    <p style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{address}</p>
+                    <button
+                      className="btn btn-muted"
+                      onClick={() => setAddress(null)}
+                      style={{ marginTop: 8 }}
+                    >
+                      Ocultar
+                    </button>
+                  </div>
+                )}
+                {addressError && (
+                  <div className="notice notice-danger" style={{ marginTop: 8 }}>
+                    {addressError}
+                  </div>
+                )}
+              </section>
+            )}
 
             <section className="card">
               <h2 style={{ marginTop: 0 }}>Motivo</h2>
@@ -985,6 +1084,12 @@ export default function ConsultaDetalle() {
               setReferSpecialty(target)
               setDeriveOpen(false)
             }}
+          />
+
+          <UnlockClinicalKeyModal
+            open={unlockOpen}
+            onClose={() => setUnlockOpen(false)}
+            onUnlocked={onAddressUnlocked}
           />
 
           {signMode && (

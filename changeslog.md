@@ -5,7 +5,58 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-21
+
+- **feat(agenda): iniciar la cita agendada al entrar a la videollamada (y avisar al paciente)** — la
+  hija agendada ya existía, pero nunca pasaba de `scheduled`, así que "Unirse a videoconsulta"
+  fallaba con "La consulta ya no está abierta." (`ensure_video_room` no acepta `scheduled`) y el
+  paciente no veía la sala. Ahora el detalle del médico llama a `POST /consultations/{id}/start`
+  (nuevo `startConsultation` en `lib/consultations.ts`): la cita pasa a `in_progress`, se crea la
+  sala y el backend encola el correo "tu médico ya está en la sala". En `/mi-caso` la tarjeta
+  agendada mantiene la sala en vivo (SSE) pero sin duplicar el aviso de la cita, así el botón
+  "Entrar a la videoconsulta" aparece apenas el médico la inicia. Ficheros:
+  `lib/consultations.ts`, `pages/panel-medico/consulta/[id].tsx`, `pages/mi-caso.tsx`,
+  `components/SalaEsperaEnVivo.tsx`.
+
 ## 2026-09-20
+
+- **feat(pacientes): alta con teléfono de emergencia y dirección cifrada E2E** — el registro
+  público de pacientes (`/registro-paciente`) y la alta de pacientes de consultorio por el médico
+  (`RegistrarPacienteModal`) ahora piden un teléfono de emergencia obligatorio (distinto al de
+  WhatsApp) y una dirección de residencia obligatoria (solo en el registro público). La dirección
+  se cifra en el navegador con la clave pública clínica (sealed box X25519, `libsodium-wrappers`);
+  el servidor solo almacena el texto cifrado `v1:<base64>` y nunca puede descifrarlo. El teléfono
+  de emergencia es visible para el equipo de administración y el profesional que atiende el caso; la
+  dirección solo la ve el profesional tratante y la responsable de protección de datos. Actualizados
+  los tipos en `lib/patients.ts`, `lib/admin.ts`, `lib/consultations.ts`; nuevos campos en los
+  esquemas Zod del formulario; `encryptAddress` se invoca una sola vez por envío. Actualizados
+  términos de privacidad (sección 3, 6 y 9) y consentimiento. Ficheros: `lib/patients.ts`,
+  `lib/admin.ts`, `lib/consultations.ts`, `pages/registro-paciente.tsx`,
+  `components/RegistrarPacienteModal.tsx`, `pages/legal/privacidad.tsx`.
+
+- **feat(detalle médico): teléfono de emergencia y bloque Dirección con desbloqueo E2E** — en
+  `pages/panel-medico/consulta/[id].tsx`, el panel "Paciente" muestra `emergency_phone` con etiqueta
+  "Tel. emergencia" cuando existe. Si `can_view_patient_address === true`, se renderiza un bloque
+  "Dirección" con botón "Ver dirección" que llama a `fetchPatientAddress` → `decryptAddress`; si la
+  clave clínica está bloqueada, abre `UnlockClinicalKeyModal` para pedir la passphrase; al
+  desbloquear, reintenta y muestra la dirección solo en memoria (sin logs ni storage), con botón
+  "Ocultar". Nuevo componente `components/UnlockClinicalKeyModal.tsx` con overlay `role="dialog"`,
+  `useEscapeToClose`, input `type="password"`, botón "Desbloquear" deshabilitado mientras procesa o
+  vacío, y nota "La clave nunca sale de este navegador.".
+
+- **feat(admin): teléfono de emergencia en la tabla de casos** — en `pages/admin/pacientes.tsx`,
+  la celda "Contacto" muestra una línea "Emergencia: +58…" cuando el paciente la tiene registrada.
+  La dirección no se expone en el panel admin.
+
+- **test(e2e): cobertura de registro y dirección cifrada** — actualizados `e2e/registro-paciente.spec.ts`,
+  `e2e/mi-caso-videoconsulta.spec.ts` y `e2e/terminos.spec.ts` para llenar `emergency_phone` y
+  `address_encrypted` (label "Dirección de residencia"). Nuevo `e2e/direccion-cifrada.spec.ts` con
+  caso feliz: paciente registra dirección → médico asignado pulsa "Ver dirección" → modal pide
+  passphrase → con `E2E_CLINICAL_PASSPHRASE` se desbloquea y se ve la dirección; caso de "otro
+  médico no la ve" opcional. Ficheros: `components/UnlockClinicalKeyModal.tsx`,
+  `pages/panel-medico/consulta/[id].tsx`, `pages/admin/pacientes.tsx`,
+  `e2e/registro-paciente.spec.ts`, `e2e/mi-caso-videoconsulta.spec.ts`,
+  `e2e/terminos.spec.ts`, `e2e/direccion-cifrada.spec.ts`.
 
 - **fix(admin): dashboard con KPIs correctos y gráficos de zona/especialidad** — los números no
   cuadraban con la operación: "Consultas esperando" filtraba por `entered_call_at` (mostraba 13 en

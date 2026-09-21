@@ -14,10 +14,18 @@
 // interconsulta.
 import { useState } from 'react'
 import CedulaField from './CedulaField'
+import PhoneField from './PhoneField'
 import { useEscapeToClose } from '../lib/hooks'
 import { createDoctorPatient, type DoctorPatient } from '../lib/doctorPatients'
 
-const VACIO = { full_name: '', edad: '', cedula: '', allergies: '', description: '' }
+const VACIO = {
+  full_name: '',
+  edad: '',
+  cedula: '',
+  allergies: '',
+  description: '',
+  emergency_phone: ''
+}
 
 interface Props {
   token: string
@@ -52,6 +60,7 @@ export default function RegistrarPacienteModal({ token, onClose, onCreated }: Pr
           // Sin el interruptor activo no se manda nada, aunque haya quedado texto escrito.
           allergies: (hasAllergy && form.allergies.trim()) || null,
           description: form.description.trim() || null,
+          emergency_phone: form.emergency_phone.trim() || null,
           consent
         },
         token
@@ -112,6 +121,12 @@ export default function RegistrarPacienteModal({ token, onClose, onCreated }: Pr
             label="Cédula / DNI"
             value={form.cedula}
             onChange={(v) => setForm((f) => ({ ...f, cedula: v }))}
+          />
+
+          <PhoneField
+            label="Teléfono de emergencia de un familiar (opcional)"
+            value={form.emergency_phone}
+            onChange={(v) => setForm((f) => ({ ...f, emergency_phone: v }))}
           />
 
           <div>

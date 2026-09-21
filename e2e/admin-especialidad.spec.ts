@@ -13,6 +13,8 @@ async function seedConsultation(): Promise<void> {
     data: {
       full_name: 'E2E Paciente Especialidad',
       phone_whatsapp: '+584120000011',
+      emergency_phone: '+584140000011',
+      address_encrypted: 'v1:dGVzdCBjaXBoZXJ0ZXh0',
       affected_zone: 'Caracas',
       consent: true
     }

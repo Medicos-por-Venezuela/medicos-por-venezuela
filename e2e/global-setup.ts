@@ -14,7 +14,9 @@ const ROOT = path.join(__dirname, '..')
 const DB_CONTAINER = 'supabase_db_api-medicos-por-venezuela'
 
 function envVar(key: string): string {
-  const raw = readFileSync(path.join(ROOT, '.env'), 'utf8')
+  // Sin BOM: editar `.env` con PowerShell (Set-Content -Encoding UTF8) lo agrega y la primera
+  // clave dejaría de matchear (el parseo a mano no lo ignora como sí hace Next).
+  const raw = readFileSync(path.join(ROOT, '.env'), 'utf8').replace(/^\uFEFF/, '')
   const line = raw.split(/\r?\n/).find((l) => l.startsWith(`${key}=`))
   if (!line) throw new Error(`Falta ${key} en .env`)
   return line.slice(key.length + 1).trim()

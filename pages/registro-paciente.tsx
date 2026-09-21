@@ -12,6 +12,7 @@ import { fetchSpecialties, type SpecialtyResponse } from '../lib/doctors'
 import { createConsultation, createPatient, ApiError } from '../lib/patients'
 import { useMountEffect } from '../lib/hooks'
 import { trackSolicitudDeConsulta } from '../lib/analytics'
+import { encryptAddress } from '../lib/patientAddressCrypto'
 import AceptaTerminos, { MENSAJE_TERMINOS } from '../components/AceptaTerminos'
 import CedulaField from '../components/CedulaField'
 import PhoneField from '../components/PhoneField'
@@ -44,6 +45,12 @@ const adultSchema = z
     cedula: z.string().regex(CEDULA_REGEX, 'Ingresa un número de cédula válido (ej. V-12345678).'),
     fullName: z.string().trim().min(2, 'Completa tu nombre completo.'),
     phone: z.string().regex(PHONE_REGEX, 'Ingresa un número de WhatsApp válido.'),
+    emergencyPhone: z.string().regex(PHONE_REGEX, 'Ingresa un teléfono de emergencia válido.'),
+    address: z
+      .string()
+      .trim()
+      .min(5, 'Ingresa la dirección de residencia.')
+      .max(300, 'La dirección no puede superar 300 caracteres.'),
     zona: z.string().min(1, 'Selecciona la zona.'),
     edad: z.string().refine(edadEnRango(18, 120), 'La edad debe estar entre 18 y 120 años.'),
     authedPatient: z.boolean(),
@@ -78,6 +85,10 @@ const adultSchema = z
     path: ['consent']
   })
   .refine((d) => d.terminos, { message: MENSAJE_TERMINOS, path: ['terminos'] })
+  .refine((d) => d.emergencyPhone !== d.phone, {
+    message: 'El teléfono de emergencia debe ser distinto al de WhatsApp.',
+    path: ['emergencyPhone']
+  })
 
 // Rama menor de edad (representante + menor).
 const minorSchema = z
@@ -89,6 +100,14 @@ const minorSchema = z
     gPhone: z
       .string()
       .regex(PHONE_REGEX, 'Ingresa un número de WhatsApp válido para el representante.'),
+    gEmergencyPhone: z
+      .string()
+      .regex(PHONE_REGEX, 'Ingresa un teléfono de emergencia válido para el representante.'),
+    gAddress: z
+      .string()
+      .trim()
+      .min(5, 'Ingresa la dirección de residencia del representante.')
+      .max(300, 'La dirección no puede superar 300 caracteres.'),
     gRelationship: z.string().min(1, 'Selecciona el parentesco con el menor.'),
     authedPatient: z.boolean(),
     gEmail: z.string(),
@@ -127,6 +146,10 @@ const minorSchema = z
     path: ['consent']
   })
   .refine((d) => d.terminos, { message: MENSAJE_TERMINOS, path: ['terminos'] })
+  .refine((d) => d.gEmergencyPhone !== d.gPhone, {
+    message: 'El teléfono de emergencia debe ser distinto al de WhatsApp.',
+    path: ['gEmergencyPhone']
+  })
 
 export default function RegistroPaciente() {
   const router = useRouter()
@@ -146,6 +169,8 @@ export default function RegistroPaciente() {
   const [cedula, setCedula] = useState('')
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
+  const [emergencyPhone, setEmergencyPhone] = useState('')
+  const [address, setAddress] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [edad, setEdad] = useState('')
@@ -158,6 +183,8 @@ export default function RegistroPaciente() {
   const [gCedula, setGCedula] = useState('')
   const [gFullName, setGFullName] = useState('')
   const [gPhone, setGPhone] = useState('')
+  const [gEmergencyPhone, setGEmergencyPhone] = useState('')
+  const [gAddress, setGAddress] = useState('')
   const [gEmail, setGEmail] = useState('')
   const [gPassword, setGPassword] = useState('')
   const [gRelationship, setGRelationship] = useState('')
@@ -203,9 +230,9 @@ export default function RegistroPaciente() {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) setAuthedPatient(true)
     })
-    fetchSpecialties().then((list) => {
-      // Sin "Otra" (`is_placeholder`): no es la cola de ningún médico, así que un caso con ella no
-      // lo vería nadie. Quien no sabe su especialidad cae en Medicina general.
+    fetchSpecialties(false, true).then((list) => {
+      // El backend ya deja solo las colas con al menos un médico habilitado (misma condición que
+      // la derivación); acá se quita "Otra" (`is_placeholder`), que no es la cola de nadie.
       const activas = list.filter((s) => s.status === 'active' && !s.is_placeholder)
       setSpecialties(activas)
       preseleccionarPsicologia(activas)
@@ -228,6 +255,8 @@ export default function RegistroPaciente() {
     setCedula('')
     setFullName('')
     setPhone('')
+    setEmergencyPhone('')
+    setAddress('')
     setEmail('')
     setPassword('')
     setEdad('')
@@ -245,6 +274,8 @@ export default function RegistroPaciente() {
           gCedula,
           gFullName,
           gPhone,
+          gEmergencyPhone,
+          gAddress,
           gRelationship,
           authedPatient,
           gEmail,
@@ -263,6 +294,8 @@ export default function RegistroPaciente() {
           cedula,
           fullName,
           phone,
+          emergencyPhone,
+          address,
           zona,
           edad,
           authedPatient,
@@ -342,6 +375,19 @@ export default function RegistroPaciente() {
         return // el `finally` de abajo ya resetea `loading`
       }
 
+      // Cifrar la dirección UNA vez (la del adulto / representante). Si falla (entorno sin clave),
+      // mostramos el error y NO enviamos el formulario.
+      let address_encrypted: string
+      try {
+        address_encrypted = await encryptAddress(isMinor ? gAddress : address)
+      } catch (e) {
+        setError(
+          e instanceof Error ? e.message : 'No se pudo cifrar la dirección. Contacta a soporte.'
+        )
+        setLoading(false)
+        return
+      }
+
       let patientId: string
       let patientName: string
       if (isMinor) {
@@ -352,6 +398,8 @@ export default function RegistroPaciente() {
           full_name: gFullName.trim(),
           cedula: gCedula,
           phone_whatsapp: gPhone,
+          emergency_phone: gEmergencyPhone,
+          address_encrypted,
           email: contactEmail || null,
           affected_zone: zona,
           consent: true
@@ -360,6 +408,8 @@ export default function RegistroPaciente() {
           full_name: mFullName.trim(),
           cedula: mCedula || null,
           phone_whatsapp: gPhone,
+          emergency_phone: gEmergencyPhone,
+          address_encrypted,
           email: contactEmail || null,
           affected_zone: zona,
           age_range: mEdad || null,
@@ -376,6 +426,8 @@ export default function RegistroPaciente() {
           full_name: fullName.trim(),
           cedula,
           phone_whatsapp: phone,
+          emergency_phone: emergencyPhone,
+          address_encrypted,
           email: contactEmail || null,
           affected_zone: zona,
           age_range: edad || null,
@@ -501,6 +553,26 @@ export default function RegistroPaciente() {
                     onChange={setGPhone}
                     required
                   />
+                  <PhoneField
+                    label="Teléfono de emergencia de un familiar"
+                    value={gEmergencyPhone}
+                    onChange={setGEmergencyPhone}
+                    required
+                    placeholder="Ej. 4241234567"
+                    hint="Debe ser el número de otra persona (no el del representante): es a quien llamamos si hay una emergencia."
+                  />
+                  <div>
+                    <label className="label">Dirección de residencia *</label>
+                    <input
+                      value={gAddress}
+                      onChange={(e) => setGAddress(e.target.value)}
+                      maxLength={300}
+                      placeholder="Ej. Calle 123, Urbanización Los Próceres"
+                    />
+                    <div className="hint">
+                      Solo la ve el médico que te atienda. Se guarda cifrada.
+                    </div>
+                  </div>
                   {!authedPatient && (
                     <div className="grid grid-2">
                       <div>
@@ -625,6 +697,26 @@ export default function RegistroPaciente() {
                     />
                   </div>
                   <PhoneField label="WhatsApp" value={phone} onChange={setPhone} required />
+                  <PhoneField
+                    label="Teléfono de emergencia de un familiar"
+                    value={emergencyPhone}
+                    onChange={setEmergencyPhone}
+                    required
+                    placeholder="Ej. 4241234567"
+                    hint="Debe ser el número de otra persona, no el tuyo: es a quien llamamos si hay una emergencia."
+                  />
+                  <div>
+                    <label className="label">Dirección de residencia *</label>
+                    <input
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      maxLength={300}
+                      placeholder="Ej. Calle 123, Urbanización Los Próceres"
+                    />
+                    <div className="hint">
+                      Solo la ve el médico que te atienda. Se guarda cifrada.
+                    </div>
+                  </div>
                   {!authedPatient && (
                     <div className="grid grid-2">
                       <div>
@@ -749,7 +841,10 @@ export default function RegistroPaciente() {
                 />
                 <span>
                   Acepto compartir voluntariamente esta información para recibir orientación médica
-                  solidaria. Entiendo que la atención es por videoconsulta, que el seguimiento
+                  solidaria. Entiendo que se me pide un teléfono de emergencia de un familiar
+                  (distinto al de WhatsApp) y mi dirección de residencia para poder actuar en una
+                  emergencia, que la dirección se guarda cifrada de extremo a extremo (nadie en la
+                  plataforma puede leerla), que la atención es por videoconsulta, que el seguimiento
                   podría continuar por teléfono si fuese necesario, y que esto no reemplaza atención
                   presencial ni servicios de emergencia.
                 </span>

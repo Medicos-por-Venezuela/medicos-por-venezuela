@@ -23,6 +23,14 @@ test('registro adulto por UI: formulario → signup → sala de espera en cola',
   await page.locator('input[type="email"]').fill(`e2e-paciente-${Date.now()}@example.com`)
   await page.locator('input[type="password"]').fill('e2e-Test-123456')
 
+  // Teléfono de emergencia (distinto al WhatsApp).
+  await page.getByPlaceholder('Ej. 4241234567').fill('4240000034')
+
+  // Dirección de residencia (obligatoria).
+  await page
+    .getByPlaceholder('Ej. Calle 123, Urbanización Los Próceres')
+    .fill('Calle 123, Urbanización Los Próceres, Caracas')
+
   // Único select con "Selecciona..." en la rama adulto (cédula y teléfono tienen V/E y +58).
   // selectOption espera a que el catálogo de zonas cargue del backend antes de elegir.
   const zona = page.locator('select', {
