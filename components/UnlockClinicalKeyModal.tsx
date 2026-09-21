@@ -1,4 +1,4 @@
-// Modal para desbloquear la clave clínica con passphrase.
+// Modal para desbloquear la clave clínica con la clave de descifrado.
 // Patrón de overlay role="dialog" + useEscapeToClose (ver ConsultationsMonitorModal.tsx / DoctorPoolModal.tsx).
 import { useState } from 'react'
 import { useMountEffect } from '../lib/hooks'
@@ -16,7 +16,7 @@ export default function UnlockClinicalKeyModal({ open, onClose, onUnlocked }: Pr
 }
 
 function Dialog({ onClose, onUnlocked }: { onClose: () => void; onUnlocked: () => void }) {
-  const [passphrase, setPassphrase] = useState('')
+  const [clave, setClave] = useState('')
   const [error, setError] = useState('')
   const [processing, setProcessing] = useState(false)
 
@@ -32,7 +32,7 @@ function Dialog({ onClose, onUnlocked }: { onClose: () => void; onUnlocked: () =
   // Limpia input y error al desmontar (cuando open pasa a false).
   useMountEffect(() => {
     return () => {
-      setPassphrase('')
+      setClave('')
       setError('')
     }
   })
@@ -40,11 +40,11 @@ function Dialog({ onClose, onUnlocked }: { onClose: () => void; onUnlocked: () =
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
-    if (!passphrase.trim()) return
+    if (!clave.trim()) return
     setProcessing(true)
     try {
-      await unlockClinicalKey(passphrase.trim())
-      setPassphrase('')
+      await unlockClinicalKey(clave)
+      setClave('')
       onUnlocked()
       onClose()
     } catch (e) {
@@ -74,14 +74,15 @@ function Dialog({ onClose, onUnlocked }: { onClose: () => void; onUnlocked: () =
       <div
         className="card"
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 420, width: '100%' }}
+        style={{ maxWidth: 460, width: '100%' }}
       >
         <h2 id="unlock-title" style={{ marginTop: 0 }}>
-          Desbloquear dirección del paciente
+          Ver dirección del paciente
         </h2>
         <p style={{ color: '#64748b', fontSize: 13, marginTop: -6 }}>
-          La dirección está cifrada de extremo a extremo. Introduce la passphrase clínica para
-          descifrarla.
+          La dirección está guardada cifrada: solo se puede leer con la clave de descifrado. La
+          clave la reparte la organización (no es tu contraseña de la plataforma) y no se envía al
+          servidor.
         </p>
         {error && (
           <div className="notice notice-danger" style={{ marginTop: 12 }}>
@@ -90,15 +91,15 @@ function Dialog({ onClose, onUnlocked }: { onClose: () => void; onUnlocked: () =
         )}
         <form onSubmit={handleSubmit} style={{ marginTop: 16 }}>
           <label className="label" htmlFor="clinical-passphrase">
-            Passphrase clínica
+            Clave de descifrado
           </label>
           <input
             id="clinical-passphrase"
             type="password"
             autoComplete="off"
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-            placeholder="Passphrase clínica"
+            value={clave}
+            onChange={(e) => setClave(e.target.value)}
+            placeholder="Clave de descifrado"
             style={{ width: '100%', marginBottom: 16 }}
             disabled={processing}
             autoFocus
@@ -108,15 +109,15 @@ function Dialog({ onClose, onUnlocked }: { onClose: () => void; onUnlocked: () =
               type="submit"
               className="btn btn-primary"
               style={{ marginLeft: 'auto' }}
-              disabled={processing || !passphrase.trim()}
+              disabled={processing || !clave.trim()}
             >
-              {processing ? 'Desbloqueando...' : 'Desbloquear'}
+              {processing ? 'Verificando...' : 'Desbloquear'}
             </button>
             <button
               type="button"
               className="btn btn-muted"
               onClick={() => {
-                setPassphrase('')
+                setClave('')
                 setError('')
                 onClose()
               }}
@@ -127,7 +128,7 @@ function Dialog({ onClose, onUnlocked }: { onClose: () => void; onUnlocked: () =
           </div>
         </form>
         <p style={{ marginTop: 16, fontSize: 12, color: '#64748b', textAlign: 'center' }}>
-          La clave nunca sale de este navegador.
+          La clave se queda en este navegador; no se guarda en el servidor.
         </p>
       </div>
     </div>

@@ -4,14 +4,15 @@
 // - La dirección se cifra en el NAVEGADOR con la clave PÚBLICA clínica (sealed box X25519,
 //   libsodium): la API solo almacena y entrega el texto cifrado ("v1:<base64>"), nunca puede
 //   leerlo.
-// - La clave PRIVADA llega envuelta con una passphrase (PBKDF2-SHA256 + AES-256-GCM, WebCrypto
-//   nativo) y solo se abre en el navegador. La passphrase jamás se envía al servidor.
-// - Las dos envs son NEXT_PUBLIC_ a propósito: la pública es pública y la envuelta sin la
-//   passphrase no sirve. La passphrase NO vive en el repo ni en el bundle.
+// - La clave PRIVADA llega envuelta con una clave de descifrado (PBKDF2-SHA256 + AES-256-GCM,
+//   WebCrypto nativo) y solo se abre en el navegador. La clave de descifrado jamás se envía al
+//   servidor.
+// - Las dos envs son NEXT_PUBLIC_ a propósito: la pública es pública y la envuelta sin la clave
+//   de descifrado no sirve. La clave NO vive en el repo ni en el bundle.
 //
 // PBKDF2 y no Argon2id: `libsodium-wrappers@0.8.4` no expone `crypto_pwhash` (el build real no
-// lo trae, aunque sus tipos lo declaren), y la passphrase es aleatoria de 144 bits, así que el
-// costo del KDF no es la barrera principal. WebCrypto es nativo y no agrega dependencias.
+// lo trae, aunque sus tipos lo declaren), y la clave de descifrado es aleatoria de 144 bits, así
+// que el costo del KDF no es la barrera principal. WebCrypto es nativo y no agrega dependencias.
 import type * as SodiumNS from 'libsodium-wrappers'
 
 const PUBLIC_KEY_B64 = process.env.NEXT_PUBLIC_CLINICAL_PUBLIC_KEY || ''
@@ -61,13 +62,10 @@ function currentPrivateKey(): Uint8Array | null {
   return null
 }
 
-async function deriveWrappingKey(
-  passphrase: string,
-  salt: Uint8Array<ArrayBuffer>
-): Promise<CryptoKey> {
+async function deriveWrappingKey(clave: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey(
     'raw',
-    new TextEncoder().encode(passphrase),
+    new TextEncoder().encode(clave),
     'PBKDF2',
     false,
     ['deriveKey']
@@ -102,20 +100,32 @@ export function lockClinicalKey(): void {
 }
 
 /**
- * Abre la clave privada con la passphrase y la deja disponible en esta pestaña.
- * Lanza un Error con mensaje legible si la passphrase es incorrecta o el entorno no está
+ * La clave de descifrado se compara sin acentos y sin espacios sobrantes: la organización la
+ * reparte en mayúsculas/minúsculas y a mano, y un acento tecleado distinto no debe dejar al
+ * médico fuera de la dirección. La MISMA normalización se aplica al generar la clave envuelta.
+ */
+function normalizeClave(value: string): string {
+  return value
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+/**
+ * Abre la clave privada con la clave de descifrado y la deja disponible en esta pestaña.
+ * Lanza un Error con mensaje legible si la clave es incorrecta o el entorno no está
  * configurado; nunca envía nada por la red.
  */
-export async function unlockClinicalKey(passphrase: string): Promise<void> {
+export async function unlockClinicalKey(clave: string): Promise<void> {
   if (!clinicalKeyConfigured()) {
-    throw new Error('La clave clínica no está configurada en este entorno.')
+    throw new Error('La clave de descifrado no está configurada en este entorno.')
   }
   const [version, saltB64, ivB64, ciphertextB64] = WRAPPED_KEY.split(':')
   if (version !== 'v1' || !saltB64 || !ivB64 || !ciphertextB64) {
-    throw new Error('La clave clínica está mal formada.')
+    throw new Error('La clave de descifrado está mal formada.')
   }
 
-  const wrappingKey = await deriveWrappingKey(passphrase, base64ToBytes(saltB64))
+  const wrappingKey = await deriveWrappingKey(normalizeClave(clave), base64ToBytes(saltB64))
   let privateKey: Uint8Array
   try {
     const plain = await crypto.subtle.decrypt(
@@ -125,7 +135,7 @@ export async function unlockClinicalKey(passphrase: string): Promise<void> {
     )
     privateKey = new Uint8Array(plain)
   } catch {
-    throw new Error('Passphrase incorrecta.')
+    throw new Error('La clave no es correcta.')
   }
 
   // Verificación fuerte: la pública derivada de la privada debe ser la configurada. Si no,
@@ -137,7 +147,7 @@ export async function unlockClinicalKey(passphrase: string): Promise<void> {
     derivedPublic.length !== expected.length ||
     !derivedPublic.every((byte, index) => byte === expected[index])
   ) {
-    throw new Error('La passphrase no corresponde a la clave de este entorno.')
+    throw new Error('La clave no corresponde a este entorno.')
   }
 
   cachedPrivateKey = privateKey
@@ -155,7 +165,7 @@ export async function unlockClinicalKey(passphrase: string): Promise<void> {
 export async function encryptAddress(address: string): Promise<string> {
   if (!clinicalKeyConfigured()) {
     throw new Error(
-      'La dirección no se puede cifrar: falta configurar la clave clínica del entorno.'
+      'La dirección no se puede cifrar: falta configurar la clave de descifrado del entorno.'
     )
   }
   const sodium = await getSodium()
@@ -167,8 +177,8 @@ export async function encryptAddress(address: string): Promise<string> {
 }
 
 /**
- * Descifra una dirección. Devuelve `null` si la clave está bloqueada (la UI debe pedir la
- * passphrase) y lanza si la ciphertext no es del formato v1 o no fue cifrada para esta clave.
+ * Descifra una dirección. Devuelve `null` si la clave está bloqueada (la UI debe pedir la clave
+ * de descifrado) y lanza si la ciphertext no es del formato v1 o no fue cifrada para esta clave.
  */
 export async function decryptAddress(ciphertext: string): Promise<string | null> {
   const privateKey = currentPrivateKey()

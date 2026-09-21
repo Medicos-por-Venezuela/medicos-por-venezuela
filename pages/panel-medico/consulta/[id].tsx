@@ -848,6 +848,7 @@ export default function ConsultaDetalle() {
                 <h2 style={{ marginTop: 0 }}>Dirección</h2>
                 <p style={{ color: '#64748b', fontSize: 13, marginTop: -6 }}>
                   Esta dirección va cifrada de extremo a extremo; solo la ve el médico tratante.
+                  Para leerla necesitas la clave de descifrado.
                 </p>
                 {!address && !addressLoading && !addressError && (
                   <button

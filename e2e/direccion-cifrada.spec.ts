@@ -1,8 +1,8 @@
-// Flujo E2E de la dirección cifrada E2E: paciente se registra con dirección;
+﻿// Flujo E2E de la dirección cifrada E2E: paciente se registra con dirección;
 // un médico toma el caso; en el detalle aparece "Ver dirección"; al pulsar pide
-// la passphrase; con process.env.E2E_CLINICAL_PASSPHRASE se desbloquea y se ve la dirección.
+// la clave de descifrado; con process.env.E2E_CLINICAL_KEY se desbloquea y se ve la dirección.
 //
-// Si E2E_CLINICAL_PASSPHRASE no está disponible en el proceso de Playwright,
+// Si E2E_CLINICAL_KEY no está disponible en el proceso de Playwright,
 // el test se salta (test.skip) con comentario explicando cómo configurarla.
 import { test, expect } from '@playwright/test'
 
@@ -12,21 +12,21 @@ const DIRECCION = 'Av. Principal de Las Mercedes, Edificio Centro Médico, Piso 
 const EMERGENCY_PHONE = '4240000099'
 const WHATSAPP_PHONE = '4120000099'
 
-// La passphrase clínica se inyecta vía variable de entorno en el runner de Playwright
+// La clave de descifrado se inyecta vía variable de entorno en el runner de Playwright
 // (p. ej. GitHub Actions secret, o .env.local en la máquina del dev).
-// En local: `E2E_CLINICAL_PASSPHRASE=tu-passphrase pnpm test:e2e --project=chromium -- e2e/direccion-cifrada.spec.ts`
-const CLINICAL_PASSPHRASE = process.env.E2E_CLINICAL_PASSPHRASE
+// En local: `E2E_CLINICAL_KEY=tu-clave pnpm test:e2e --project=chromium -- e2e/direccion-cifrada.spec.ts`
+const CLINICAL_KEY = process.env.E2E_CLINICAL_KEY
 
 test.describe('Dirección cifrada E2E', () => {
   test.describe.configure({ mode: 'serial' })
 
-  if (!CLINICAL_PASSPHRASE) {
+  if (!CLINICAL_KEY) {
     test.skip(
       true,
-      'E2E_CLINICAL_PASSPHRASE no está configurada. ' +
-        'Para ejecutar este test, define la variable de entorno con la passphrase clínica ' +
+      'E2E_CLINICAL_KEY no está configurada. ' +
+        'Para ejecutar este test, define la variable de entorno con la clave de descifrado ' +
         '(la misma que usan los médicos en producción). Ejemplo: ' +
-        'E2E_CLINICAL_PASSPHRASE=tu-passphrase pnpm test:e2e -- e2e/direccion-cifrada.spec.ts'
+        'E2E_CLINICAL_KEY=tu-clave pnpm test:e2e -- e2e/direccion-cifrada.spec.ts'
     )
   }
 
@@ -89,15 +89,15 @@ test.describe('Dirección cifrada E2E', () => {
     // 5) Verifica que aparece el bloque "Dirección" (solo si can_view_patient_address)
     await expect(panel.getByRole('heading', { name: 'Dirección' })).toBeVisible()
 
-    // 6) Pulsa "Ver dirección" -> debería abrir el modal de passphrase
+    // 6) Pulsa "Ver dirección" -> debería abrir el modal de la clave
     await panel.getByRole('button', { name: 'Ver dirección' }).click()
 
-    // El modal de passphrase debería aparecer
-    const unlockModal = panel.getByRole('dialog', { name: /Desbloquear dirección/ })
+    // El modal de la clave debería aparecer
+    const unlockModal = panel.getByRole('dialog', { name: /Ver dirección del paciente/ })
     await expect(unlockModal).toBeVisible()
 
-    // 7) Introduce la passphrase y desbloquea
-    await unlockModal.getByLabel('Passphrase clínica').fill(CLINICAL_PASSPHRASE!)
+    // 7) Introduce la clave de descifrado y desbloquea
+    await unlockModal.getByLabel('Clave de descifrado').fill(CLINICAL_KEY!)
     await unlockModal.getByRole('button', { name: 'Desbloquear' }).click()
 
     // 8) La dirección debería aparecer en texto plano (solo en memoria del componente)
