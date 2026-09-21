@@ -1,5 +1,9 @@
 # pnpm 10 lee las overrides SOLO desde aquí (ni el `overrides` de raíz de package.json ni el
 # campo `pnpm`). Fuerzan las versiones parcheadas de dos transitivas de `next`.
 overrides:
-  sharp: '>=0.35.0'
+  sharp: '>=0.35.4'
   postcss: '>=8.5.18'
+  # Dev-only (eslint y commitlint lo usan para leer YAML); el parche 4.3.2 no cambia la API.
+  js-yaml: '>=4.3.2'
+  # Transitiva de postcss (build); el parche 3.3.18 es dentro del rango ^3.3.11.
+  nanoid: '>=3.3.18'
