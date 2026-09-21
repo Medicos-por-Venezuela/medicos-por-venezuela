@@ -4,6 +4,9 @@ type PhoneFieldProps = {
   onChange: (value: string) => void
   required?: boolean
   hint?: string
+  // Distinto por campo cuando hay dos teléfonos en el mismo formulario (WhatsApp y emergencia):
+  // los e2e y los tests localizan el input por placeholder.
+  placeholder?: string
 }
 
 // Country dial code + numeric-only body, e.g. "584121234567". Kept as a single
@@ -33,7 +36,14 @@ function splitValue(value: string) {
   return { code: match.code, number: value.slice(match.code.length) }
 }
 
-export default function PhoneField({ label, value, onChange, required, hint }: PhoneFieldProps) {
+export default function PhoneField({
+  label,
+  value,
+  onChange,
+  required,
+  hint,
+  placeholder = 'Ej. 4121234567'
+}: PhoneFieldProps) {
   const { code, number } = splitValue(value)
 
   const emit = (nextCode: string, nextNumber: string) => {
@@ -57,7 +67,7 @@ export default function PhoneField({ label, value, onChange, required, hint }: P
           inputMode="numeric"
           value={number}
           onChange={(e) => emit(code, e.target.value.replace(/\D/g, '').slice(0, 11))}
-          placeholder="Ej. 4121234567"
+          placeholder={placeholder}
         />
       </div>
       {hint && <div className="hint">{hint}</div>}

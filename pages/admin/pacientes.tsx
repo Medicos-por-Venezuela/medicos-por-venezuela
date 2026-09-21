@@ -570,6 +570,14 @@ export default function AdminPacientes() {
                       <div title="Teléfono" style={{ color: '#0f172a', fontWeight: 600 }}>
                         {c.patients?.phone_whatsapp || '—'}
                       </div>
+                      {c.patients?.emergency_phone && (
+                        <div
+                          title="Teléfono de emergencia"
+                          style={{ color: '#0d9488', fontSize: 11 }}
+                        >
+                          Emergencia: {c.patients.emergency_phone}
+                        </div>
+                      )}
                       {c.patients?.cedula && (
                         <div title="Cédula / DNI" style={{ color: '#a16207' }}>
                           {c.patients.cedula}

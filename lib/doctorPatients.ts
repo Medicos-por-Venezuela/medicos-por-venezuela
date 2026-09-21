@@ -19,6 +19,7 @@ export interface DoctorPatientCreate {
   cedula?: string | null
   allergies?: string | null
   description?: string | null
+  emergency_phone?: string | null
   // El médico ATESTIGUA que su paciente autorizó compartir el caso. El backend rechaza `false`.
   consent: boolean
 }

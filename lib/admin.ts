@@ -35,6 +35,7 @@ export type Patient = {
   full_name: string
   cedula: string | null
   phone_whatsapp: string | null
+  emergency_phone?: string | null
   email: string | null
   affected_zone: string | null
   age_range: string | null
