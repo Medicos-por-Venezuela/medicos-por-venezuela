@@ -9,6 +9,8 @@ async function createWaitingConsultation(): Promise<void> {
     data: {
       full_name: 'E2E Paciente Pool',
       phone_whatsapp: '+584120000009',
+      emergency_phone: '+584140000009',
+      address_encrypted: 'v1:dGVzdCBjaXBoZXJ0ZXh0',
       affected_zone: 'Caracas',
       consent: true
     }

@@ -20,6 +20,8 @@ test('la tarjeta del panel muestra días y horas, no minutos crudos', async ({ b
     data: {
       full_name: PACIENTE,
       phone_whatsapp: '+584120000077',
+      emergency_phone: '+584140000077',
+      address_encrypted: 'v1:dGVzdCBjaXBoZXJ0ZXh0',
       affected_zone: 'Caracas',
       consent: true
     }

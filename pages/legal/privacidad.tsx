@@ -19,7 +19,7 @@ import Footer from '../../components/home/Footer'
 import Navbar from '../../components/home/Navbar'
 import { MARCA } from '../../components/home/copy'
 
-const ACTUALIZADO = '14 de septiembre de 2026'
+const ACTUALIZADO = '20 de septiembre de 2026'
 const CORREO_LEGAL = 'legal@medicosporvenezuela.org'
 
 export default function TerminosPrivacidadPage() {
@@ -118,14 +118,17 @@ export default function TerminosPrivacidadPage() {
             <ul>
               <li>
                 <strong>De los pacientes:</strong> nombre completo, cédula, número de WhatsApp,
-                correo electrónico, zona, edad, alergias y la descripción del motivo de la consulta.
-                Durante la atención, también el estado del caso y las notas del profesional que le
-                atiende.
+                teléfono de emergencia de un familiar (distinto del de WhatsApp), dirección de
+                residencia, correo electrónico, zona, edad, alergias y la descripción del motivo de
+                la consulta. El teléfono de emergencia de un familiar y la dirección se piden para
+                poder actuar en una emergencia. Durante la atención, también el estado del caso y
+                las notas del profesional que le atiende.
               </li>
               <li>
                 <strong>De los menores de edad:</strong> la consulta la solicita un adulto
-                responsable, que proporciona sus propios datos, los del menor y su parentesco con
-                él, y acepta estos términos en su nombre.
+                responsable, que proporciona sus propios datos (incluidos su teléfono de emergencia
+                y su dirección de residencia), los del menor y su parentesco con él, y acepta estos
+                términos en su nombre.
               </li>
               <li>
                 <strong>De los profesionales de la salud:</strong> tipo de profesional, cédula,
@@ -179,8 +182,14 @@ export default function TerminosPrivacidadPage() {
                 atiende: zona, edad, alergias y el motivo de la consulta, sin su nombre.
               </li>
               <li>
-                Su nombre, su cédula y su número de teléfono solo los ven el profesional que toma su
-                consulta y el equipo de administración de la Plataforma.
+                Su nombre, su cédula, su número de WhatsApp y el teléfono de emergencia de un
+                familiar solo los ven el profesional que toma su consulta y el equipo de
+                administración de la Plataforma.
+              </li>
+              <li>
+                Su dirección de residencia solo la ve el profesional que toma su consulta y la
+                responsable de protección de datos de la Plataforma. La dirección se guarda cifrada
+                de extremo a extremo: ni el equipo técnico ni la base de datos pueden leerla.
               </li>
               <li>
                 Si su médico pide una interconsulta, el especialista que la atiende solo ve el
@@ -253,6 +262,11 @@ export default function TerminosPrivacidadPage() {
               </li>
               <li>Almacenamiento seguro y revisiones periódicas.</li>
               <li>Políticas internas de confidencialidad.</li>
+              <li>
+                Cifrado de extremo a extremo de la dirección de residencia: el servidor solo
+                almacena texto cifrado que no puede descifrar; la clave privada nunca sale del
+                navegador del personal autorizado.
+              </li>
             </ul>
             <p>
               Ningún sistema es 100 % seguro. Le recomendamos usar contraseñas fuertes y no

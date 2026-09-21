@@ -75,6 +75,15 @@ test('registro de paciente: sin aceptar los términos no se envía nada, y el en
   await page.getByPlaceholder('Ej. 4121234567').fill('4120000036')
   await page.locator('input[type="email"]').fill(`e2e-terminos-${Date.now()}@example.com`)
   await page.locator('input[type="password"]').fill('e2e-Test-123456')
+
+  // Teléfono de emergencia (distinto al WhatsApp).
+  await page.getByPlaceholder('Ej. 4241234567').fill('4240000036')
+
+  // Dirección de residencia (obligatoria).
+  await page
+    .getByPlaceholder('Ej. Calle 123, Urbanización Los Próceres')
+    .fill('Calle 123, Urbanización Los Próceres, Caracas')
+
   await page
     .locator('select', { has: page.locator('option', { hasText: 'Selecciona...' }) })
     .selectOption({ index: 1 })

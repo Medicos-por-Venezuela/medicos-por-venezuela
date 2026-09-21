@@ -117,8 +117,18 @@ export async function fetchProfessionalTypes(): Promise<ProfessionalTypeResponse
 // `forInterconsultation` deja solo las que se pueden pedir en una interconsulta (excluye
 // Medicina general). El filtro lo aplica el BACKEND desde la columna del catálogo: no se filtra
 // acá por nombre, que es justo lo que rompería un rename.
-export async function fetchSpecialties(forInterconsultation = false): Promise<SpecialtyResponse[]> {
-  const qs = forInterconsultation ? '?for_interconsultation=true&limit=100' : ''
+// `withDoctors=true` deja solo las especialidades con al menos un médico habilitado mirando esa
+// cola (misma condición que la derivación): es el selector del registro de pacientes. Sin él, el
+// catálogo completo sigue disponible para el resto del panel.
+export async function fetchSpecialties(
+  forInterconsultation = false,
+  withDoctors = false
+): Promise<SpecialtyResponse[]> {
+  const params = new URLSearchParams()
+  if (forInterconsultation) params.set('for_interconsultation', 'true')
+  if (withDoctors) params.set('with_doctors', 'true')
+  const query = params.toString()
+  const qs = query ? `?${query}&limit=100` : ''
   return getJson<SpecialtyResponse[]>(
     `/api/v1/specialties${qs}`,
     'No se pudo cargar el catálogo de especialidades'
