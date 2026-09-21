@@ -35,6 +35,8 @@ test('paciente conectado en sala → el médico lo ve en línea (Realtime Presen
     data: {
       full_name: 'E2E Paciente EnLinea',
       phone_whatsapp: '+584120000021',
+      emergency_phone: '+584140000021',
+      address_encrypted: 'v1:dGVzdCBjaXBoZXJ0ZXh0',
       affected_zone: 'Caracas',
       consent: true
     }

@@ -17,6 +17,7 @@ import {
   fetchMyProfile,
   referToQueue,
   scheduleFollowUp,
+  startConsultation,
   updateConsultation,
   type ConsultationDetail,
   type ConsultationEventItem,
@@ -601,12 +602,25 @@ export default function ConsultaDetalle() {
     }
   }
 
-  // "Unirse a videoconsulta": la atención es siempre por video. Si el caso no tiene sala (casos
-  // tomados antes por WhatsApp), se crea ahora. La ventana se abre dentro del clic de "Entendido".
+  // "Unirse a videoconsulta": la atención es siempre por video. Una cita AGENDADA se inicia aquí
+  // (`scheduled` → `in_progress` + sala): es el clic que además dispara el correo "tu médico ya
+  // está en la sala" al paciente, igual que el claim de la cola. Si el caso no tiene sala (tomado
+  // antes por WhatsApp), se crea ahora. La ventana se abre dentro del clic de "Entendido".
   async function joinVideo() {
     if (!consultation) return
     let room = consultation.video_room_url
-    if (!room) {
+    if (consultation.status === 'scheduled') {
+      try {
+        const started = await startConsultation(consultation.id, await getAccessToken())
+        room = started.video_room_url
+        setConsultation((prev) =>
+          prev ? { ...prev, status: started.status, video_room_url: room } : prev
+        )
+      } catch (e) {
+        setMessage(e instanceof Error ? e.message : 'No se pudo iniciar la cita agendada.')
+        return
+      }
+    } else if (!room) {
       try {
         const { data } = await supabase.auth.getSession()
         room =

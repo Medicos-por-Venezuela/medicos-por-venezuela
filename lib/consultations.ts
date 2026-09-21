@@ -351,6 +351,19 @@ export async function fetchAgenda(token: string): Promise<AgendaConsultation[]> 
   )
 }
 
+// POST /consultations/{id}/start — abre una cita AGENDADA: la pasa a `in_progress` y le crea la
+// sala de video si falta. Es el equivalente al claim de la cola para la Agenda, y el backend
+// encola el correo "tu médico ya está en la sala" al paciente. 409 si ya no está agendada
+// (doble clic) o si es de otro médico.
+export async function startConsultation(id: string, token: string): Promise<AgendaConsultation> {
+  return postJson<AgendaConsultation>(
+    `/api/v1/consultations/${id}/start`,
+    {},
+    'No se pudo iniciar la cita agendada',
+    token
+  )
+}
+
 // GET /consultations/{id}/chain — historial de la cadena de seguimiento (padre→hijas).
 export async function fetchChain(id: string, token: string): Promise<ChainItem[]> {
   return getJson<ChainItem[]>(

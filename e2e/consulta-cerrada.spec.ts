@@ -30,6 +30,8 @@ async function seedClaimedConsultation(token: string): Promise<string> {
     data: {
       full_name: 'E2E Paciente Cerrado',
       phone_whatsapp: '+584120000010',
+      emergency_phone: '+584140000010',
+      address_encrypted: 'v1:dGVzdCBjaXBoZXJ0ZXh0',
       affected_zone: 'Caracas',
       consent: true
     }

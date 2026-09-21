@@ -96,6 +96,8 @@ export async function crearConsultaEnEspera(
     data: {
       full_name: marcador,
       phone_whatsapp: '+584120000055',
+      emergency_phone: '+584140000055',
+      address_encrypted: 'v1:dGVzdCBjaXBoZXJ0ZXh0',
       affected_zone: 'Caracas',
       consent: true
     }

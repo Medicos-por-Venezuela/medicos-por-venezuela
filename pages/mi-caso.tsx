@@ -16,11 +16,11 @@ import { browserRoomUrl } from '../lib/jitsi'
 import { trackPatientInRoom } from '../lib/patientPresence'
 import { useWaitingRoom, type WaitingRoomState } from '../lib/waitingRoom'
 
-// Casos que siguen abiertos para el paciente: en cola o en atención. Solo en esos se sigue la sala
-// en vivo; el botón de entrar lo decide la sala (`phase === 'ready'`, un médico tomó el caso), no
-// que la consulta tenga `video_room_url` — la tenían desde el registro y el paciente entraba a una
-// videollamada vacía.
-const CASO_ABIERTO = new Set(['waiting', 'in_progress', 'contacted_whatsapp'])
+// Casos en los que el paciente sigue la sala en vivo: en cola, en atención o CITA AGENDADA (el
+// médico la inicia al entrar a la videollamada y la sala pasa a `ready` sin recargar). El botón de
+// entrar lo decide la sala (`phase === 'ready'`), no que la consulta tenga `video_room_url` — la
+// tenían desde el registro y el paciente entraba a una videollamada vacía.
+const CASO_ABIERTO = new Set(['waiting', 'in_progress', 'contacted_whatsapp', 'scheduled'])
 
 export default function MiCaso() {
   const router = useRouter()
@@ -260,9 +260,16 @@ export default function MiCaso() {
                     </p>
                   )}
                   {/* La sala EN VIVO: dice si ya hay médico y solo entonces ofrece entrar. Es el
-                      enlace permanente a la sala: el de `/sala-espera` vive en aquella pestaña. */}
+                      enlace permanente a la sala: el de `/sala-espera` vive en aquella pestaña.
+                      En una cita agendada no repite el aviso (la tarjeta ya trae la fecha y el
+                      botón de calendario); sí mantiene el stream, que es lo que hace aparecer el
+                      botón apenas el médico inicia la cita. */}
                   {CASO_ABIERTO.has(c.status) && conSesion && (
-                    <SalaDeLaConsulta consultationId={c.id} onEnter={setSalaPendiente} />
+                    <SalaDeLaConsulta
+                      consultationId={c.id}
+                      onEnter={setSalaPendiente}
+                      ocultarAgendada={c.status === 'scheduled'}
+                    />
                   )}
                 </div>
               ))}
@@ -289,15 +296,22 @@ const CON_SESION = { useSession: true }
 
 function SalaDeLaConsulta({
   consultationId,
-  onEnter
+  onEnter,
+  ocultarAgendada
 }: {
   consultationId: string
   onEnter: (state: WaitingRoomState) => void
+  ocultarAgendada?: boolean
 }) {
   const { state, error } = useWaitingRoom(consultationId, CON_SESION)
   return (
     <div style={{ marginTop: 8 }}>
-      <SalaEsperaEnVivo state={state} error={error} onEnter={() => state && onEnter(state)} />
+      <SalaEsperaEnVivo
+        state={state}
+        error={error}
+        onEnter={() => state && onEnter(state)}
+        ocultarAgendada={ocultarAgendada}
+      />
     </div>
   )
 }

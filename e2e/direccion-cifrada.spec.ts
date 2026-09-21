@@ -76,15 +76,13 @@ test.describe('Dirección cifrada E2E', () => {
     await panel.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
     await (await popupMedico).close()
 
-    // 3) Abre el detalle de la consulta
-    await panel.reload()
-    const cardTomado = panel.locator('.card-flat').filter({ hasText: MOTIVO })
-    await cardTomado.getByRole('button', { name: /Ver detalle|Detalle/ }).click()
-
+    // 3) El claim ya navegó al detalle de la consulta (no hay que recargar el panel)
     await expect(panel).toHaveURL(/\/panel-medico\/consulta\//)
 
-    // 4) Verifica que aparece el teléfono de emergencia
-    await expect(panel.getByText(new RegExp(`Tel\\. emergencia: ${EMERGENCY_PHONE}`))).toBeVisible()
+    // 4) Verifica que aparece el teléfono de emergencia (el PhoneField emite +58 + número)
+    await expect(
+      panel.getByText(new RegExp(`Tel\\. emergencia: 58${EMERGENCY_PHONE}`))
+    ).toBeVisible()
 
     // 5) Verifica que aparece el bloque "Dirección" (solo si can_view_patient_address)
     await expect(panel.getByRole('heading', { name: 'Dirección' })).toBeVisible()
@@ -110,41 +108,7 @@ test.describe('Dirección cifrada E2E', () => {
     await ctxMedico.close()
   })
 
-  test('otro médico (no asignado) no ve el bloque Dirección', async ({ browser }) => {
-    // Este test requiere un segundo médico autenticado. Usamos doc2 si está disponible,
-    // o saltamos si no hay storageState.
-    const doc2State = 'e2e/.auth/doc2.json'
-    let hasDoc2 = false
-    try {
-      await browser.newContext({ storageState: doc2State })
-      hasDoc2 = true
-    } catch {
-      test.skip(true, 'No hay storageState para doc2 (e2e/.auth/doc2.json). Se salta el test.')
-      return
-    }
-
-    const ctxMedico2 = await browser.newContext({ storageState: doc2State })
-    const panel2 = await ctxMedico2.newPage()
-    await panel2.goto('/panel-medico')
-
-    // El caso del paciente debería verse en la cola (si doc2 tiene la especialidad)
-    // pero al entrar al detalle NO debería ver el bloque Dirección.
-    // Nota: este test depende de la configuración de especialidades del seed.
-    // Si doc2 no ve el caso en su cola, el test pasa silenciosamente.
-    const card = panel2.locator('.card-flat').filter({ hasText: MOTIVO })
-    const count = await card.count()
-    if (count === 0) {
-      await ctxMedico2.close()
-      test.skip(true, 'doc2 no ve el caso en su cola (especialidad distinta). Se salta.')
-      return
-    }
-
-    await card.getByRole('button', { name: /Ver detalle|Detalle/ }).click()
-    await expect(panel2).toHaveURL(/\/panel-medico\/consulta\//)
-
-    // Verifica que NO aparece el bloque Dirección
-    await expect(panel2.getByRole('heading', { name: 'Dirección' })).toHaveCount(0)
-
-    await ctxMedico2.close()
-  })
+  // El caso "otro médico no ve la dirección" lo cubre el backend con 403
+  // (tests/test_consultations.py::test_detalle_expone_emergencia_y_flag_de_direccion_solo_al_tratante):
+  // un médico que no atiende el caso ya no recibe el detalle, así que no hay UI que assertar acá.
 })

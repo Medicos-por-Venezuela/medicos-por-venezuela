@@ -5,6 +5,19 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-21
+
+- **feat(agenda): iniciar la cita agendada al entrar a la videollamada (y avisar al paciente)** — la
+  hija agendada ya existía, pero nunca pasaba de `scheduled`, así que "Unirse a videoconsulta"
+  fallaba con "La consulta ya no está abierta." (`ensure_video_room` no acepta `scheduled`) y el
+  paciente no veía la sala. Ahora el detalle del médico llama a `POST /consultations/{id}/start`
+  (nuevo `startConsultation` en `lib/consultations.ts`): la cita pasa a `in_progress`, se crea la
+  sala y el backend encola el correo "tu médico ya está en la sala". En `/mi-caso` la tarjeta
+  agendada mantiene la sala en vivo (SSE) pero sin duplicar el aviso de la cita, así el botón
+  "Entrar a la videoconsulta" aparece apenas el médico la inicia. Ficheros:
+  `lib/consultations.ts`, `pages/panel-medico/consulta/[id].tsx`, `pages/mi-caso.tsx`,
+  `components/SalaEsperaEnVivo.tsx`.
+
 ## 2026-09-20
 
 - **feat(pacientes): alta con teléfono de emergencia y dirección cifrada E2E** — el registro

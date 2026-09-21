@@ -16,6 +16,8 @@ test('atender paciente crea la sala en el claim y el detalle muestra Unirse', as
     data: {
       full_name: 'E2E Paciente Video',
       phone_whatsapp: '+584120000013',
+      emergency_phone: '+584140000013',
+      address_encrypted: 'v1:dGVzdCBjaXBoZXJ0ZXh0',
       affected_zone: 'Caracas',
       consent: true
     }

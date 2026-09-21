@@ -15,11 +15,16 @@ function fmtCita(iso: string): string {
 export default function SalaEsperaEnVivo({
   state,
   error,
-  onEnter
+  onEnter,
+  ocultarAgendada = false
 }: {
   state: WaitingRoomState | null
   error: WaitingRoomError
   onEnter: () => void
+  // En `/mi-caso` la tarjeta ya pinta la cita agendada (fecha + "Agregar a calendario"), así que
+  // la nota de la fase `scheduled` sobra. El stream sigue vivo: al iniciar el médico la cita, la
+  // fase pasa a `ready` y el botón de entrar aparece sin recargar.
+  ocultarAgendada?: boolean
 }) {
   let fase = state?.phase ?? 'cargando'
   let content: ReactNode
@@ -60,6 +65,7 @@ export default function SalaEsperaEnVivo({
       </>
     )
   } else if (state.phase === 'scheduled') {
+    if (ocultarAgendada) return null
     content = (
       <div className="notice notice-info" role="status">
         Tienes una cita agendada
