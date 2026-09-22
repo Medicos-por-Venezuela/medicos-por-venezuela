@@ -48,10 +48,10 @@ export interface DoctorResponse {
   id: string
   professional_type_id: string | null
   specialty_id: string | null
-  cedula: string
+  cedula: string | null
   full_name: string
   license: string | null
-  phone: string
+  phone: string | null
   email: string
   country_of_residence: string | null
   verified: boolean
@@ -227,6 +227,15 @@ export async function revealDoctorContact(
     `/api/v1/doctors/${doctorId}/contact`,
     {},
     'No se pudo obtener el contacto',
+    token
+  )
+}
+
+// GET /api/v1/doctors/{id} — ficha de un médico (permiso doctors.read; el super_admin lo tiene).
+export async function fetchDoctor(doctorId: string, token: string): Promise<DoctorResponse> {
+  return getJson<DoctorResponse>(
+    `/api/v1/doctors/${doctorId}`,
+    'No se pudo cargar la ficha del profesional',
     token
   )
 }

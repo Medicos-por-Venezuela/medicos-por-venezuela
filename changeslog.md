@@ -5,6 +5,18 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-22
+
+- **feat(marketing): nombre del profesional clickeable con su ficha y filtro por especialidad** — en
+  `/admin/marketing` el nombre del profesional (columna "Profesional", cruzado por correo con la tabla
+  `doctors`) es ahora un enlace que abre un modal con la ficha completa (cédula, licencia, tipo
+  profesional, especialidad, correo, teléfono, país, estado, credencial verificada, fecha de
+  registro). En la pestaña Especialistas aparece la columna "Especialidad" y un filtro por
+  especialidad (`specialty_id`); al cambiar de pestaña se limpia el filtro para que no quede activo
+  sin su control visible. Ficheros: `lib/doctors.ts`, `lib/marketing.ts`,
+  `components/admin/ReportTable.tsx`, `components/admin/marketing/ProfessionalProfileModal.tsx`,
+  `pages/admin/marketing.tsx`.
+
 ## 2026-09-21
 
 - **feat(agenda): iniciar la cita agendada al entrar a la videollamada (y avisar al paciente)** — la

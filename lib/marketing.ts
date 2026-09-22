@@ -52,6 +52,7 @@ export interface SurveyResponseFilters {
   search?: string // correo
   answered_from?: string // 'YYYY-MM-DD', sobre la última respuesta
   answered_to?: string
+  specialty_id?: string // id de la especialidad principal del médico (solo encuestas que la muestran)
 }
 
 // Los filtros vacíos se OMITEN: `?answered_from=` haría que FastAPI intente parsear '' como fecha
