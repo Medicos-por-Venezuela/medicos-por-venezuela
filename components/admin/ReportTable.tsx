@@ -2,7 +2,8 @@
 // paginación. La usan Reportes y Marketing: las dos pintan lo que venga sin conocer los campos, que
 // es lo que garantiza que la tabla que se ve y el Excel que se descarga tengan las mismas columnas.
 import { useState } from 'react'
-import type { ReportPreview } from '../../lib/reports'
+import type { ReportPreview, ReportColumn } from '../../lib/reports'
+import type { ReactNode } from 'react'
 
 type Row = ReportPreview['rows'][number]
 
@@ -44,7 +45,8 @@ export default function ReportTable({
   onPageChange,
   emptyText,
   rowKey = (_row, index) => String(index),
-  wrapText = false
+  wrapText = false,
+  renderCell
 }: {
   preview: ReportPreview | null
   loading: boolean
@@ -56,6 +58,9 @@ export default function ReportTable({
   // Texto libre largo (las respuestas de una encuesta): las celdas de texto se parten en varias
   // líneas en vez de estirar la tabla a lo ancho. Las fechas nunca se parten.
   wrapText?: boolean
+  // Celda personalizada (p. ej. un nombre clickeable). Si devuelve `undefined`, la celda se
+  // pinta como siempre (texto + "Ver más" para los textos largos).
+  renderCell?: (row: Row, column: ReportColumn, text: string) => ReactNode | undefined
 }) {
   const columns = preview?.columns ?? []
   const total = preview?.total ?? 0
@@ -102,6 +107,7 @@ export default function ReportTable({
                       const cell = `${key}:${c.key}`
                       const long = wrapText && c.kind !== 'datetime' && text.length > PREVIEW_CHARS
                       const open = expanded.has(cell)
+                      const custom = renderCell?.(row, c, text)
                       return (
                         <td
                           key={c.key}
@@ -113,17 +119,23 @@ export default function ReportTable({
                               : { whiteSpace: 'nowrap' }
                           }
                         >
-                          {long && !open ? shorten(text) : text}
-                          {long && (
-                            <button
-                              type="button"
-                              className="link-button"
-                              aria-expanded={open}
-                              onClick={() => toggle(cell)}
-                              style={{ display: 'block', marginTop: 4, fontSize: 13 }}
-                            >
-                              {open ? 'Ver menos' : 'Ver más'}
-                            </button>
+                          {custom !== undefined ? (
+                            custom
+                          ) : (
+                            <>
+                              {long && !open ? shorten(text) : text}
+                              {long && (
+                                <button
+                                  type="button"
+                                  className="link-button"
+                                  aria-expanded={open}
+                                  onClick={() => toggle(cell)}
+                                  style={{ display: 'block', marginTop: 4, fontSize: 13 }}
+                                >
+                                  {open ? 'Ver menos' : 'Ver más'}
+                                </button>
+                              )}
+                            </>
                           )}
                         </td>
                       )

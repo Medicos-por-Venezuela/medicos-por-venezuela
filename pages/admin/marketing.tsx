@@ -3,6 +3,9 @@
 // por correo, rango de fechas y exportación a Excel, y una pestaña de Gráficos con el tablero de la
 // campaña (embudo de Kit a la respuesta, respuestas en el tiempo y qué respondieron).
 //
+// El correo se cruza con la tabla `doctors` para mostrar el nombre del profesional (clickeable,
+// abre su ficha en un modal) y, en la pestaña Especialistas, la columna Especialidad y su filtro.
+//
 // Solo super_admin: el backend lo exige con el permiso `marketing.read`, sembrado para ese único
 // rol, y aquí se refleja para no ofrecer una página que solo puede dar 403 (mismo criterio que
 // /admin/reportes, cuya tabla genérica reutiliza).
@@ -10,6 +13,9 @@ import { useEffect, useState } from 'react'
 import AdminLayout, { AdminLoading } from '../../components/admin/AdminLayout'
 import MarketingDashboard from '../../components/admin/marketing/MarketingDashboard'
 import ReportTable from '../../components/admin/ReportTable'
+import ProfessionalProfileModal, {
+  type ProfessionalRow
+} from '../../components/admin/marketing/ProfessionalProfileModal'
 import { getAccessToken, useAdminGuard } from '../../lib/admin'
 import { ApiError } from '../../lib/apiClient'
 import {
@@ -19,6 +25,7 @@ import {
   SurveyResponseFilters,
   SurveySlug
 } from '../../lib/marketing'
+import { fetchSpecialties, type SpecialtyResponse } from '../../lib/doctors'
 import type { ReportPreview } from '../../lib/reports'
 import { useFilterState } from '../../lib/useFilterState'
 
@@ -56,6 +63,8 @@ export default function AdminMarketing() {
   // La última encuesta abierta, la que enseña la lista al volver desde Gráficos.
   const [survey, setSurvey] = useState<SurveySlug>('psicologos')
   const [totals, setTotals] = useState<Partial<Record<SurveySlug, number>>>({})
+  const [specialties, setSpecialties] = useState<SpecialtyResponse[]>([])
+  const [doctorRow, setDoctorRow] = useState<ProfessionalRow | null>(null)
   const {
     filters,
     setFilter: setFilterValue,
@@ -99,6 +108,24 @@ export default function AdminMarketing() {
     }
   }, [isSuperAdmin])
 
+  // Catálogo de especialidades para el filtro de la pestaña Especialistas. Se carga una sola vez
+  // (misma lógica de `cancelled` que fetchSurveyTotals), descartando las de relleno ("Otra").
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const list = await fetchSpecialties()
+        if (!cancelled) setSpecialties(list.filter((s) => !s.is_placeholder))
+      } catch (e) {
+        console.error(e)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [isSuperAdmin])
+
   function setFilter(key: keyof SurveyResponseFilters, value: string) {
     setFilterValue(key, value)
     setPage(0)
@@ -108,7 +135,12 @@ export default function AdminMarketing() {
   // buscar a una persona en las tres pestañas es justo el uso esperado.
   function switchTab(next: Tab) {
     setTab(next)
+    // La ficha abierta es de la fila que se estaba mirando: cambiar de pestaña la cierra.
+    setDoctorRow(null)
     if (next === CHARTS_TAB || next === survey) return
+    // Si salimos de Especialistas, quitar el filtro de especialidad: el backend lo aplica a
+    // cualquier encuesta y quedaría un filtro invisible sin su control.
+    if (survey === 'especialistas' && next !== 'especialistas') setFilterValue('specialty_id', '')
     setSurvey(next)
     setPage(0)
     setPreview(null)
@@ -253,6 +285,21 @@ export default function AdminMarketing() {
                   title="Respondieron hasta (inclusive)"
                   aria-label="Respondieron hasta"
                 />
+                {survey === 'especialistas' && (
+                  <select
+                    style={{ flex: '0 1 200px' }}
+                    value={filters.specialty_id ?? ''}
+                    onChange={(e) => setFilter('specialty_id', e.target.value)}
+                    aria-label="Especialidad"
+                  >
+                    <option value="">Todas las especialidades</option>
+                    {specialties.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <button type="button" className="btn btn-muted" onClick={clearFilters}>
                   Limpiar filtros
                 </button>
@@ -331,11 +378,20 @@ export default function AdminMarketing() {
                 }
                 rowKey={(row, i) => String(row.email || i)}
                 wrapText
+                renderCell={(row, column, text) => {
+                  if (column.key !== 'doctor_name' || !row.doctor_id) return undefined
+                  return (
+                    <button type="button" className="link-button" onClick={() => setDoctorRow(row)}>
+                      {text}
+                    </button>
+                  )
+                }}
               />
             </section>
           </>
         )}
       </div>
+      <ProfessionalProfileModal row={doctorRow} onClose={() => setDoctorRow(null)} />
     </AdminLayout>
   )
 }
