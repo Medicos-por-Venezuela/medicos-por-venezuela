@@ -469,10 +469,11 @@ export async function updateConsultation(
 // admin/pacientes la consume en vez de leer `consultations`/`patients`/`users` directo de Supabase.
 export async function fetchConsultations(
   token: string,
-  params: { limit?: number; status?: string; patientId?: string } = {}
+  params: { limit?: number; skip?: number; status?: string; patientId?: string } = {}
 ): Promise<Consultation[]> {
   const qs = new URLSearchParams()
   qs.set('limit', String(params.limit ?? 200))
+  if (params.skip) qs.set('skip', String(params.skip))
   if (params.status) qs.set('status', params.status)
   if (params.patientId) qs.set('patient_id', params.patientId)
   const rows = await getJson<(Omit<Consultation, 'patients'> & { patient: Patient | null })[]>(
