@@ -7,6 +7,16 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-09-23
 
+- **feat(panel): "Derivar a especialista" solo para quien puede ver el motivo** — derivar un caso
+  sin poder leer por qué no tiene sentido (decisión de producto). El botón "Derivar a especialista"
+  de la tarjeta de la cola se oculta cuando `clinical_access === 'none'` (se mantiene si el campo
+  no viene, por compatibilidad con una API vieja); igual con "Derivar con especialista" en el
+  detalle del caso. La API (`POST /consultations/{id}/derive`) ahora exige el mismo grant clínico
+  que decide qué ve el panel (`clinical_access.grant_for_queue_item`): un admin que no ejerce ve
+  todas las colas pero ya no puede derivar, con 403 y su fila de auditoría de denegado. Nuevo test
+  E2E en `e2e/admin-datos-clinicos.spec.ts`. Ficheros: `pages/panel-medico.tsx`,
+  `pages/panel-medico/consulta/[id].tsx`, `e2e/admin-datos-clinicos.spec.ts`.
+
 - **fix(admin/panel): textos de confidencial que se entienden y "Cargar más" en Pacientes / Casos** —
   "Sin descripción" en la cola del panel y el "[Información médica confidencial]" pelado hacían
   creer a médicos y admins que el caso estaba vacío (y a cerrarlo). Ahora el marcador dice quién lo ve
