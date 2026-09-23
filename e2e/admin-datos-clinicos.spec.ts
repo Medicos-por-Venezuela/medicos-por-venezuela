@@ -46,7 +46,9 @@ test('admin ve el motivo como confidencial y no puede editar la nota del médico
   await expect(row).toBeVisible()
 
   // Motivo: marcador en vez del texto del paciente.
-  await expect(row.getByText(/Motivo:\s*\[Información médica confidencial\]/)).toBeVisible()
+  await expect(
+    row.getByText(/Confidencial: solo lo ve el médico que atiende el caso/)
+  ).toBeVisible()
   await expect(row.getByText(MOTIVO)).toHaveCount(0)
 
   // Sin editor de la nota del médico; la nota admin sigue ahí.
@@ -78,8 +80,28 @@ test('admin en el detalle del caso no ve ni puede guardar la nota del médico', 
   await expect(page.getByText('Notas del médico')).toHaveCount(0)
   await expect(page.getByText(MOTIVO)).toHaveCount(0)
   // El motivo se pinta como confidencial, no como "Sin descripción" (parecería un caso vacío).
-  await expect(page.getByText('[Información médica confidencial]').first()).toBeVisible()
+  await expect(
+    page.getByText('Confidencial: solo lo ve el médico que atiende el caso').first()
+  ).toBeVisible()
   await expect(page.getByText('Sin descripción')).toHaveCount(0)
+
+  await ctx.close()
+})
+
+test('en la cola del panel, un caso sin acceso clínico explica que el motivo es confidencial', async ({
+  browser
+}) => {
+  // El admin e2e no ejerce: ve todas las colas sin acceso clínico. Antes la tarjeta decía "Sin
+  // descripción" y médicos y admins creían que el caso estaba vacío (y lo cerraban).
+  await seedConsultation()
+  const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' })
+  const page = await ctx.newPage()
+
+  await page.goto('/panel-medico')
+  await expect(
+    page.getByText(/Motivo confidencial: solo lo ve el médico que atiende al paciente/).first()
+  ).toBeVisible()
+  await expect(page.getByText(MOTIVO)).toHaveCount(0)
 
   await ctx.close()
 })

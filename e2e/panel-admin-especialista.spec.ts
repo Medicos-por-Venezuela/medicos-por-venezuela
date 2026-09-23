@@ -9,8 +9,11 @@ const MARCADOR_GENERAL = 'E2E Paciente Dual General'
 const MARCADOR_AJENO = 'E2E Paciente Dual Ajeno'
 
 test('admin que ejerce: una card por su especialidad y otra con el resto', async ({ browser }) => {
-  await crearConsultaEnEspera(MARCADOR_GENERAL)
-  await crearConsultaEnEspera(MARCADOR_AJENO, 'Traumatología y ortopedia')
+  const general = await crearConsultaEnEspera(MARCADOR_GENERAL)
+  const ajeno = await crearConsultaEnEspera(MARCADOR_AJENO, 'Traumatología y ortopedia')
+  // Por el id del caso: el de Traumatología no es de su especialidad y llega sin motivo (dato
+  // clínico), así que su texto no sirve para encontrar la tarjeta.
+  const card = (id: string) => page.locator(`.card-flat[data-consultation-id="${id}"]`)
 
   const ctx = await browser.newContext({ storageState: 'e2e/.auth/dual.json' })
   const page = await ctx.newPage()
@@ -27,13 +30,13 @@ test('admin que ejerce: una card por su especialidad y otra con el resto', async
 
   // Traumatología no es suya, pero la ve por ser admin: cae en la card del resto, no en las otras.
   await entrada.click()
-  await expect(page.locator('.card-flat').filter({ hasText: MARCADOR_GENERAL })).toBeVisible()
-  await expect(page.locator('.card-flat').filter({ hasText: MARCADOR_AJENO })).toHaveCount(0)
+  await expect(card(general.id)).toBeVisible()
+  await expect(card(ajeno.id)).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Ver todas las consultas' }).click()
   await resto.click()
-  await expect(page.locator('.card-flat').filter({ hasText: MARCADOR_AJENO })).toBeVisible()
-  await expect(page.locator('.card-flat').filter({ hasText: MARCADOR_GENERAL })).toHaveCount(0)
+  await expect(card(ajeno.id)).toBeVisible()
+  await expect(card(general.id)).toHaveCount(0)
 
   await ctx.close()
 })

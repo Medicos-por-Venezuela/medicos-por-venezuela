@@ -2,7 +2,7 @@ import Seo from '../components/Seo'
 import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { getAccessToken } from '../lib/admin'
+import { getAccessToken, type ClinicalAccess } from '../lib/admin'
 import {
   ApiError,
   claimConsultation,
@@ -33,6 +33,7 @@ import EstadoPacienteBadge from '../components/EstadoPacienteBadge'
 import AntesDeEntrarModal from '../components/AntesDeEntrarModal'
 import DerivarEspecialidadModal from '../components/DerivarEspecialidadModal'
 import ConfirmDialog from '../components/admin/ConfirmDialog'
+import { clinicalValue, CONFIDENTIAL_QUEUE_LABEL } from '../components/ConfidentialText'
 import { fetchMyPermissions } from '../lib/users'
 
 type Patient = {
@@ -75,6 +76,9 @@ type Consultation = {
   patient_last_seen_at: string | null
   assigned_doctor_id: string | null
   attended_via_whatsapp: boolean
+  // Nivel de acceso clínico con el que respondió la API: un caso de otra cola (lo ve un admin)
+  // llega sin motivo, y hay que decir que es confidencial, no "Sin descripción".
+  clinical_access?: ClinicalAccess
   patients: Patient | null
 }
 
@@ -106,6 +110,7 @@ function toConsultationRow(c: PanelConsultation): Consultation {
     patient_last_seen_at: c.patient_last_seen_at,
     assigned_doctor_id: c.assigned_doctor_id,
     attended_via_whatsapp: c.attended_via_whatsapp,
+    clinical_access: c.clinical_access,
     patients: c.patient as Patient | null
   }
 }
@@ -897,7 +902,9 @@ function ConsultationCard({
   inRoom: boolean
 }) {
   return (
-    <div className="card-flat">
+    // data-consultation-id: los E2E localizan la tarjeta por el caso, no por el motivo, que no ven
+    // todos (un admin o un caso de otra cola lo reciben en null).
+    <div className="card-flat" data-consultation-id={c.id}>
       <div className="panel-card-header">
         <div>
           {/* La cola no muestra quién es el paciente (el nombre llega al tomar el caso): el título
@@ -921,7 +928,11 @@ function ConsultationCard({
           {STATUS_LABELS[c.status] || c.status}
         </span>
       </div>
-      <p>{c.chief_complaint || c.patients?.description || 'Sin descripción'}</p>
+      <p>
+        {clinicalValue(c.chief_complaint, c.clinical_access, CONFIDENTIAL_QUEUE_LABEL) ||
+          c.patients?.description ||
+          'Sin descripción'}
+      </p>
       {c.patients?.allergies && (
         // Dato de decisión clínica: el médico lo necesita ANTES de tomar el caso, no al abrirlo.
         <p className="badge badge-red" style={{ display: 'inline-block' }}>
