@@ -17,6 +17,7 @@ import { useMountEffect } from '../../lib/hooks'
 import { downloadReport } from '../../lib/reports'
 import { ConsultationMonitorItem } from '../../lib/consultations'
 import { STATUS_LABELS, tiempoTranscurrido } from '../../lib/utils'
+import { clinicalValue } from '../ConfidentialText'
 
 type Props = {
   open: boolean
@@ -187,7 +188,7 @@ function Dialog({
                     <td>{c.assigned_doctor_name || '— sin asignar —'}</td>
                     <td>{c.patient_name || '—'}</td>
                     <td>{tiempoTranscurrido(c.opened_at || c.started_at || c.queued_at)}</td>
-                    <td>{c.chief_complaint || '—'}</td>
+                    <td>{clinicalValue(c.chief_complaint, c.clinical_access) || '—'}</td>
                   </tr>
                 ))
               )}

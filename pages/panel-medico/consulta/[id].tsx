@@ -50,6 +50,7 @@ import {
 import { usePatientsInRoom } from '../../../lib/patientPresence'
 import EstadoPacienteBadge from '../../../components/EstadoPacienteBadge'
 import AntesDeEntrarModal from '../../../components/AntesDeEntrarModal'
+import { clinicalValue } from '../../../components/ConfidentialText'
 
 type Patient = {
   id: string
@@ -85,6 +86,9 @@ type Consultation = {
   assigned_doctor_id: string | null
   attended_via_whatsapp: boolean
   can_view_patient_address: boolean
+  // Nivel de acceso clínico con el que respondió la API. Un admin recibe "none": sin motivo ni
+  // notas, y la API rechaza (403) que escriba la nota del médico.
+  clinical_access?: 'full' | 'summary' | 'none'
   // Especialidad de la cola del caso y, si llegó derivado, de dónde viene, quién y por qué.
   specialty?: string | null
   derived_from_specialty?: string | null
@@ -810,7 +814,7 @@ export default function ConsultaDetalle() {
                       <span style={{ color: '#0d9488' }}> · (esta)</span>
                     )}
                     <div style={{ color: '#64748b', fontSize: 13 }}>
-                      {link.chief_complaint || 'Sin motivo'}
+                      {clinicalValue(link.chief_complaint, link.clinical_access) || 'Sin motivo'}
                       {link.internal_note ? ` — ${link.internal_note}` : ''}
                     </div>
                   </li>
@@ -898,7 +902,9 @@ export default function ConsultaDetalle() {
             <section className="card">
               <h2 style={{ marginTop: 0 }}>Motivo</h2>
               <div className="notice">
-                {consultation.chief_complaint ||
+                {/* Un admin (u otro sin acceso clínico) recibe el motivo en null: se pinta como
+                    confidencial, no como "Sin descripción", que parecería un caso vacío. */}
+                {clinicalValue(consultation.chief_complaint, consultation.clinical_access) ||
                   consultation.patients?.description ||
                   'Sin descripción'}
               </div>
@@ -1009,19 +1015,23 @@ export default function ConsultaDetalle() {
                     </select>
                   </div>
                 )}
-                <div>
-                  <label className="label">Notas del médico</label>
-                  <textarea
-                    className={notesBlink ? 'note-blink' : undefined}
-                    rows={6}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="Evita escribir historia clínica completa. Solo información necesaria para coordinación."
-                  />
-                </div>
-                <button className="btn btn-secondary" onClick={saveNote} disabled={busy}>
-                  Guardar nota
-                </button>
+                {consultation.clinical_access !== 'none' && (
+                  <>
+                    <div>
+                      <label className="label">Notas del médico</label>
+                      <textarea
+                        className={notesBlink ? 'note-blink' : undefined}
+                        rows={6}
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="Evita escribir historia clínica completa. Solo información necesaria para coordinación."
+                      />
+                    </div>
+                    <button className="btn btn-secondary" onClick={saveNote} disabled={busy}>
+                      Guardar nota
+                    </button>
+                  </>
+                )}
 
                 {!consultation.attended_via_whatsapp && !isCaseClosed && (
                   <button
