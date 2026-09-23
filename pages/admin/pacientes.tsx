@@ -38,11 +38,18 @@ const CASE_COLS: { key: string; label: string; width: string }[] = [
   { key: 'dates', label: 'Fechas', width: '12%' }
 ]
 
+// Tope por petición del listado de consultas en el backend (`limit` le=200).
+const PAGE = 200
+
 export default function AdminPacientes() {
   const { profile, loading } = useAdminGuard()
   // super_admins (para el combobox "Admin responsable del seguimiento"); del backend, no de Supabase.
   const [superAdmins, setSuperAdmins] = useState<ApiUser[]>([])
   const [consultations, setConsultations] = useState<Consultation[]>([])
+  // El backend entrega como mucho PAGE casos por petición (los más recientes primero). "Cargar
+  // más" pide la página siguiente; hasMore = la última página vino llena.
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [message, setMessage] = useState('')
 
   // Case oversight panel state
@@ -137,18 +144,31 @@ export default function AdminPacientes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowDocQuery, rowDocMenu])
 
+  // Pide páginas de PAGE hasta cubrir `wanted` casos. Recargar tras guardar vuelve a traer los
+  // que el admin ya había cargado con "Cargar más", en vez de dejarlo otra vez en los primeros 200.
+  async function fetchPages(token: string, wanted: number) {
+    const rows: Consultation[] = []
+    for (let skip = 0; skip < wanted; skip += PAGE) {
+      const page = await fetchConsultations(token, { limit: PAGE, skip })
+      rows.push(...page)
+      if (page.length < PAGE) return { rows, more: false }
+    }
+    return { rows, more: true }
+  }
+
   async function loadAll() {
     // Todo por el backend: la lista de consultas ya trae el paciente anidado y el nombre del médico
     // asignado (assigned_doctor_name, resuelto server-side), así que no hay que cargar `users` en
     // masa ni resolver nombres. Los super_admins (combobox de seguimiento) salen de /profiles.
     const token = await getAccessToken()
-    const [consultationsData, superAdminsRes] = await Promise.all([
-      fetchConsultations(token, { limit: 200 }),
+    const [page, superAdminsRes] = await Promise.all([
+      fetchPages(token, Math.max(PAGE, consultations.length)),
       // Sin filtro active: incluye super_admins inactivos, para que un seguimiento ya asignado a uno
       // desactivado siga mostrándose en el combobox (paridad con el listado viejo).
       fetchProfiles(token, { roles: ['super_admin'], limit: 100 })
     ])
-    setConsultations(consultationsData)
+    setConsultations(page.rows)
+    setHasMore(page.more)
     setSuperAdmins(superAdminsRes.items)
     // El catálogo de especialidades no cambia entre recargas del listado: una sola vez.
     if (specialtyCatalog.length === 0) {
@@ -160,6 +180,25 @@ export default function AdminPacientes() {
       } catch {
         // Sin catálogo el select queda solo con "— Sin especialidad —"; el resto del panel sigue.
       }
+    }
+  }
+
+  async function loadMore() {
+    setLoadingMore(true)
+    try {
+      const token = await getAccessToken()
+      const page = await fetchConsultations(token, { limit: PAGE, skip: consultations.length })
+      // Si entraron casos nuevos entre páginas, el OFFSET se corre y la primera fila de esta página
+      // ya estaba cargada: se descarta el repetido (no se pierde ninguno, porque se corre hacia abajo).
+      setConsultations((prev) => {
+        const seen = new Set(prev.map((c) => c.id))
+        return [...prev, ...page.filter((c) => !seen.has(c.id))]
+      })
+      setHasMore(page.length === PAGE)
+    } catch {
+      setMessage('No se pudieron cargar más casos. Inténtalo de nuevo.')
+    } finally {
+      setLoadingMore(false)
     }
   }
 
@@ -423,7 +462,8 @@ export default function AdminPacientes() {
         <h2 style={{ marginTop: 0 }}>
           Pacientes / Casos{' '}
           <span style={{ color: '#94a3b8', fontWeight: 400, fontSize: 14 }}>
-            ({filteredConsultations.length} de {consultations.length})
+            ({filteredConsultations.length} de {consultations.length}
+            {hasMore ? ' cargados' : ''})
           </span>
         </h2>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
@@ -829,6 +869,17 @@ export default function AdminPacientes() {
             </tbody>
           </table>
         </div>
+        {hasMore && (
+          <div style={{ textAlign: 'center', marginTop: 16 }}>
+            <p style={{ color: '#64748b', fontSize: 13, margin: '0 0 8px' }}>
+              Se muestran los {consultations.length} casos más recientes. La búsqueda y los filtros
+              se aplican a los casos cargados.
+            </p>
+            <button className="btn btn-outline" onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? 'Cargando…' : `Cargar ${PAGE} casos más`}
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Gestionar caso: MODAL, no una tarjeta fija arriba. Como tarjeta ocupaba media pantalla

@@ -7,6 +7,21 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-09-23
 
+- **fix(admin/panel): textos de confidencial que se entienden y "Cargar más" en Pacientes / Casos** —
+  "Sin descripción" en la cola del panel y el "[Información médica confidencial]" pelado hacían
+  creer a médicos y admins que el caso estaba vacío (y a cerrarlo). Ahora el marcador dice quién lo ve
+  ("Confidencial: solo lo ve el médico que atiende el caso") y en la cola, que al atenderlo se verá
+  (`CONFIDENTIAL_QUEUE_LABEL`); `toConsultationRow` conserva `clinical_access`, que antes se perdía.
+  `/admin/pacientes` ya no se queda en los 200 más recientes: "Cargar 200 casos más" pide la página
+  siguiente (`fetchConsultations` con `skip`; el backend desempata por id) y recargar tras guardar
+  conserva lo ya cargado. El E2E `admin-datos-clinicos.spec.ts` cubre la cola y destapó un 403 del
+  backend en "Gestionar caso" (el evento `admin_update` con nota), arreglado en la API. La tarjeta
+  de la cola lleva `data-consultation-id`: `panel-race` y `panel-admin-especialista` la buscaban por
+  el motivo, que un admin o un caso de otra cola ya no reciben. Ficheros:
+  `components/ConfidentialText.tsx`, `pages/panel-medico.tsx`, `pages/admin/pacientes.tsx`,
+  `lib/consultations.ts`, `e2e/admin-datos-clinicos.spec.ts`, `e2e/panel-race.spec.ts`,
+  `e2e/panel-admin-especialista.spec.ts`.
+
 - **feat(admin): datos clínicos ocultos al admin (`clinical_access`)** — el backend ahora devuelve
   los campos clínicos (motivo, nota del médico, notas clínicas, descripción/alergias, motivo de
   derivación, notas de eventos) en `null` cuando quien mira no tiene acceso clínico, con
