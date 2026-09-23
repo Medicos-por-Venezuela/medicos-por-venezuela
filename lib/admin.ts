@@ -31,6 +31,12 @@ export type Profile = {
   created_at: string
 }
 
+// Nivel de acceso clínico del que mira la respuesta (docs/cifrado-datos-clinicos.md del backend):
+// 'full' = tratante, 'summary' = paciente dueño / médico viendo su cola (motivo y antecedentes, sin
+// notas), 'none' = sin permiso (admin/super_admin siempre). Con 'summary'/'none' los campos clínicos
+// que no le tocan llegan en `null`. Opcional: un backend viejo no lo envía.
+export type ClinicalAccess = 'full' | 'summary' | 'none'
+
 export type Patient = {
   full_name: string
   cedula: string | null
@@ -41,6 +47,7 @@ export type Patient = {
   age_range: string | null
   needs_tags: string[] | null
   description: string | null
+  clinical_access?: ClinicalAccess
 }
 
 export type Consultation = {
@@ -64,6 +71,7 @@ export type Consultation = {
   admin_seguimiento: string | null // super_admin id following up the case
   nota_admin: string | null
   patients: Patient | null
+  clinical_access?: ClinicalAccess
 }
 
 export const STATUS_OPTIONS = [

@@ -10,6 +10,7 @@ import {
   useAdminGuard
 } from '../../lib/admin'
 import { useEscapeToClose } from '../../lib/hooks'
+import { clinicalValue } from '../../components/ConfidentialText'
 import { STATUS_LABELS } from '../../lib/utils'
 // Todo el acceso a datos pasa por el backend (no Supabase directo): consultas con paciente anidado,
 // updates/eventos, buscador de médicos (/doctors/pool) y baja lógica del paciente.
@@ -48,7 +49,6 @@ export default function AdminPacientes() {
   const [selected, setSelected] = useState<Consultation | null>(null)
   const [caseStatus, setCaseStatus] = useState('')
   const [caseDoctor, setCaseDoctor] = useState('')
-  const [caseNote, setCaseNote] = useState('')
   const [caseSpecialtyId, setCaseSpecialtyId] = useState('')
   const [specialtyCatalog, setSpecialtyCatalog] = useState<{ id: string; name: string }[]>([])
   const [savingCase, setSavingCase] = useState(false)
@@ -71,8 +71,9 @@ export default function AdminPacientes() {
   useEscapeToClose(!!selected, () => {
     if (!savingCase) setSelected(null)
   })
-  // Per-row inline edits of the notes in the cases table (keyed by consultation id).
-  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
+  // Per-row inline edit of the admin note in the cases table (keyed by consultation id). La nota
+  // del médico (`internal_note`) ya no se edita aquí: es dato clínico, el backend se la oculta al
+  // admin (llega en null) y responde 403 si la manda en el PATCH.
   const [notaAdminDrafts, setNotaAdminDrafts] = useState<Record<string, string>>({})
   // Inline (cases table) "Médico" reassignment combobox — one open row at a time, searched in the DB.
   const [rowDocMenu, setRowDocMenu] = useState<string | null>(null) // consultation id with its menu open
@@ -231,7 +232,6 @@ export default function AdminPacientes() {
     setSelected(c)
     setCaseStatus(c.status)
     setCaseDoctor(c.assigned_doctor_id || '')
-    setCaseNote(c.internal_note || '')
     setCaseSpecialtyId(c.specialty_id || '')
     setCaseDoctorName(c.assigned_doctor_name || '')
     setDoctorQuery('')
@@ -244,7 +244,6 @@ export default function AdminPacientes() {
     const update: Record<string, unknown> = {
       status: caseStatus,
       assigned_doctor_id: caseDoctor || null,
-      internal_note: caseNote,
       specialty_id: caseSpecialtyId || null
     }
     if (['closed', 'patient_no_show', 'closed_by_admin'].includes(caseStatus))
@@ -408,24 +407,6 @@ export default function AdminPacientes() {
       return rest
     })
     setMessage('Nota admin actualizada.')
-  }
-
-  async function saveNote(c: Consultation) {
-    const draft = noteDrafts[c.id] ?? ''
-    try {
-      await updateConsultation(c.id, { internal_note: draft }, await getAccessToken())
-    } catch (e) {
-      console.error(e)
-      setMessage('No se pudo guardar la nota.')
-      return
-    }
-    patchConsultation(c.id, { internal_note: draft })
-    setNoteDrafts((d) => {
-      const rest = { ...d }
-      delete rest[c.id]
-      return rest
-    })
-    setMessage('Nota actualizada.')
   }
 
   if (loading) return <AdminLoading />
@@ -598,7 +579,10 @@ export default function AdminPacientes() {
                           hardcodeado que se desincronizó del catálogo, y una sugerencia inventada
                           es peor que ninguna. */}
                       <Line label="Especialidad" value={specialtyName(c.specialty_id)} strong />
-                      <Line label="Motivo" value={c.chief_complaint} />
+                      <Line
+                        label="Motivo"
+                        value={clinicalValue(c.chief_complaint, c.clinical_access)}
+                      />
                     </td>
                     <td>
                       <select
@@ -759,23 +743,6 @@ export default function AdminPacientes() {
                           </div>
                         )}
                       </div>
-                      <textarea
-                        rows={2}
-                        placeholder="Nota médico"
-                        value={noteDrafts[c.id] ?? (c.internal_note || '')}
-                        onChange={(e) => setNoteDrafts((d) => ({ ...d, [c.id]: e.target.value }))}
-                        style={{ width: '100%', fontSize: 12, padding: '4px 6px' }}
-                      />
-                      {(noteDrafts[c.id] ?? (c.internal_note || '')) !==
-                        (c.internal_note || '') && (
-                        <button
-                          className="btn btn-secondary"
-                          style={{ marginTop: 4, padding: '4px 10px', fontSize: 12 }}
-                          onClick={() => saveNote(c)}
-                        >
-                          Guardar nota médico
-                        </button>
-                      )}
                     </td>
                     <td>
                       <div style={{ fontSize: 12, color: '#64748b' }}>
@@ -1023,10 +990,6 @@ export default function AdminPacientes() {
                       </option>
                     ))}
                 </select>
-              </div>
-              <div>
-                <label className="label">Nota interna</label>
-                <textarea rows={4} value={caseNote} onChange={(e) => setCaseNote(e.target.value)} />
               </div>
               <div className="grid grid-2">
                 <button className="btn btn-primary" onClick={saveCase} disabled={savingCase}>

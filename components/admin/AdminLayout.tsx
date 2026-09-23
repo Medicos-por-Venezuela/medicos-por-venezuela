@@ -134,7 +134,8 @@ export function Line({
   strong
 }: {
   label: string
-  value?: string | null
+  // ReactNode para admitir el marcador de dato clínico oculto (components/ConfidentialText.tsx).
+  value?: ReactNode
   strong?: boolean
 }) {
   if (!value) return null
