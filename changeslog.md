@@ -5,6 +5,26 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-23
+
+- **feat(admin): datos clínicos ocultos al admin (`clinical_access`)** — el backend ahora devuelve
+  los campos clínicos (motivo, nota del médico, notas clínicas, descripción/alergias, motivo de
+  derivación, notas de eventos) en `null` cuando quien mira no tiene acceso clínico, con
+  `clinical_access: "full" | "summary" | "none"` (el admin siempre `"none"`), y responde 403 si un
+  admin envía `chief_complaint`/`internal_note`/`clinical_notes` en el PATCH. Los tipos lo recogen
+  como opcional (un backend viejo no lo manda y todo se ve igual). Nuevo
+  `components/ConfidentialText.tsx`: pinta "[Información médica confidencial]" cuando el campo viene
+  en `null` con acceso restringido. En `/admin/pacientes` desaparecen el editor "Nota médico" de
+  cada fila y "Nota interna" de Gestionar caso (y `saveCase` ya no manda `internal_note`); la nota
+  admin sigue editable. El motivo de la tabla y del monitor de consultas en progreso usa el marcador.
+  En el detalle del caso (`/panel-medico/consulta/[id]`, que el admin también abre) el motivo y la
+  cadena de seguimiento pintan el marcador en vez de "Sin descripción"/"Sin motivo" (parecía un caso
+  vacío), y "Notas del médico" + "Guardar nota" se ocultan con `clinical_access: "none"`.
+  Fijado por `e2e/admin-datos-clinicos.spec.ts`. Ficheros: `lib/admin.ts`, `lib/consultations.ts`,
+  `components/ConfidentialText.tsx`, `components/admin/AdminLayout.tsx` (`Line` acepta ReactNode),
+  `components/admin/ConsultationsMonitorModal.tsx`, `pages/admin/pacientes.tsx`,
+  `pages/panel-medico/consulta/[id].tsx`.
+
 ## 2026-09-22
 
 - **feat(marketing): nombre del profesional clickeable con su ficha y filtro por especialidad** — en

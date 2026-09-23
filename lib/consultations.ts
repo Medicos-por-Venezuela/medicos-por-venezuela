@@ -3,7 +3,7 @@
 // del panel — el único acceso directo que queda es Realtime (solo para avisar que algo cambió) y
 // Auth. Los datos siempre vienen por el backend.
 import { getJson, patchJson, postJson } from './apiClient'
-import { Consultation, ATTENDING_STATUSES, Patient } from './admin'
+import { ClinicalAccess, Consultation, ATTENDING_STATUSES, Patient } from './admin'
 
 export { ApiError } from './apiClient'
 
@@ -76,6 +76,7 @@ export interface MyConsultation {
   specialty?: string | null
   derived_from_specialty?: string | null
   parent_consultation_id?: string | null
+  clinical_access?: ClinicalAccess
 }
 export async function fetchMyConsultations(token: string): Promise<MyConsultation[]> {
   return getJson<MyConsultation[]>(
@@ -100,6 +101,7 @@ export interface PanelPatient {
   // Presente también en la cola de espera (sin nombre): el médico las necesita para decidir si
   // toma el caso, no después de abrirlo.
   allergies: string | null
+  clinical_access?: ClinicalAccess
 }
 
 export interface PanelConsultation {
@@ -131,6 +133,7 @@ export interface PanelConsultation {
   // Especialidad desde la que se derivó a esta cola (null si no viene derivado).
   derived_from_specialty: string | null
   patient: PanelPatient | null
+  clinical_access?: ClinicalAccess
 }
 
 // Por qué el médico no ve ninguna cola: sin especialidad, o con "Otra".
@@ -252,6 +255,7 @@ export interface ConsultationMonitorItem {
   queued_at: string
   started_at: string | null
   opened_at: string | null
+  clinical_access?: ClinicalAccess
 }
 
 // El endpoint solo acepta un `status` a la vez (ver src/routers/consultations.py::list_consultations
@@ -299,6 +303,7 @@ export interface AgendaConsultation {
   parent_consultation_id: string | null
   video_room_url: string | null
   created_at: string
+  clinical_access?: ClinicalAccess
 }
 
 // Un eslabón de la cadena de seguimiento (historial padre→hijas).
@@ -312,6 +317,7 @@ export interface ChainItem {
   closed_at: string | null
   created_at: string
   parent_consultation_id: string | null
+  clinical_access?: ClinicalAccess
 }
 
 // POST /consultations/{id}/close — cierra la consulta (firmada) por el BACKEND (reemplaza el UPDATE
@@ -386,6 +392,7 @@ export interface ConsultationDetailPatient {
   age_range: string | null
   needs_tags: string[] | null
   description: string | null
+  clinical_access?: ClinicalAccess
 }
 
 // GET /consultations/{id}: la consulta con el paciente anidado (solo staff que puede verla).
@@ -418,6 +425,7 @@ export interface ConsultationDetail {
   } | null
   patient: ConsultationDetailPatient | null
   can_view_patient_address?: boolean
+  clinical_access?: ClinicalAccess
 }
 
 export async function fetchConsultationDetail(
@@ -436,6 +444,7 @@ export async function updateConsultation(
   id: string,
   body: {
     status?: string
+    // Solo el médico: es dato clínico y el backend responde 403 si la manda un admin.
     internal_note?: string
     // Campos que edita el panel admin/pacientes (además del panel médico).
     assigned_doctor_id?: string | null
