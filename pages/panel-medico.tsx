@@ -955,9 +955,13 @@ function ConsultationCard({
       <button className="btn btn-primary btn-full" onClick={onOpen}>
         Atender paciente
       </button>
-      <button className="btn btn-outline btn-full" style={{ marginTop: 8 }} onClick={onDerive}>
-        Derivar a especialista
-      </button>
+      {/* Derivar exige poder ver el motivo del caso (decisión de producto 2026-09-23): sin
+          `clinical_access` (API vieja) se muestra igual, por compatibilidad hacia atrás. */}
+      {c.clinical_access !== 'none' && (
+        <button className="btn btn-outline btn-full" style={{ marginTop: 8 }} onClick={onDerive}>
+          Derivar a especialista
+        </button>
+      )}
     </div>
   )
 }

@@ -105,3 +105,30 @@ test('en la cola del panel, un caso sin acceso clínico explica que el motivo es
 
   await ctx.close()
 })
+
+test('derivar exige poder ver el motivo: el admin puro no ve el botón, el médico de la cola sí', async ({
+  browser
+}) => {
+  // Derivar sin poder leer el motivo no tiene sentido (decisión de producto 2026-09-23). El admin
+  // e2e no ejerce (clinical_access: "none" en este caso, Medicina general); doc1 sí ejerce
+  // Medicina general y lo ve en su cola con acceso clínico ("summary"), así que puede derivarlo.
+  const consultationId = await seedConsultation()
+
+  const ctxAdmin = await browser.newContext({ storageState: 'e2e/.auth/admin.json' })
+  const admin = await ctxAdmin.newPage()
+  await admin.goto('/panel-medico')
+  const cardAdmin = admin.locator(`.card-flat[data-consultation-id="${consultationId}"]`)
+  await expect(cardAdmin).toBeVisible()
+  await expect(cardAdmin.getByRole('button', { name: 'Derivar a especialista' })).toHaveCount(0)
+  // La otra acción de la tarjeta sigue ahí: no se ocultó todo, solo derivar.
+  await expect(cardAdmin.getByRole('button', { name: 'Atender paciente' })).toBeVisible()
+  await ctxAdmin.close()
+
+  const ctxDoc = await browser.newContext({ storageState: 'e2e/.auth/doc1.json' })
+  const doc = await ctxDoc.newPage()
+  await doc.goto('/panel-medico')
+  const cardDoc = doc.locator(`.card-flat[data-consultation-id="${consultationId}"]`)
+  await expect(cardDoc).toBeVisible()
+  await expect(cardDoc.getByRole('button', { name: 'Derivar a especialista' })).toBeVisible()
+  await ctxDoc.close()
+})

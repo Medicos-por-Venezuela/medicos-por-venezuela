@@ -745,14 +745,18 @@ export default function ConsultaDetalle() {
             >
               Agendar seguimiento
             </button>
-            <button
-              className="btn btn-outline"
-              style={{ flex: '1 1 160px' }}
-              onClick={openReferral}
-              disabled={isCaseClosed}
-            >
-              Derivar con especialista
-            </button>
+            {/* Derivar exige poder ver el motivo del caso (decisión de producto 2026-09-23): sin
+                `clinical_access` (API vieja) se muestra igual, por compatibilidad hacia atrás. */}
+            {consultation.clinical_access !== 'none' && (
+              <button
+                className="btn btn-outline"
+                style={{ flex: '1 1 160px' }}
+                onClick={openReferral}
+                disabled={isCaseClosed}
+              >
+                Derivar con especialista
+              </button>
+            )}
           </div>
 
           {consultation.derivation && (
