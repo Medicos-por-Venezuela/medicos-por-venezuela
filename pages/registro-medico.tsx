@@ -19,6 +19,8 @@ import {
 import { useMountEffect } from '../lib/hooks'
 import { trackAltaDeMedico } from '../lib/analytics'
 import AceptaTerminos, { MENSAJE_TERMINOS } from '../components/AceptaTerminos'
+import SelectBuscable, { type OpcionBuscable } from '../components/SelectBuscable'
+import { PAISES } from '../lib/paises'
 
 // Consolida en un solo paso lo que antes estaba dividido entre este archivo (cuenta) y
 // /elegir-rol (especialidad/país/whatsapp), según el diagrama de secuencia + wireframe
@@ -29,23 +31,14 @@ import AceptaTerminos, { MENSAJE_TERMINOS } from '../components/AceptaTerminos'
 // El registro con Google se eliminó de esta pantalla: la cuenta se crea únicamente
 // con correo + contraseña.
 
-const PAISES = [
-  { nombre: 'Venezuela', dial: '+58' },
-  { nombre: 'Colombia', dial: '+57' },
-  { nombre: 'España', dial: '+34' },
-  { nombre: 'Chile', dial: '+56' },
-  { nombre: 'Argentina', dial: '+54' },
-  { nombre: 'Perú', dial: '+51' },
-  { nombre: 'Ecuador', dial: '+593' },
-  { nombre: 'México', dial: '+52' },
-  { nombre: 'Estados Unidos', dial: '+1' },
-  { nombre: 'Panamá', dial: '+507' },
-  { nombre: 'República Dominicana', dial: '+1' },
-  { nombre: 'Uruguay', dial: '+598' },
-  { nombre: 'Italia', dial: '+39' },
-  { nombre: 'Portugal', dial: '+351' },
-  { nombre: 'Dinamarca', dial: '+45' }
-]
+// Opciones de los dos selectores con buscador. El de WhatsApp se identifica por el país (ISO) y
+// no por el código: varios comparten código (+1 Estados Unidos, Canadá, Rep. Dominicana...).
+const OPCIONES_PREFIJO: OpcionBuscable[] = PAISES.map((p) => ({
+  value: p.iso,
+  label: `${p.nombre} (${p.dial})`,
+  etiquetaCerrada: p.dial
+}))
+const OPCIONES_PAIS: OpcionBuscable[] = PAISES.map((p) => ({ value: p.nombre, label: p.nombre }))
 
 const soloDigitos = (value: string) => value.replace(/\D/g, '')
 
@@ -99,7 +92,7 @@ export default function RegistroMedico() {
   const [cedulaNumero, setCedulaNumero] = useState('')
   const [nombreCompleto, setNombreCompleto] = useState('')
   const [licencia, setLicencia] = useState('')
-  const [whatsappPrefijo, setWhatsappPrefijo] = useState('+58')
+  const [whatsappPais, setWhatsappPais] = useState('VE')
   const [whatsappNumero, setWhatsappNumero] = useState('')
   const [correo, setCorreo] = useState('')
   const [paisReside, setPaisReside] = useState('')
@@ -346,7 +339,7 @@ export default function RegistroMedico() {
         cedula,
         full_name: nombreCompleto,
         license: licencia || null,
-        phone: `${whatsappPrefijo}${whatsappNumero}`,
+        phone: `${PAISES.find((p) => p.iso === whatsappPais)?.dial ?? '+58'}${whatsappNumero}`,
         email: accountEmail,
         country_of_residence: paisReside || null,
         website
@@ -488,19 +481,18 @@ export default function RegistroMedico() {
               </div>
 
               <div>
-                <label className="label">WhatsApp *</label>
+                <label className="label" htmlFor="registro-medico-whatsapp">
+                  WhatsApp *
+                </label>
                 <div className="input-group">
-                  <select
-                    value={whatsappPrefijo}
-                    onChange={(e) => setWhatsappPrefijo(e.target.value)}
-                  >
-                    {PAISES.map((p) => (
-                      <option key={p.nombre} value={p.dial}>
-                        {p.dial}
-                      </option>
-                    ))}
-                  </select>
+                  <SelectBuscable
+                    value={whatsappPais}
+                    onChange={setWhatsappPais}
+                    opciones={OPCIONES_PREFIJO}
+                    placeholderBusqueda="Buscar país o código"
+                  />
                   <input
+                    id="registro-medico-whatsapp"
                     value={whatsappNumero}
                     onChange={(e) => setWhatsappNumero(soloDigitos(e.target.value))}
                     inputMode="numeric"
@@ -533,16 +525,16 @@ export default function RegistroMedico() {
               </div>
 
               <div>
-                <label className="label">País donde reside *</label>
-                <select value={paisReside} onChange={(e) => setPaisReside(e.target.value)}>
-                  <option value="">Selecciona...</option>
-                  {PAISES.map((p) => (
-                    <option key={p.nombre} value={p.nombre}>
-                      {p.nombre}
-                    </option>
-                  ))}
-                  <option value="Otro">Otro</option>
-                </select>
+                <label className="label" htmlFor="registro-medico-pais">
+                  País donde reside *
+                </label>
+                <SelectBuscable
+                  id="registro-medico-pais"
+                  value={paisReside}
+                  onChange={setPaisReside}
+                  opciones={OPCIONES_PAIS}
+                  placeholderBusqueda="Buscar país"
+                />
               </div>
 
               {mostrarEspecialidad && (

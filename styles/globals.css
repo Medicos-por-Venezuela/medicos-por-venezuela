@@ -531,6 +531,92 @@ input[readonly] {
   flex: 1;
   min-width: 0;
 }
+/* components/SelectBuscable.tsx: botón con aspecto de <select> + panel con buscador. */
+.select-buscable {
+  position: relative;
+}
+.input-group .select-buscable {
+  flex: 0 0 104px;
+}
+.select-buscable-boton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+  color: var(--text);
+  padding: 11px 14px;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.select-buscable-boton > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.select-buscable-boton::after {
+  content: '';
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-top: -4px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+}
+.select-buscable-boton:focus-visible,
+.select-buscable-boton[aria-expanded='true'] {
+  border-color: var(--brand);
+  outline: none;
+}
+.select-buscable-boton:disabled {
+  background: var(--bg);
+  cursor: not-allowed;
+}
+.select-buscable-placeholder {
+  color: var(--muted);
+}
+.select-buscable-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  width: 100%;
+  min-width: min(300px, calc(100vw - 32px));
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 8px;
+}
+.select-buscable-lista {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.select-buscable-lista li {
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+}
+.select-buscable-lista li.activo {
+  background: var(--brand-light);
+}
+.select-buscable-lista li[aria-selected='true'] {
+  font-weight: 600;
+}
+.select-buscable-lista li.select-buscable-vacio {
+  color: var(--muted);
+  cursor: default;
+}
 .tag-row {
   display: flex;
   flex-wrap: wrap;
