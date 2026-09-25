@@ -131,9 +131,10 @@ test('registro de médico: sin aceptar los términos no se crea la cuenta', asyn
   await page.locator('label.label:has-text("Nombre completo") + input').fill('E2E Medico Terminos')
   await page.getByPlaceholder('Solo números').nth(1).fill('4120000037')
   await page.locator('input[type="email"]').fill(`e2e-medico-terminos-${Date.now()}@example.com`)
-  await page
-    .locator('label.label:has-text("País donde reside") + select')
-    .selectOption({ label: 'Venezuela' })
+  // Selector con buscador (components/SelectBuscable): se abre, se filtra y se elige.
+  await page.getByLabel('País donde reside *').click()
+  await page.getByRole('combobox').fill('venez')
+  await page.getByRole('option', { name: 'Venezuela' }).click()
   await page.locator('input[type="password"]').fill('e2e-Test-123456')
 
   await expect(page.getByRole('checkbox', { name: CASILLA })).not.toBeChecked()

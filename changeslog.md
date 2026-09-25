@@ -5,6 +5,18 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-25
+
+- **feat(registro-medico): todos los países y códigos, con buscador** — el prefijo de WhatsApp y
+  "País donde reside" solo ofrecían 15 países y eran `<select>` nativos, en los que no se puede
+  buscar. Ahora listan los 243 países/territorios con código de marcación (`lib/paises.ts`, nombres
+  en español; se conservan los de antes, p. ej. "Estados Unidos", para no partir
+  `country_of_residence`) en un selector con buscador (`components/SelectBuscable.tsx`: ignora
+  tildes, acepta "58" o "+58" y prioriza los que empiezan por lo escrito; teclado y Escape). El
+  prefijo se guarda por país (ISO) y no por código porque varios lo comparten (+1, +7, +44). Se
+  quita la opción "Otro" del país. `e2e/terminos.spec.ts` elige el país con el buscador.
+  Pendiente: `PhoneField` (registro de paciente) y `/elegir-rol` siguen con la lista corta.
+
 ## 2026-09-23
 
 - **feat(panel): "Derivar a especialista" solo para quien puede ver el motivo** — derivar un caso
