@@ -19,6 +19,7 @@
 // <script>, no después de cargarlo.
 
 export const GA_ID = 'G-09M01TF5F3'
+export const META_ID = '936164072301259'
 
 // El apex es el dominio del sitio. `www` va incluido por seguridad: si hoy redirige al apex, esta
 // entrada no se usa nunca y no molesta; si algún día sirviera el sitio directamente, sin ella se
@@ -87,6 +88,19 @@ export const SNIPPET_GA = `
   ${JSON.stringify(PARAMS_PRIVADOS)}.forEach(function (p) { ubicacion.searchParams.delete(p); });
   gtag('config', '${GA_ID}', { page_location: ubicacion.href });
 })();
+`.trim()
+
+export const SNIPPET_META = `
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '${META_ID}');
+fbq('track', 'PageView');
 `.trim()
 
 // `gtag` lo crea el snippet de arriba, no un import: sin esto TypeScript no sabe que existe.
