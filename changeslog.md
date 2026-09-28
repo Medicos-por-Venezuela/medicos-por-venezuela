@@ -5,6 +5,25 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-09-27
+
+- **fix(registro/panel): fuera la dirección del paciente; el motivo vuelve a la cola del admin** —
+  la dirección de residencia dejó de pedirse en `/registro-paciente` (rama adulto y representante)
+  y de mostrarse en el detalle del caso: se eliminan el cifrado en el navegador
+  (`lib/patientAddressCrypto.ts`), el bloque "Dirección" con su modal de desbloqueo
+  (`components/UnlockClinicalKeyModal.tsx`) y el E2E `direccion-cifrada.spec.ts`. La API sigue
+  aceptando `address_encrypted` (ahora opcional) y su endpoint queda como legado para las filas
+  históricas; `docs/clave-clinica.md` lo marca. En la cola del panel el admin (que la gestiona)
+  ahora recibe el motivo (`clinical_access: "summary"`, auditado con vía `admin_queue`); el listado
+  `/admin/pacientes` y el detalle siguen sin contenido clínico. Consecuencia coherente con la regla
+  2026-09-23 ("solo deriva quien puede leer el motivo"): "Derivar a especialista" vuelve a
+  ofrecerse al admin en la cola. Términos de privacidad sin la dirección y `ACTUALIZADO` al
+  2026-09-27. Ficheros: `pages/registro-paciente.tsx`, `pages/panel-medico/consulta/[id].tsx`,
+  `lib/patients.ts`, `lib/consultations.ts`, `pages/legal/privacidad.tsx`, `.env.example`,
+  `e2e/admin-datos-clinicos.spec.ts`, `e2e/registro-paciente.spec.ts`, `e2e/terminos.spec.ts`,
+  `e2e/mi-caso-videoconsulta.spec.ts`. API: `src/schemas/patient.py`,
+  `src/services/clinical_access.py`, `src/routers/consultations.py`.
+
 ## 2026-09-25
 
 - **feat(registro-medico): todos los países y códigos, con buscador** — el prefijo de WhatsApp y
