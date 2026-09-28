@@ -12,7 +12,6 @@ import { fetchSpecialties, type SpecialtyResponse } from '../lib/doctors'
 import { createConsultation, createPatient, ApiError } from '../lib/patients'
 import { useMountEffect } from '../lib/hooks'
 import { trackSolicitudDeConsulta } from '../lib/analytics'
-import { encryptAddress } from '../lib/patientAddressCrypto'
 import AceptaTerminos, { MENSAJE_TERMINOS } from '../components/AceptaTerminos'
 import CedulaField from '../components/CedulaField'
 import PhoneField from '../components/PhoneField'
@@ -46,11 +45,6 @@ const adultSchema = z
     fullName: z.string().trim().min(2, 'Completa tu nombre completo.'),
     phone: z.string().regex(PHONE_REGEX, 'Ingresa un número de WhatsApp válido.'),
     emergencyPhone: z.string().regex(PHONE_REGEX, 'Ingresa un teléfono de emergencia válido.'),
-    address: z
-      .string()
-      .trim()
-      .min(5, 'Ingresa la dirección de residencia.')
-      .max(300, 'La dirección no puede superar 300 caracteres.'),
     zona: z.string().min(1, 'Selecciona la zona.'),
     edad: z.string().refine(edadEnRango(18, 120), 'La edad debe estar entre 18 y 120 años.'),
     authedPatient: z.boolean(),
@@ -103,11 +97,6 @@ const minorSchema = z
     gEmergencyPhone: z
       .string()
       .regex(PHONE_REGEX, 'Ingresa un teléfono de emergencia válido para el representante.'),
-    gAddress: z
-      .string()
-      .trim()
-      .min(5, 'Ingresa la dirección de residencia del representante.')
-      .max(300, 'La dirección no puede superar 300 caracteres.'),
     gRelationship: z.string().min(1, 'Selecciona el parentesco con el menor.'),
     authedPatient: z.boolean(),
     gEmail: z.string(),
@@ -170,7 +159,6 @@ export default function RegistroPaciente() {
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
   const [emergencyPhone, setEmergencyPhone] = useState('')
-  const [address, setAddress] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [edad, setEdad] = useState('')
@@ -184,7 +172,6 @@ export default function RegistroPaciente() {
   const [gFullName, setGFullName] = useState('')
   const [gPhone, setGPhone] = useState('')
   const [gEmergencyPhone, setGEmergencyPhone] = useState('')
-  const [gAddress, setGAddress] = useState('')
   const [gEmail, setGEmail] = useState('')
   const [gPassword, setGPassword] = useState('')
   const [gRelationship, setGRelationship] = useState('')
@@ -256,7 +243,6 @@ export default function RegistroPaciente() {
     setFullName('')
     setPhone('')
     setEmergencyPhone('')
-    setAddress('')
     setEmail('')
     setPassword('')
     setEdad('')
@@ -275,7 +261,6 @@ export default function RegistroPaciente() {
           gFullName,
           gPhone,
           gEmergencyPhone,
-          gAddress,
           gRelationship,
           authedPatient,
           gEmail,
@@ -295,7 +280,6 @@ export default function RegistroPaciente() {
           fullName,
           phone,
           emergencyPhone,
-          address,
           zona,
           edad,
           authedPatient,
@@ -375,19 +359,6 @@ export default function RegistroPaciente() {
         return // el `finally` de abajo ya resetea `loading`
       }
 
-      // Cifrar la dirección UNA vez (la del adulto / representante). Si falla (entorno sin clave),
-      // mostramos el error y NO enviamos el formulario.
-      let address_encrypted: string
-      try {
-        address_encrypted = await encryptAddress(isMinor ? gAddress : address)
-      } catch (e) {
-        setError(
-          e instanceof Error ? e.message : 'No se pudo cifrar la dirección. Contacta a soporte.'
-        )
-        setLoading(false)
-        return
-      }
-
       let patientId: string
       let patientName: string
       if (isMinor) {
@@ -399,7 +370,6 @@ export default function RegistroPaciente() {
           cedula: gCedula,
           phone_whatsapp: gPhone,
           emergency_phone: gEmergencyPhone,
-          address_encrypted,
           email: contactEmail || null,
           affected_zone: zona,
           consent: true
@@ -409,7 +379,6 @@ export default function RegistroPaciente() {
           cedula: mCedula || null,
           phone_whatsapp: gPhone,
           emergency_phone: gEmergencyPhone,
-          address_encrypted,
           email: contactEmail || null,
           affected_zone: zona,
           age_range: mEdad || null,
@@ -427,7 +396,6 @@ export default function RegistroPaciente() {
           cedula,
           phone_whatsapp: phone,
           emergency_phone: emergencyPhone,
-          address_encrypted,
           email: contactEmail || null,
           affected_zone: zona,
           age_range: edad || null,
@@ -561,18 +529,6 @@ export default function RegistroPaciente() {
                     placeholder="Ej. 4241234567"
                     hint="Debe ser el número de otra persona (no el del representante): es a quien llamamos si hay una emergencia."
                   />
-                  <div>
-                    <label className="label">Dirección de residencia *</label>
-                    <input
-                      value={gAddress}
-                      onChange={(e) => setGAddress(e.target.value)}
-                      maxLength={300}
-                      placeholder="Ej. Calle 123, Urbanización Los Próceres"
-                    />
-                    <div className="hint">
-                      Solo la ve el médico que te atienda. Se guarda cifrada.
-                    </div>
-                  </div>
                   {!authedPatient && (
                     <div className="grid grid-2">
                       <div>
@@ -705,18 +661,6 @@ export default function RegistroPaciente() {
                     placeholder="Ej. 4241234567"
                     hint="Debe ser el número de otra persona, no el tuyo: es a quien llamamos si hay una emergencia."
                   />
-                  <div>
-                    <label className="label">Dirección de residencia *</label>
-                    <input
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      maxLength={300}
-                      placeholder="Ej. Calle 123, Urbanización Los Próceres"
-                    />
-                    <div className="hint">
-                      Solo la ve el médico que te atienda. Se guarda cifrada.
-                    </div>
-                  </div>
                   {!authedPatient && (
                     <div className="grid grid-2">
                       <div>
@@ -842,11 +786,9 @@ export default function RegistroPaciente() {
                 <span>
                   Acepto compartir voluntariamente esta información para recibir orientación médica
                   solidaria. Entiendo que se me pide un teléfono de emergencia de un familiar
-                  (distinto al de WhatsApp) y mi dirección de residencia para poder actuar en una
-                  emergencia, que la dirección se guarda cifrada de extremo a extremo (nadie en la
-                  plataforma puede leerla), que la atención es por videoconsulta, que el seguimiento
-                  podría continuar por teléfono si fuese necesario, y que esto no reemplaza atención
-                  presencial ni servicios de emergencia.
+                  (distinto al de WhatsApp) para poder actuar en una emergencia, que la atención es
+                  por videoconsulta, que el seguimiento podría continuar por teléfono si fuese
+                  necesario, y que esto no reemplaza atención presencial ni servicios de emergencia.
                 </span>
               </label>
               <AceptaTerminos checked={terminos} onChange={setTerminos} />

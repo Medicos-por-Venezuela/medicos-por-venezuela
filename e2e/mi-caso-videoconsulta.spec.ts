@@ -33,11 +33,6 @@ test('desde /mi-caso: en cola no entra; cuando un médico lo toma entra y el mé
   // Teléfono de emergencia (distinto al WhatsApp).
   await page.getByPlaceholder('Ej. 4241234567').fill('4240000035')
 
-  // Dirección de residencia (obligatoria).
-  await page
-    .getByPlaceholder('Ej. Calle 123, Urbanización Los Próceres')
-    .fill('Calle 123, Urbanización Los Próceres, Caracas')
-
   const zona = page.locator('select', {
     has: page.locator('option', { hasText: 'Selecciona...' })
   })

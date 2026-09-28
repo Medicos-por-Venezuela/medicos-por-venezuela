@@ -22,7 +22,6 @@ export interface PatientCreate {
   full_name: string
   phone_whatsapp: string
   emergency_phone: string
-  address_encrypted: string
   affected_zone: string
   cedula?: string | null
   age_range?: string | null
@@ -129,19 +128,5 @@ export async function markEnteredCall(
     'No se pudo registrar la entrada a la videollamada',
     sessionToken,
     roomHeaders(roomToken)
-  )
-}
-
-// GET /api/v1/patients/{id}/address — dirección cifrada del paciente (permiso patients.read).
-// Solo accesible si el email está en la allowlist o si el llamante es el médico asignado a una
-// consulta del paciente. El backend escribe audit_log (patient.address_revealed) antes de responder.
-export async function fetchPatientAddress(
-  patientId: string,
-  token: string
-): Promise<{ address_encrypted: string | null }> {
-  return getJson<{ address_encrypted: string | null }>(
-    `/api/v1/patients/${patientId}/address`,
-    'No se pudo obtener la dirección del paciente',
-    token
   )
 }

@@ -26,6 +26,7 @@
     "@supabase/supabase-js": "^2.112.0",
     "chart.js": "^4.5.1",
     "cross-env": "^10.1.0",
+    "firebase": "^12.19.0",
     "libsodium-wrappers": "^0.8.4",
     "next": "^16.3.5",
     "react": "^19.2.8",

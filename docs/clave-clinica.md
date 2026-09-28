@@ -1,5 +1,9 @@
 # Clave de descifrado (cifrado E2E de la dirección del paciente)
 
+> **Legado (2026-09-27):** el registro de pacientes ya no pide la dirección y el detalle de la
+> consulta ya no la muestra. Este documento y el par de claves se conservan para las filas
+> históricas y el endpoint `GET /patients/{id}/address`, que sigue vivo (sin UI que lo consuma).
+
 La dirección de residencia se cifra **en el navegador** con una clave pública (X25519 sealed
 box). El servidor guarda y entrega solo el texto cifrado `v1:<base64>`; **ni la API ni la base
 de datos pueden leerla**. La clave privada vive envuelta (PBKDF2-SHA256 600k + AES-256-GCM,

@@ -424,7 +424,6 @@ export interface ConsultationDetail {
     at: string
   } | null
   patient: ConsultationDetailPatient | null
-  can_view_patient_address?: boolean
   clinical_access?: ClinicalAccess
 }
 
