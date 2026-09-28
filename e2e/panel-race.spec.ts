@@ -32,7 +32,7 @@ test('el caso sale en la cola de entrada del especialista y solo un médico lo t
   // Y ya no hay botón de "atender al siguiente": se atiende desde la tarjeta del paciente.
   await expect(page1.getByRole('button', { name: /Atender al siguiente/ })).toHaveCount(0)
 
-  // Por el id del caso: el admin (que no ejerce) recibe el motivo en null, así que no sirve de marcador.
+  // Por el id del caso, no por el motivo (que la cola del admin también muestra desde 2026-09-27).
   const cardIn = (page: typeof page1) => page.locator(`.card-flat[data-consultation-id="${cid}"]`)
   await expect(cardIn(page1)).toBeVisible()
   await expect(cardIn(page2)).toBeVisible()

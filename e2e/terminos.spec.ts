@@ -79,11 +79,6 @@ test('registro de paciente: sin aceptar los términos no se envía nada, y el en
   // Teléfono de emergencia (distinto al WhatsApp).
   await page.getByPlaceholder('Ej. 4241234567').fill('4240000036')
 
-  // Dirección de residencia (obligatoria).
-  await page
-    .getByPlaceholder('Ej. Calle 123, Urbanización Los Próceres')
-    .fill('Calle 123, Urbanización Los Próceres, Caracas')
-
   await page
     .locator('select', { has: page.locator('option', { hasText: 'Selecciona...' }) })
     .selectOption({ index: 1 })
@@ -131,9 +126,10 @@ test('registro de médico: sin aceptar los términos no se crea la cuenta', asyn
   await page.locator('label.label:has-text("Nombre completo") + input').fill('E2E Medico Terminos')
   await page.getByPlaceholder('Solo números').nth(1).fill('4120000037')
   await page.locator('input[type="email"]').fill(`e2e-medico-terminos-${Date.now()}@example.com`)
-  // Selector con buscador (components/SelectBuscable): se abre, se filtra y se elige.
+  // Selector con buscador (components/SelectBuscable): se abre, se filtra y se elige. Por el
+  // placeholder del input de búsqueda: la página tiene más de un combobox (los <select> nativos).
   await page.getByLabel('País donde reside *').click()
-  await page.getByRole('combobox').fill('venez')
+  await page.getByPlaceholder('Buscar país').fill('venez')
   await page.getByRole('option', { name: 'Venezuela' }).click()
   await page.locator('input[type="password"]').fill('e2e-Test-123456')
 

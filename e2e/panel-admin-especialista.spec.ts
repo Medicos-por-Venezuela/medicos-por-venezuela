@@ -11,8 +11,8 @@ const MARCADOR_AJENO = 'E2E Paciente Dual Ajeno'
 test('admin que ejerce: una card por su especialidad y otra con el resto', async ({ browser }) => {
   const general = await crearConsultaEnEspera(MARCADOR_GENERAL)
   const ajeno = await crearConsultaEnEspera(MARCADOR_AJENO, 'Traumatología y ortopedia')
-  // Por el id del caso: el de Traumatología no es de su especialidad y llega sin motivo (dato
-  // clínico), así que su texto no sirve para encontrar la tarjeta.
+  // Por el id del caso: más robusto que el motivo, que la admin también recibe en la cola
+  // desde 2026-09-27.
   const card = (id: string) => page.locator(`.card-flat[data-consultation-id="${id}"]`)
 
   const ctx = await browser.newContext({ storageState: 'e2e/.auth/dual.json' })

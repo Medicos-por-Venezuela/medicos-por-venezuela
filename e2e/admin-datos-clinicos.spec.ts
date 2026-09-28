@@ -1,6 +1,8 @@
-// El admin opera el caso sin ver el dato clínico (docs/cifrado-datos-clinicos.md del backend): el
-// motivo llega en null con `clinical_access: "none"` y la tabla pinta el marcador, no un hueco ni
-// el texto del paciente. La nota del médico (`internal_note`) ya no tiene editor en /admin/pacientes
+// El admin opera el caso sin ver el dato clínico (docs/cifrado-datos-clinicos.md del backend): en
+// el listado /admin/pacientes y en el detalle, el motivo llega en null con `clinical_access:
+// "none"` y se pinta el marcador, no un hueco ni el texto del paciente. EXCEPCIÓN (2026-09-27): en
+// la cola del panel el admin SÍ ve el motivo, porque la gestiona y lo necesita para triar.
+// La nota del médico (`internal_note`) ya no tiene editor en /admin/pacientes
 // (el backend respondería 403), pero la nota admin sigue editable.
 import { test, expect, request } from '@playwright/test'
 import { idEspecialidadGeneral } from './helpers'
@@ -88,30 +90,28 @@ test('admin en el detalle del caso no ve ni puede guardar la nota del médico', 
   await ctx.close()
 })
 
-test('en la cola del panel, un caso sin acceso clínico explica que el motivo es confidencial', async ({
-  browser
-}) => {
-  // El admin e2e no ejerce: ve todas las colas sin acceso clínico. Antes la tarjeta decía "Sin
-  // descripción" y médicos y admins creían que el caso estaba vacío (y lo cerraban).
+test('en la cola del panel, el admin también ve el motivo del caso', async ({ browser }) => {
+  // El admin ve todas las colas para gestionarlas: desde 2026-09-27 recibe el motivo (SUMMARY) en
+  // el panel. En el listado /admin/pacientes y en el detalle sigue oculto (los otros tests).
   await seedConsultation()
   const ctx = await browser.newContext({ storageState: 'e2e/.auth/admin.json' })
   const page = await ctx.newPage()
 
   await page.goto('/panel-medico')
+  await expect(page.getByText(MOTIVO).first()).toBeVisible()
   await expect(
-    page.getByText(/Motivo confidencial: solo lo ve el médico que atiende al paciente/).first()
-  ).toBeVisible()
-  await expect(page.getByText(MOTIVO)).toHaveCount(0)
+    page.getByText(/Motivo confidencial: solo lo ve el médico que atiende al paciente/)
+  ).toHaveCount(0)
 
   await ctx.close()
 })
 
-test('derivar exige poder ver el motivo: el admin puro no ve el botón, el médico de la cola sí', async ({
+test('derivar sigue atado a ver el motivo: el admin y el médico de la cola lo ven y pueden derivar', async ({
   browser
 }) => {
-  // Derivar sin poder leer el motivo no tiene sentido (decisión de producto 2026-09-23). El admin
-  // e2e no ejerce (clinical_access: "none" en este caso, Medicina general); doc1 sí ejerce
-  // Medicina general y lo ve en su cola con acceso clínico ("summary"), así que puede derivarlo.
+  // "Derivar" se muestra a quien puede leer el motivo (decisión 2026-09-23). Desde 2026-09-27 el
+  // admin también recibe el motivo en la cola (la gestiona), así que su tarjeta ofrece derivar
+  // igual que la del médico de la cola; el gating del componente sigue siendo `clinical_access`.
   const consultationId = await seedConsultation()
 
   const ctxAdmin = await browser.newContext({ storageState: 'e2e/.auth/admin.json' })
@@ -119,8 +119,8 @@ test('derivar exige poder ver el motivo: el admin puro no ve el botón, el médi
   await admin.goto('/panel-medico')
   const cardAdmin = admin.locator(`.card-flat[data-consultation-id="${consultationId}"]`)
   await expect(cardAdmin).toBeVisible()
-  await expect(cardAdmin.getByRole('button', { name: 'Derivar a especialista' })).toHaveCount(0)
-  // La otra acción de la tarjeta sigue ahí: no se ocultó todo, solo derivar.
+  await expect(cardAdmin.getByRole('button', { name: 'Derivar a especialista' })).toBeVisible()
+  // La otra acción de la tarjeta sigue ahí.
   await expect(cardAdmin.getByRole('button', { name: 'Atender paciente' })).toBeVisible()
   await ctxAdmin.close()
 
