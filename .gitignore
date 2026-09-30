@@ -16,7 +16,9 @@ next-env.d.ts
 .eslintcache
 
 # Local tooling
-.claude/
+# Claude Code: se versionan .claude/skills; solo se ignora lo local (misma regla que la API)
+.claude/settings.local.json
+.claude/*.local.json
 .playwright-mcp/
 
 # Logs
