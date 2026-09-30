@@ -14,6 +14,7 @@
 // El email es único por corrida (los auth users de Supabase no se limpian entre corridas) y el
 // nombre empieza por "E2E Paciente" para que el cleanup del global-setup borre su rastro.
 import { test, expect } from '@playwright/test'
+import { completarVerificacionCorreo } from './helpers'
 
 const MOTIVO = 'E2E Paciente Mi Caso: dolor en el cuello y hormigueo en las manos.'
 
@@ -27,21 +28,24 @@ test('desde /mi-caso: en cola no entra; cuando un médico lo toma entra y el mé
   await page.getByPlaceholder('Ej. 12345678').fill('99990035') // CedulaField emite "V-99990035"
   await page.getByPlaceholder('Ej. María González').fill('E2E Paciente Mi Caso')
   await page.getByPlaceholder('Ej. 4121234567').fill('4120000035') // PhoneField emite "584120000035"
-  await page.locator('input[type="email"]').fill(`e2e-micaso-${Date.now()}@example.com`)
+  const email = `e2e-micaso-${Date.now()}@example.com`
+  await page.locator('input[type="email"]').fill(email)
   await page.locator('input[type="password"]').fill('e2e-Test-123456')
 
   // Teléfono de emergencia (distinto al WhatsApp).
   await page.getByPlaceholder('Ej. 4241234567').fill('4240000035')
 
-  const zona = page.locator('select', {
-    has: page.locator('option', { hasText: 'Selecciona...' })
-  })
+  const zona = page.locator('label:has-text("Zona") + select')
   await zona.selectOption({ index: 1 })
   await page.getByPlaceholder('Ej. 34').fill('41')
   await page.locator('textarea').fill(MOTIVO)
   await page.getByRole('checkbox', { name: /Acepto compartir/ }).check()
   await page.getByRole('checkbox', { name: /acepto los Términos de uso y privacidad/ }).check()
   await page.getByRole('button', { name: 'Registrarse' }).click()
+
+  // Modal de confirmación de correo → modal de código 6 dígitos
+  await completarVerificacionCorreo(page, email)
+
   await page.waitForURL(/\/sala-espera\?/)
 
   // Se abandona esa pestaña (la sesión sigue viva) y se vuelve por el portal.

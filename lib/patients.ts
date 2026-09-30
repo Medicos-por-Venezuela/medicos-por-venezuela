@@ -33,6 +33,7 @@ export interface PatientCreate {
   parentesco?: string | null
   user_id?: string | null
   consent: boolean
+  email_verification_token?: string | null
 }
 
 export interface PatientResponse {
