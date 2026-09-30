@@ -15,6 +15,13 @@ import { trackSolicitudDeConsulta } from '../lib/analytics'
 import AceptaTerminos, { MENSAJE_TERMINOS } from '../components/AceptaTerminos'
 import CedulaField from '../components/CedulaField'
 import PhoneField from '../components/PhoneField'
+import ConfirmarCorreoModal from '../components/ConfirmarCorreoModal'
+import VerificacionCodigoModal from '../components/VerificacionCodigoModal'
+import {
+  sendEmailVerification,
+  verifyEmailCode,
+  type VerificationPurpose
+} from '../lib/emailVerification'
 
 const PARENTESCOS = [
   'Padre',
@@ -50,7 +57,6 @@ const adultSchema = z
     authedPatient: z.boolean(),
     email: z.string(),
     password: z.string(),
-    wantsSpecialty: z.boolean(),
     specialty: z.string(),
     hasAllergy: z.boolean(),
     allergyDetail: z.string(),
@@ -65,10 +71,6 @@ const adultSchema = z
   .refine((d) => d.authedPatient || d.password.length >= 6, {
     message: 'La contraseña debe tener al menos 6 caracteres.',
     path: ['password']
-  })
-  .refine((d) => !d.wantsSpecialty || d.specialty.length > 0, {
-    message: 'Selecciona una especialidad o desmarca "Conozco la especialidad".',
-    path: ['specialty']
   })
   .refine((d) => !d.hasAllergy || d.allergyDetail.trim().length > 0, {
     message: 'Indica a qué eres alérgico, o desmarca la opción.',
@@ -162,7 +164,6 @@ export default function RegistroPaciente() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [edad, setEdad] = useState('')
-  const [wantsSpecialty, setWantsSpecialty] = useState(false)
   const [specialty, setSpecialty] = useState('')
   const [hasAllergy, setHasAllergy] = useState(false)
   const [allergyDetail, setAllergyDetail] = useState('')
@@ -191,6 +192,13 @@ export default function RegistroPaciente() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Email verification modals.
+  const [showConfirmEmail, setShowConfirmEmail] = useState(false)
+  const [showVerifyCode, setShowVerifyCode] = useState(false)
+  const [verificationToken, setVerificationToken] = useState<string | null>(null)
+  const [verifyingEmail, setVerifyingEmail] = useState('')
+  const [verifyingPurpose, setVerifyingPurpose] = useState<VerificationPurpose>('patient')
+
   // El CTA "Hablar con un psicólogo" del home entra aquí como
   // `/registro-paciente?especialidad=psicologia` y deja el bloque de especialidad ya marcado y
   // resuelto. No hay un flujo aparte para salud mental: es este mismo formulario con la
@@ -209,7 +217,6 @@ export default function RegistroPaciente() {
     if (new URLSearchParams(window.location.search).get('especialidad') !== 'psicologia') return
     const psicologia = activas.find((e) => e.mental_health_only)
     if (!psicologia) return
-    setWantsSpecialty(true)
     setSpecialty(psicologia.id)
   }
 
@@ -246,7 +253,6 @@ export default function RegistroPaciente() {
     setEmail('')
     setPassword('')
     setEdad('')
-    setWantsSpecialty(false)
     setSpecialty('')
     setHasAllergy(false)
     setAllergyDetail('')
@@ -285,7 +291,6 @@ export default function RegistroPaciente() {
           authedPatient,
           email,
           password,
-          wantsSpecialty,
           specialty,
           hasAllergy,
           allergyDetail,
@@ -298,12 +303,57 @@ export default function RegistroPaciente() {
       return
     }
 
+    // Si el paciente ya está autenticado, saltamos la verificación de correo y vamos directo al flujo.
+    if (authedPatient) {
+      await continuarRegistro()
+      return
+    }
+
+    // Para nuevos registros: mostrar modal de confirmación de correo.
+    const accountEmail = (isMinor ? gEmail : email).trim().toLowerCase()
+    setVerifyingEmail(accountEmail)
+    setVerifyingPurpose('patient')
+    setShowConfirmEmail(true)
+  }
+
+  const handleConfirmEmailClose = () => {
+    setShowConfirmEmail(false)
+  }
+
+  const handleConfirmEmailCorregir = () => {
+    // El focus se maneja en el modal via onCorregir callback
+    if (isMinor) {
+      // Enfocar el campo de correo del representante
+      const input = document.querySelector('input[type="email"]') as HTMLInputElement
+      input?.focus()
+    } else {
+      const input = document.querySelector('input[type="email"]') as HTMLInputElement
+      input?.focus()
+    }
+  }
+
+  const handleConfirmEmailContinuar = () => {
+    setShowConfirmEmail(false)
+    setShowVerifyCode(true)
+  }
+
+  const handleVerifyCodeSuccess = async (token: string) => {
+    setVerificationToken(token)
+    setShowVerifyCode(false)
+    await continuarRegistro(token)
+  }
+
+  const handleVerifyCodeClose = () => {
+    setShowVerifyCode(false)
+    setVerificationToken(null)
+  }
+
+  const continuarRegistro = async (verificationToken: string | null = null) => {
     // Marca si signUp() ya dejó una cuenta+sesión activas antes de llamar a
     // createPatient()/createConsultation(), para poder distinguir en el catch si hay que revertir
     // la sesión (ver mitigación de cuentas huérfanas más abajo). No aplica al flujo authedPatient:
     // ahí la cuenta ya existía antes de este submit, no se crea nada nuevo.
     let cuentaCreada = false
-
     setLoading(true)
     try {
       let userId: string | null = null
@@ -350,7 +400,7 @@ export default function RegistroPaciente() {
       const general = buscarEspecialidad('Medicina general') ?? specialties[0]?.id ?? null
       const specialtyId = isMinor
         ? (buscarEspecialidad('Pediatría') ?? general)
-        : wantsSpecialty && specialty
+        : specialty
           ? specialty
           : general
 
@@ -372,7 +422,8 @@ export default function RegistroPaciente() {
           emergency_phone: gEmergencyPhone,
           email: contactEmail || null,
           affected_zone: zona,
-          consent: true
+          consent: true,
+          email_verification_token: verificationToken
         })
         const minor = await createPatient({
           full_name: mFullName.trim(),
@@ -385,7 +436,8 @@ export default function RegistroPaciente() {
           allergies: mHasAllergy && mAllergyDetail.trim() ? mAllergyDetail.trim() : null,
           parent_id: guardian.id,
           parentesco: gRelationship,
-          consent: true
+          consent: true,
+          email_verification_token: verificationToken
         })
         patientId = minor.id
         patientName = minor.full_name
@@ -400,7 +452,8 @@ export default function RegistroPaciente() {
           affected_zone: zona,
           age_range: edad || null,
           allergies: hasAllergy && allergyDetail.trim() ? allergyDetail.trim() : null,
-          consent: true
+          consent: true,
+          email_verification_token: verificationToken
         })
         patientId = adult.id
         patientName = adult.full_name
@@ -446,6 +499,11 @@ export default function RegistroPaciente() {
         setError(
           'Tu cuenta se creó, pero no pudimos guardar tu solicitud. Contáctanos desde la sección "Contacto" de la página principal para completarla manualmente, o inténtalo de nuevo más tarde con el mismo correo.'
         )
+      } else if (e instanceof ApiError && e.status === 403) {
+        // Token de verificación inválido/expirado: reabrir modal de código
+        setVerificationToken(null)
+        setShowVerifyCode(true)
+        setError(e.message || 'El código de verificación expiró o no es válido. Ingresa uno nuevo.')
       } else if (e instanceof ApiError && e.status === 422) {
         setError(e.message || 'Revisa los datos ingresados.')
       } else {
@@ -711,30 +769,15 @@ export default function RegistroPaciente() {
                   </div>
 
                   <div>
-                    <label
-                      style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={wantsSpecialty}
-                        onChange={(e) => setWantsSpecialty(e.target.checked)}
-                        style={{ width: 'auto' }}
-                      />
-                      Conozco la especialidad que necesito
-                    </label>
-                    {wantsSpecialty && (
-                      <div style={{ marginTop: 10 }}>
-                        <label className="label">Especialidad *</label>
-                        <select value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
-                          <option value="">Selecciona...</option>
-                          {specialties.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                    <label className="label">Especialidad (opcional)</label>
+                    <select value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
+                      <option value="">Selecciona... (cae en Medicina general)</option>
+                      {specialties.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
@@ -809,6 +852,21 @@ export default function RegistroPaciente() {
           </div>
         </div>
       </main>
+
+      <ConfirmarCorreoModal
+        open={showConfirmEmail}
+        email={verifyingEmail}
+        onClose={handleConfirmEmailClose}
+        onConfirm={handleConfirmEmailContinuar}
+        onCorregir={handleConfirmEmailCorregir}
+      />
+      <VerificacionCodigoModal
+        open={showVerifyCode}
+        email={verifyingEmail}
+        purpose={verifyingPurpose}
+        onClose={handleVerifyCodeClose}
+        onVerified={handleVerifyCodeSuccess}
+      />
     </>
   )
 }

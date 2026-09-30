@@ -11,7 +11,7 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { request } from '@playwright/test'
+import { request, expect } from '@playwright/test'
 
 const API = 'http://localhost:8000/api/v1'
 
@@ -116,4 +116,47 @@ export async function crearConsultaEnEspera(
   const body = await cons.json()
   await ctx.dispose()
   return { id: body.id, token: body.access_token }
+}
+
+/**
+ * Completa el flujo de verificación de correo (modal de confirmación + modal de código).
+ * Captura el `debug_code` de la respuesta de `/email-verification/send` (solo en local con
+ * EMAIL_VERIFICATION_DEBUG_CODE=true), rellena el input de 6 dígitos y pulsa "Verificar".
+ */
+export async function completarVerificacionCorreo(
+  page: import('@playwright/test').Page,
+  email?: string
+) {
+  // 1. Modal de confirmación: pulsar "Continuar"
+  await page.getByRole('button', { name: 'Continuar' }).click()
+
+  // 2. Esperar la respuesta del envío del código para capturar debug_code
+  const sendResponse = await page.waitForResponse(
+    (r) => r.url().includes('/email-verification/send') && r.request().method() === 'POST'
+  )
+  const sendJson = await sendResponse.json()
+  const debugCode = sendJson.debug_code
+
+  // 3. Modal de código: rellenar los 6 inputs (el debug_code es string de 6 dígitos)
+  if (debugCode) {
+    const inputs = page.locator('input[maxlength="1"]')
+    await expect(inputs).toHaveCount(6)
+    for (let i = 0; i < 6; i++) {
+      await inputs.nth(i).fill(debugCode[i])
+    }
+  } else if (email) {
+    // Fallback: si no hay debug_code, intentar con un código conocido de prueba
+    // (esto solo debería pasar en entornos sin debug_code)
+    throw new Error(
+      'No se recibió debug_code del backend; ¿está EMAIL_VERIFICATION_DEBUG_CODE=true?'
+    )
+  }
+
+  // 4. Verificar: con los 6 dígitos el modal auto-envía; si el botón sigue visible (auto-envío
+  //    aún no disparado), pulsarlo. Luego esperar a que el modal se cierre.
+  const verificar = page.getByRole('button', { name: 'Verificar' })
+  if (await verificar.isVisible().catch(() => false)) {
+    await verificar.click()
+  }
+  await page.waitForSelector('div[role="dialog"]', { state: 'hidden', timeout: 15000 })
 }
