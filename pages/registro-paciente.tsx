@@ -57,7 +57,6 @@ const adultSchema = z
     authedPatient: z.boolean(),
     email: z.string(),
     password: z.string(),
-    specialty: z.string(),
     hasAllergy: z.boolean(),
     allergyDetail: z.string(),
     descripcion: z.string().trim().min(1, 'Describe brevemente el motivo de la consulta.'),
@@ -200,15 +199,15 @@ export default function RegistroPaciente() {
   const [verifyingPurpose, setVerifyingPurpose] = useState<VerificationPurpose>('patient')
 
   // El CTA "Hablar con un psicólogo" del home entra aquí como
-  // `/registro-paciente?especialidad=psicologia` y deja el bloque de especialidad ya marcado y
-  // resuelto. No hay un flujo aparte para salud mental: es este mismo formulario con la
-  // especialidad puesta, que es justo lo que el paciente tendría que elegir a mano.
+  // `/registro-paciente?especialidad=psicologia` y enruta el caso a la cola de salud mental SIN
+  // pedirle nada al paciente: el formulario ya no muestra especialidad (la cola la deciden la edad
+  // y este enlace; si no, cae en Medicina general). No hay un flujo aparte para salud mental: es
+  // este mismo formulario con la especialidad puesta por detrás.
   //
   // Psicología se localiza por el flag `mental_health_only` del catálogo, NUNCA por el nombre:
   // renombrarla en la base rompería un `find` por cadena, y ya pasó con "Pediatría" (ver la nota
-  // del envío, más abajo). Si el catálogo no la trae, no se preselecciona nada y el formulario se
-  // comporta como siempre — el paciente elige, que es peor que la preselección pero nunca es un
-  // error.
+  // del envío, más abajo). Si el catálogo no la trae, no se preselecciona nada y el caso cae en
+  // Medicina general — peor que la preselección pero nunca un error.
   //
   // El parámetro se lee de `window.location.search` y no de `router.query`: en una página estática
   // `router.query` llega vacío en el primer render, y este callback puede resolverse antes de que
@@ -291,7 +290,6 @@ export default function RegistroPaciente() {
           authedPatient,
           email,
           password,
-          specialty,
           hasAllergy,
           allergyDetail,
           descripcion,
@@ -766,18 +764,6 @@ export default function RegistroPaciente() {
                         placeholder="Ej. 34"
                       />
                     </div>
-                  </div>
-
-                  <div>
-                    <label className="label">Especialidad (opcional)</label>
-                    <select value={specialty} onChange={(e) => setSpecialty(e.target.value)}>
-                      <option value="">Selecciona... (cae en Medicina general)</option>
-                      {specialties.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </select>
                   </div>
 
                   <div>
