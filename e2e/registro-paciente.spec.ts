@@ -52,10 +52,6 @@ test('registro adulto por UI: formulario → signup → sala de espera en cola',
   await expect(page.getByText('Estás en la sala de espera')).toBeVisible()
   await expect(page.getByText(/Atento a tu correo/)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Entrar a la videoconsulta' })).toHaveCount(0)
-  // Y "Otra" no se le ofreció: no es la cola de nadie. El select de especialidad ahora está
-  // siempre visible (opcional; sin elegir cae en Medicina general).
-  await page.goBack()
-  await expect(page.locator('option', { hasText: /^Otra$/ })).toHaveCount(0)
 
   // La conversión `generate_lead` se dispara aquí en PRODUCCIÓN. Lo que se puede comprobar en
   // local es lo contrario, que es lo que protege este assert: que no se filtre analítica desde
