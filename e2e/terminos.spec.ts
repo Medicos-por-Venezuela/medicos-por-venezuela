@@ -79,9 +79,7 @@ test('registro de paciente: sin aceptar los términos no se envía nada, y el en
   // Teléfono de emergencia (distinto al WhatsApp).
   await page.getByPlaceholder('Ej. 4241234567').fill('4240000036')
 
-  await page
-    .locator('select', { has: page.locator('option', { hasText: 'Selecciona...' }) })
-    .selectOption({ index: 1 })
+  await page.locator('label:has-text("Zona") + select').selectOption({ index: 1 })
   await page.getByPlaceholder('Ej. 34').fill('34')
   const motivo = 'Consulta de prueba de la casilla de términos.'
   await page.locator('textarea').fill(motivo)

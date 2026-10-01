@@ -42,6 +42,7 @@ export interface DoctorCreate {
   email: string
   country_of_residence?: string | null
   website?: string | null
+  email_verification_token?: string | null
 }
 
 export interface DoctorResponse {

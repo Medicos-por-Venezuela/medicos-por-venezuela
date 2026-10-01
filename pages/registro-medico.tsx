@@ -4,6 +4,8 @@ import { useRouter } from 'next/router'
 import { useRef, useState } from 'react'
 import { z } from 'zod'
 import YaRegistradoModal, { type MotivoYaRegistrado } from '../components/YaRegistradoModal'
+import ConfirmarCorreoModal from '../components/ConfirmarCorreoModal'
+import VerificacionCodigoModal from '../components/VerificacionCodigoModal'
 import { supabase } from '../lib/supabase'
 import { verificarSacs, verificarPsicologo } from '../lib/verificacion'
 import {
@@ -21,6 +23,7 @@ import { trackAltaDeMedico } from '../lib/analytics'
 import AceptaTerminos, { MENSAJE_TERMINOS } from '../components/AceptaTerminos'
 import SelectBuscable, { type OpcionBuscable } from '../components/SelectBuscable'
 import { PAISES } from '../lib/paises'
+import { type VerificationPurpose } from '../lib/emailVerification'
 
 // Consolida en un solo paso lo que antes estaba dividido entre este archivo (cuenta) y
 // /elegir-rol (especialidad/país/whatsapp), según el diagrama de secuencia + wireframe
@@ -115,6 +118,14 @@ export default function RegistroMedico() {
   const [estadoCorreo, setEstadoCorreo] = useState<RegistrationEmailStatus | null>(null)
   const correoBuscado = useRef('')
   const [yaRegistrado, setYaRegistrado] = useState<MotivoYaRegistrado | null>(null)
+
+  // Email verification modals.
+  const [showConfirmEmail, setShowConfirmEmail] = useState(false)
+  const [showVerifyCode, setShowVerifyCode] = useState(false)
+  const [verificationToken, setVerificationToken] = useState<string | null>(null)
+  const [verifyingEmail, setVerifyingEmail] = useState('')
+  const [verifyingPurpose, setVerifyingPurpose] = useState<VerificationPurpose>('doctor')
+  const [sesionAbierta, setSesionAbierta] = useState(false)
 
   useMountEffect(() => {
     fetchProfessionalTypes()
@@ -268,70 +279,78 @@ export default function RegistroMedico() {
     // hay que cerrarla (ver mitigación de cuentas huérfanas más abajo).
     let sesionAbierta = false
 
+    // Chequeo ANTES de tocar Supabase Auth. Sin él, un correo o una cédula ya registrados creaban
+    // la cuenta y luego fallaban al guardar la ficha: la cuenta quedaba huérfana. Así nacieron en
+    // producción cuentas de médicos que ya estaban registrados y probaron otra vez.
+    let estadoCorreo: RegistrationEmailStatus = 'available'
+    try {
+      const check = await checkDoctorRegistration({
+        email: correo.trim().toLowerCase(),
+        cedula: `${cedulaPrefijo}-${cedulaNumero}`
+      })
+      estadoCorreo = check.email_status
+      const motivo = motivoPorCorreo(check.email_status) ?? (check.cedula_taken ? 'cedula' : null)
+      if (motivo) {
+        setYaRegistrado(motivo)
+        return
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 429) {
+        setError('Demasiados intentos. Intenta de nuevo más tarde.')
+        return
+      }
+      // Chequeo caído: se sigue como antes. El backend vuelve a comprobar correo y cédula antes de
+      // guardar la ficha, y el catch de abajo cierra la sesión si eso falla.
+      console.error(e)
+    }
+
+    // Si es un registro incompleto (cuenta ya existe), saltamos la verificación de correo.
+    if (estadoCorreo === 'incomplete') {
+      await completarRegistroIncompleto()
+      return
+    }
+
+    // Para nuevos registros: mostrar modal de confirmación de correo.
+    setVerifyingEmail(correo.trim().toLowerCase())
+    setVerifyingPurpose('doctor')
+    setShowConfirmEmail(true)
+  }
+
+  const handleConfirmEmailClose = () => {
+    setShowConfirmEmail(false)
+  }
+
+  const handleConfirmEmailContinuar = () => {
+    setShowConfirmEmail(false)
+    setShowVerifyCode(true)
+  }
+
+  const handleVerifyCodeSuccess = async (token: string) => {
+    setVerificationToken(token)
+    setShowVerifyCode(false)
+    await completarRegistroNuevo()
+  }
+
+  const handleVerifyCodeClose = () => {
+    setShowVerifyCode(false)
+    setVerificationToken(null)
+  }
+
+  const completarRegistroIncompleto = async () => {
     setLoading(true)
     try {
       const accountEmail = correo.trim().toLowerCase()
       const cedula = `${cedulaPrefijo}-${cedulaNumero}`
 
-      // Chequeo ANTES de tocar Supabase Auth. Sin él, un correo o una cédula ya registrados creaban
-      // la cuenta y luego fallaban al guardar la ficha: la cuenta quedaba huérfana. Así nacieron en
-      // producción cuentas de médicos que ya estaban registrados y probaron otra vez.
-      let estadoCorreo: RegistrationEmailStatus = 'available'
-      try {
-        const check = await checkDoctorRegistration({ email: accountEmail, cedula })
-        estadoCorreo = check.email_status
-        const motivo = motivoPorCorreo(check.email_status) ?? (check.cedula_taken ? 'cedula' : null)
-        if (motivo) {
-          setYaRegistrado(motivo)
-          return
-        }
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 429) {
-          setError('Demasiados intentos. Intenta de nuevo más tarde.')
-          return
-        }
-        // Chequeo caído: se sigue como antes. El backend vuelve a comprobar correo y cédula antes de
-        // guardar la ficha, y el catch de abajo cierra la sesión si eso falla.
-        console.error(e)
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: accountEmail,
+        password: contrasena
+      })
+      if (signInError || !signInData.session) {
+        setYaRegistrado('clave')
+        return
       }
-
-      if (estadoCorreo === 'incomplete') {
-        // Registro que se cortó: la cuenta ya existe y no tiene ficha. Se termina con la misma
-        // contraseña en vez de crear otra cuenta (signUp fallaría: el correo ya está en Auth).
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email: accountEmail,
-          password: contrasena
-        })
-        if (signInError || !signInData.session) {
-          setYaRegistrado('clave')
-          return
-        }
-      } else {
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: accountEmail,
-          password: contrasena,
-          options: { data: { full_name: nombreCompleto.trim(), role: 'doctor' } }
-        })
-        if (signUpError) {
-          // El correo está en Auth aunque el chequeo no lo viera (una cuenta de Auth sin fila en
-          // `users`, o dos registros a la vez): mismo aviso, no el error genérico de abajo.
-          if (
-            signUpError.code === 'user_already_exists' ||
-            /already registered/i.test(signUpError.message)
-          ) {
-            setYaRegistrado('cuenta')
-            return
-          }
-          throw signUpError
-        }
-        if (!signUpData.session) {
-          setError(
-            'Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión en el panel médico.'
-          )
-          return
-        }
-      }
-      sesionAbierta = true
+      setSesionAbierta(true)
 
       await createDoctor({
         professional_type_id: tipoProfesionalId,
@@ -344,26 +363,87 @@ export default function RegistroMedico() {
         country_of_residence: paisReside || null,
         website
       })
-      // Conversión. Aquí y no tras el signUp de Supabase: una cuenta creada cuyo alta en el
-      // backend falló no es un médico registrado, y ese caso existe (lo maneja el catch de
-      // abajo cerrando la sesión). Sin datos de la persona (ver lib/analytics.ts).
       trackAltaDeMedico()
-
-      // Diagrama de secuencia del ticket: tras el 201 se redirige directo al board (panel-medico),
-      // no se pide un login manual aparte — signUp() ya dejó una sesión activa.
       await router.push('/panel-medico')
     } catch (e) {
       if (sesionAbierta) {
-        // El registro en el backend falló después de abrir la sesión de Supabase: la cerramos
-        // para no dejar al usuario autenticado sin ficha (tampoco podría entrar: el login rechaza
-        // las cuentas sin ficha). No revertimos la cuenta en sí (eso requeriría un endpoint admin
-        // con service-role); en cambio, reintentar con el mismo correo y contraseña la completa,
-        // porque el chequeo previo la reconoce como un registro a medias.
         await supabase.auth.signOut()
         console.error(e)
         setError(
           'No pudimos guardar tus datos de registro. Inténtalo de nuevo en unos minutos con el mismo correo y contraseña, o contáctanos desde la sección "Contacto" de la página principal.'
         )
+      } else if (e instanceof ApiError && e.status === 422) {
+        setError(e.message || 'Cédula o teléfono con formato inválido.')
+      } else if (e instanceof ApiError && e.status === 429) {
+        setError('Demasiados intentos. Intenta de nuevo más tarde.')
+      } else if (e instanceof ApiError) {
+        setError('No se pudo completar el registro. Intenta de nuevo.')
+      } else {
+        console.error(e)
+        setError(
+          'No se pudo crear la cuenta. Puede que el correo ya esté registrado, o haya un error de conexión.'
+        )
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const completarRegistroNuevo = async () => {
+    setLoading(true)
+    try {
+      const accountEmail = correo.trim().toLowerCase()
+      const cedula = `${cedulaPrefijo}-${cedulaNumero}`
+
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: accountEmail,
+        password: contrasena,
+        options: { data: { full_name: nombreCompleto.trim(), role: 'doctor' } }
+      })
+      if (signUpError) {
+        if (
+          signUpError.code === 'user_already_exists' ||
+          /already registered/i.test(signUpError.message)
+        ) {
+          setYaRegistrado('cuenta')
+          return
+        }
+        throw signUpError
+      }
+      if (!signUpData.session) {
+        setError(
+          'Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión en el panel médico.'
+        )
+        return
+      }
+      setSesionAbierta(true)
+
+      await createDoctor({
+        professional_type_id: tipoProfesionalId,
+        specialty_id: resolverSpecialtyId(),
+        cedula,
+        full_name: nombreCompleto,
+        license: licencia || null,
+        phone: `${PAISES.find((p) => p.iso === whatsappPais)?.dial ?? '+58'}${whatsappNumero}`,
+        email: accountEmail,
+        country_of_residence: paisReside || null,
+        website,
+        email_verification_token: verificationToken
+      })
+      trackAltaDeMedico()
+      await router.push('/panel-medico')
+    } catch (e) {
+      if (sesionAbierta) {
+        await supabase.auth.signOut()
+        console.error(e)
+        setError(
+          'No pudimos guardar tus datos de registro. Inténtalo de nuevo en unos minutos con el mismo correo y contraseña, o contáctanos desde la sección "Contacto" de la página principal.'
+        )
+      } else if (e instanceof ApiError && e.status === 403) {
+        // Token de verificación inválido/expirado: reabrir modal de código
+        setVerificationToken(null)
+        setShowVerifyCode(true)
+        setError(e.message || 'El código de verificación expiró o no es válido. Ingresa uno nuevo.')
       } else if (e instanceof ApiError && e.status === 422) {
         setError(e.message || 'Cédula o teléfono con formato inválido.')
       } else if (e instanceof ApiError && e.status === 429) {
@@ -591,6 +671,19 @@ export default function RegistroMedico() {
           </div>
         </div>
         <YaRegistradoModal motivo={yaRegistrado} onClose={() => setYaRegistrado(null)} />
+        <ConfirmarCorreoModal
+          open={showConfirmEmail}
+          email={verifyingEmail}
+          onClose={handleConfirmEmailClose}
+          onConfirm={handleConfirmEmailContinuar}
+        />
+        <VerificacionCodigoModal
+          open={showVerifyCode}
+          email={verifyingEmail}
+          purpose={verifyingPurpose}
+          onClose={handleVerifyCodeClose}
+          onVerified={handleVerifyCodeSuccess}
+        />
       </main>
     </>
   )
