@@ -22,7 +22,7 @@ export default function EstadoEntrega({
     return (
       <span
         style={{
-          color: '#ef4444',
+          color: 'var(--red)',
           fontSize: '11px',
           display: 'inline-flex',
           alignItems: 'center',
@@ -32,6 +32,7 @@ export default function EstadoEntrega({
         data-testid="status-failed"
       >
         <svg
+          aria-hidden="true"
           width="12"
           height="12"
           viewBox="0 0 24 24"
@@ -52,18 +53,21 @@ export default function EstadoEntrega({
   return (
     <span
       style={{
-        color: isRead ? '#0284c7' : '#94a3b8',
+        color: isRead ? 'var(--brand)' : 'var(--muted)',
         fontSize: '11px',
         display: 'inline-flex',
         alignItems: 'center',
         marginLeft: '4px'
       }}
+      role="img"
+      aria-label={isRead ? 'Leído' : isDelivered ? 'Entregado' : 'Enviado'}
       title={isRead ? 'Leído' : isDelivered ? 'Entregado' : 'Enviado'}
       data-testid={isRead ? 'status-read' : 'status-sent'}
     >
       {isRead || isDelivered ? (
         // Doble check
         <svg
+          aria-hidden="true"
           width="15"
           height="15"
           viewBox="0 0 24 24"
@@ -79,6 +83,7 @@ export default function EstadoEntrega({
       ) : (
         // Check simple
         <svg
+          aria-hidden="true"
           width="13"
           height="13"
           viewBox="0 0 24 24"

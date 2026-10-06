@@ -7,6 +7,116 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-10-05
 
+- **fix(sala-espera): la misma fuga de oyentes de `waitMs`, ahora en `lib/waitingRoom.ts`** —
+  `wait()` registraba un oyente anónimo de `abort` por llamada, sin `{ once: true }` y sin
+  retirarlo por el camino del temporizador. Se llama en cada vuelta del bucle del stream sobre el
+  MISMO `AbortSignal` (reconexión a 1,5 s y respaldo a 15 s), así que en modo degradado acumulaba
+  un oyente cada 15 s y al abortar se disparaban todos juntos. Y, lo que de verdad veía el
+  paciente: **con un `signal` ya abortado `addEventListener` no dispara nunca**, así que la promesa
+  solo se resolvía al cumplirse los `ms` y la sala se quedaba congelada los 15 s enteros tras el
+  abort en vez de salir en el acto. Se aplica el patrón ya cerrado en `lib/messages.ts`:
+  cortocircuito si el `signal` viene abortado, `{ once: true }`, y `removeEventListener` cuando
+  gana el temporizador. El comportamiento del stream de la sala no se toca en nada más.
+  Ficheros: `lib/waitingRoom.ts`.
+
+- **test(mensajeria): E2E del buzón del médico, del badge de la cabecera y del 409** — QA señaló
+  que `pages/panel-medico/mensajes.tsx` no tenía ni un spec, y es donde cayó la mitad del segundo
+  lote (SSE del buzón, filtro en dos efectos, `last_message_at`, badge). El 409 también nació sin
+  prueba. Se cubre con dos ficheros nuevos, con el patrón de los tres specs que ya existían (misma
+  siembra por los endpoints públicos, mismas sesiones de `e2e/.auth/*`, mismos `data-testid`):
+  - `e2e/mensajes-buzon.spec.ts` (7 escenarios): la lista trae los hilos del médico con sus no
+    leídos y su última actividad; el filtro «Solo no leídos» filtra **y no vuelve a pedir
+    `GET /auth/me`** (se cuenta la petición, esperando antes los 5 s de coalescencia de
+    `fetchMyProfile` para que la prueba no pase por la caché); un hilo sin `last_message_at` dice
+    «Sin actividad registrada» y no «hace 0 min»; el badge suma los no leídos y se anuncia como
+    «Mensajes, 3 sin leer» con el número una sola vez (el badge va `aria-hidden`); un evento
+    `inbox` del stream refresca el buzón por REST; con el stream bloqueado el modo respaldo sigue
+    refrescando; y el stream **no se abre** en `/sala-espera` ni en `/mi-caso` (el test falla si
+    alguien lo pide desde ahí: el endpoint exige `messages.read`).
+  - `e2e/mensajes-ventana-cerrada.spec.ts`: un 409 al enviar muestra `aviso-ventana-cerrada` con el
+    motivo de la API, deja deshabilitados el compositor y el botón de adjuntar, no ofrece
+    reintento y **no reintenta** (un solo POST tras varias vueltas del sondeo).
+  - Los escenarios que el backend local no puede producir se simulan con `page.route`: un hilo con
+    `last_message_at` nulo (la API lo arma con un JOIN sobre `messages`, así que nunca lo devuelve
+    nulo), un total de no leídos fijo para el badge (doc1 acumula hilos en una corrida serial que
+    comparte base), el stream SSE y el 409 (`urgent_in_person` no lo escribe ningún endpoint y el
+    reloj del cierre no se puede mover desde fuera). La lista y el filtro sí van contra datos
+    reales.
+  - Añadidos `data-testid="filtro-todos"` y `data-testid="filtro-no-leidos"` a los dos botones de
+    filtro del buzón, que eran los únicos controles de la pantalla sin uno.
+    Ficheros: `e2e/mensajes-buzon.spec.ts`, `e2e/mensajes-ventana-cerrada.spec.ts`,
+    `pages/panel-medico/mensajes.tsx`.
+
+- **fix(mensajeria): correcciones de la verificación de la Fase 1 UI y nuevo contrato del hilo** —
+  la verificación contra `tasks/mensajeria-medico-paciente/spec.md` encontró funcionalidad no pedida,
+  una regresión en una función compartida y deudas de accesibilidad y responsive. Se corrige sin
+  rediseñar el módulo, y se adapta la UI a los cambios que la API cerró en paralelo.
+  - **Fuera «Reabrir consulta»** del detalle del caso (`btn-reabrir-consulta`): no estaba en ninguna
+    spec y permitía a un **admin** devolver un caso cerrado a "En atención", es decir, cambiar el
+    estado clínico de un caso. El aviso de caso finalizado vuelve a ser el de antes.
+  - **Revertido el efecto colateral en `lib/nativeNotifications.ts`**: el sonido de `notify()` vuelve a
+    ser **opt-in** (`{ sound: true }`) y se restaura la salida temprana sin permiso de notificaciones.
+    El llamante preexistente (aviso de cita confirmada) ya no emite un pitido que nadie pidió; los de
+    mensajería lo piden explícitamente y dejan de reproducirlo dos veces.
+  - **Fuera el botón «Probar sonido»**, que además era visible al paciente en `/mi-caso` y
+    `/sala-espera`.
+  - **Accesibilidad**: la lista de mensajes es `role="log"` + `aria-live="polite"` +
+    `aria-relevant="additions"`; el compositor tiene etiqueta (`aria-label`); nombre accesible en
+    adjuntar, enviar, quitar y estados de entrega; el visor de imagen devuelve el foco al cerrarse.
+  - **Fecha relativa** en el hilo (`tiempoTranscurrido`, CA1.1) con la absoluta en el `title`; el
+    import estaba sin usar.
+  - **Un 409 deshabilita el compositor** (CA1.8) con el motivo de la API, en vez de dejar al usuario
+    reintentando en bucle.
+  - **Sondeos**: el buzón ya no reejecutaba sesión + perfil + inbox al llegar el token, y `/mi-caso`
+    ya no monta un hilo (con su intervalo de 8 s) por cada consulta del listado, sino solo el que el
+    paciente está viendo.
+  - **Responsive y marca**: cabecera del hilo con `flexWrap`, altura `clamp(300px, 60vh, 520px)` (ya
+    no 520 px fijos) y sin desborde horizontal a 360 px; los hex sueltos (`#0d9488`, `#10b981`…) se
+    sustituyen por las variables de `styles/globals.css` y por las clases `btn`/`notice`/`badge`.
+    Contrastes comprobados (blanco sobre `--brand` 4,85:1; `--muted` sobre `--bg` 4,55:1).
+  - **Nuevo contrato de `GET /consultations/{id}/messages`**: ya no es un array, sino
+    `{ clinical_access, consultation_id, unread_count, items }`. `unread_count` se lee del **cuerpo**
+    y no de la cabecera `X-Unread-Count`, y `clinical_access` pasa a decidir el aviso de auditoría y
+    el candado «Contenido no disponible» — que antes se adivinaban por el rol, por lo que un mensaje
+    con solo un adjunto (`body: null` legítimo) se mostraba como confidencial a su propio autor.
+    Con `unread_count` en el cuerpo, `POST …/messages/read` deja de salir cada 8 s sin nada que marcar.
+  - **SSE del buzón conectado** (CA2.3/CA8.3): `GET /inbox/stream` sustituye los sondeos del buzón
+    (12 s) y de la cabecera (30 s). Una sola conexión compartida por recuento de suscriptores (la
+    cabecera vive en todas las rutas de `/panel-medico`, así que navegar al detalle no abre otra), con
+    `fetch` y no `EventSource` para no poner el JWT en la URL, reconexión al corte de la API y
+    **respaldo a sondeo** si el stream no pasa. El evento es solo señal: la lista se refresca por REST.
+    No se monta en ninguna ruta de paciente (el endpoint exige `messages.read`).
+  - `InboxThread.last_message_at` pasa a `string | null`: con nulo decía «hace 0 min».
+  - **Cierre de la revisión de QA** (seis puntos de interfaz):
+    - El **visor de imagen arrancaba el foco cada 8 s**: el effect que lo mueve dependía de
+      `onClose`, que los llamantes pasan en línea, así que cada render del hilo —el sondeo y cada
+      tecla del compositor— lo limpiaba y lo volvía a ejecutar, saltando el foco al botón de
+      cerrar sin que el usuario hiciera nada. Arreglado en la causa: el callback va en una ref y
+      el effect depende solo de `isOpen` (más un `onClose` estable en `AdjuntoMensaje`). El
+      retorno de foco al cerrar se conserva.
+    - **Fuga de oyentes en `waitMs`**: añadía un `addEventListener('abort', …)` por vuelta sobre el
+      mismo `AbortSignal` y no lo retiraba nunca (uno cada 12 s en modo respaldo). Ahora se retira
+      por los dos caminos.
+    - **El bucle del stream ya no termina solo**: sin sesión o con 401/403 dejaba a los
+      suscriptores sin stream _y_ sin tics de respaldo (badge congelado hasta recargar). Ahora
+      reintenta con espera que se duplica (30 s → 5 min) y se recupera en cuanto la sesión vuelve.
+      El `getSession()` de cada vuelta va dentro de un `try`: era el único camino que quedaba para
+      salir del bucle por excepción con suscriptores vivos.
+    - **Badge de no leídos AA**: `#ef4444` con texto blanco daba 3,76:1 y a 11 px en negrita no
+      entra en la excepción de texto grande; pasa a `--red` (6,47:1). Los tres hex en línea de
+      `PanelHeader` se sustituyen por tokens, y el enlace gana nombre accesible
+      («Mensajes, 3 sin leer») en vez de anunciar un número suelto. Además, un filete de 1 px en
+      blanco: sobre el fondo del enlace (`rgba(255,255,255,0.12)` compuesto sobre el navy) la
+      píldora roja quedaba en 1,75:1 y casi no se distinguía como forma. No es un incumplimiento
+      —1.4.11 exime al texto y el número cumple 1.4.3—, pero un badge vale por verse de reojo.
+    - **Una descarga de PDF que fallaba no avisaba**: la rama de documento escribía el error y no
+      lo pintaba; ahora se ve, y un reintento correcto lo borra.
+    - Dos comentarios corregidos en `lib/messages.ts` (`unread_count` es requerido sin default, y
+      el lector ignora `retry:` en vez de interpretarlo).
+      Ficheros: `components/mensajes/*`, `lib/messages.ts`, `lib/nativeNotifications.ts`,
+      `components/PanelHeader.tsx`, `pages/panel-medico/mensajes.tsx`, `pages/mi-caso.tsx`,
+      `pages/panel-medico/consulta/[id].tsx`.
+
 - **feat(mensajeria): Fase 1 UI — buzón web, visor de adjuntos clínicos y chat asimétrico** —
   se implementa el módulo de mensajería médico ↔ paciente en el frontend con soporte para adjuntos
   clínicos (PDF e imágenes JPG/PNG/WEBP) y regla de asimetría estricta de presencia (solo el médico ve

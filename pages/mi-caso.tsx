@@ -37,6 +37,8 @@ export default function MiCaso() {
   // el paciente está en sala (mismo criterio que `/sala-espera`, que anuncia mientras ELLA está
   // abierta y no mientras lo está la pestaña de Jitsi — que no hay forma de vigilar).
   const [enSala, setEnSala] = useState('')
+  // El hilo de mensajes que el paciente tiene abierto (ver `hiloVisible` más abajo).
+  const [hiloAbierto, setHiloAbierto] = useState<string | null>(null)
 
   useEffect(() => {
     load()
@@ -179,6 +181,13 @@ export default function MiCaso() {
   // durante el instante en que el redirect está en vuelo.
   if (!authed) return seo
 
+  // Qué hilo de mensajes está montado. `null` = el paciente no ha tocado nada todavía, así que se
+  // abre el de su consulta vigente (la primera abierta, o la primera de la lista); `''` = lo cerró
+  // a mano. Es un valor derivado a propósito: nada de `setState` en un effect.
+  const consultaVigente =
+    consultations.find((c) => CASO_ABIERTO.has(c.status))?.id || consultations[0]?.id || ''
+  const hiloVisible = hiloAbierto === null ? consultaVigente : hiloAbierto
+
   return (
     <>
       {seo}
@@ -275,14 +284,42 @@ export default function MiCaso() {
                     />
                   )}
 
-                  {/* Hilo de mensajes con el médico (U3 - Paciente con cuenta) */}
+                  {/* Hilo de mensajes con el médico (U3 - Paciente con cuenta).
+                      Se monta SOLO el hilo abierto: cada `HiloMensajes` sondea la API cada 8 s,
+                      así que montarlos todos a la vez ponía N bucles en marcha en una pantalla
+                      donde el paciente lee uno. El de la consulta vigente viene abierto. */}
                   <div style={{ marginTop: 16 }}>
-                    <HiloMensajes
-                      consultationId={c.id}
-                      currentUserRole="patient"
-                      auth={{ token }}
-                      isCaseClosed={!CASO_ABIERTO.has(c.status)}
-                    />
+                    {hiloVisible === c.id ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-muted"
+                          style={{ marginBottom: 10, padding: '8px 14px', fontSize: 14 }}
+                          onClick={() => setHiloAbierto('')}
+                          aria-expanded={true}
+                          aria-controls={`hilo-${c.id}`}
+                        >
+                          Ocultar mensajes
+                        </button>
+                        <div id={`hilo-${c.id}`}>
+                          <HiloMensajes
+                            consultationId={c.id}
+                            currentUserRole="patient"
+                            auth={{ token }}
+                            isCaseClosed={!CASO_ABIERTO.has(c.status)}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-full"
+                        onClick={() => setHiloAbierto(c.id)}
+                        aria-expanded={false}
+                      >
+                        Ver mensajes con mi médico
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

@@ -28,7 +28,9 @@ export default function IndicadorPresenciaPaciente({
     label = `Desconectado · hace ${tiempoTranscurrido(lastSeenAt)}`
   }
 
-  const dotColor = isOnline ? '#10b981' : '#94a3b8'
+  // Verde de marca = estado de éxito ("En línea"); gris de marca para el resto. Los dos cumplen
+  // AA sobre los fondos del hilo y del buzón (5,9:1 y 4,5:1 sobre `--bg`).
+  const dotColor = isOnline ? 'var(--green)' : 'var(--muted)'
 
   return (
     <div
@@ -39,7 +41,7 @@ export default function IndicadorPresenciaPaciente({
         gap: '6px',
         fontSize: '12px',
         fontWeight: 500,
-        color: isOnline ? '#065f46' : '#64748b'
+        color: isOnline ? 'var(--green)' : 'var(--muted)'
       }}
       title={`Paciente: ${label}`}
       data-testid="indicador-presencia-paciente"
@@ -50,9 +52,10 @@ export default function IndicadorPresenciaPaciente({
           width: '8px',
           height: '8px',
           borderRadius: '50%',
+          flex: '0 0 auto',
           backgroundColor: dotColor,
           display: 'inline-block',
-          boxShadow: isOnline ? '0 0 0 2px rgba(16, 185, 129, 0.2)' : 'none'
+          boxShadow: isOnline ? '0 0 0 2px var(--green-light)' : 'none'
         }}
         aria-hidden="true"
       />

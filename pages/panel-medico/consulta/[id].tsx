@@ -946,33 +946,10 @@ export default function ConsultaDetalle() {
               <h2 style={{ marginTop: 0 }}>Gestión de la consulta</h2>
               <div className="detail-actions">
                 {isCaseClosed && (
-                  <div>
-                    <div className="notice" style={{ marginBottom: 12 }}>
-                      Este caso ya está finalizado (
-                      {STATUS_LABELS[consultation.status] || consultation.status}). Solo la nota
-                      sigue editable.
-                    </div>
-                    {(isAdminRole(profile?.role) ||
-                      consultation.assigned_doctor_id === profile?.id) && (
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-full"
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              '¿Deseas reabrir esta consulta? Volverá al estado "En atención" para continuar la comunicación médica.'
-                            )
-                          ) {
-                            updateStatus('in_progress')
-                          }
-                        }}
-                        disabled={busy}
-                        style={{ marginTop: 8 }}
-                        data-testid="btn-reabrir-consulta"
-                      >
-                        🔄 Reabrir consulta (volver a En atención)
-                      </button>
-                    )}
+                  <div className="notice">
+                    Este caso ya está finalizado (
+                    {STATUS_LABELS[consultation.status] || consultation.status}). Solo la nota sigue
+                    editable.
                   </div>
                 )}
                 {consultation.attended_via_whatsapp && !isCaseClosed && (

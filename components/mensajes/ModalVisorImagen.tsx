@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 
 interface ModalVisorImagenProps {
   isOpen: boolean
@@ -13,16 +13,45 @@ export default function ModalVisorImagen({
   imageUrl,
   fileName
 }: ModalVisorImagenProps) {
+  const cerrarRef = useRef<HTMLButtonElement>(null)
+  // Quien abrió el visor: al cerrar, el foco vuelve ahí (la miniatura del adjunto) y no al
+  // principio del documento, que deja a quien navega con teclado perdido a mitad del hilo.
+  const focoPrevioRef = useRef<HTMLElement | null>(null)
+
+  // `onClose` en una ref, y el effect de abajo depende SOLO de `isOpen`.
+  //
+  // Este effect mueve el foco: al entrar lo lleva al botón de cerrar y al salir lo devuelve. Por
+  // eso no puede depender de una identidad inestable. Los llamantes pasan la función en línea
+  // (`onClose={() => setModalOpen(false)}`), que cambia de identidad en cada render del padre; si
+  // `onClose` estuviera entre las dependencias, cada render del hilo —el sondeo de 8 s y cada
+  // tecla del compositor— limpiaría y volvería a ejecutar el effect, y con el visor abierto el
+  // foco saltaría al botón de cerrar sin que el usuario haya hecho nada. Montar y desmontar
+  // depende de que el visor esté abierto, de nada más.
+  const onCloseRef = useRef(onClose)
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
   useEffect(() => {
     if (!isOpen) return
 
+    focoPrevioRef.current = document.activeElement as HTMLElement | null
+    cerrarRef.current?.focus()
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') onCloseRef.current()
     }
 
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      const previo = focoPrevioRef.current
+      focoPrevioRef.current = null
+      // `isConnected`: si la burbuja que lo abrió se fue en un refetch, no hay dónde volver.
+      if (previo && previo.isConnected) previo.focus()
+    }
+  }, [isOpen])
 
   if (!isOpen || !imageUrl) return null
 
@@ -63,9 +92,10 @@ export default function ModalVisorImagen({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
+            gap: '12px',
             width: '100%',
             marginBottom: '8px',
-            color: '#fff'
+            color: 'var(--white)'
           }}
         >
           <span
@@ -81,14 +111,16 @@ export default function ModalVisorImagen({
             {fileName || 'Imagen adjunta'}
           </span>
           <button
+            ref={cerrarRef}
             type="button"
             onClick={onClose}
-            aria-label="Cerrar visor"
+            aria-label="Cerrar visor de imagen"
             style={{
+              flex: '0 0 auto',
               background: 'rgba(255, 255, 255, 0.2)',
               border: 'none',
               borderRadius: '50%',
-              color: '#fff',
+              color: 'var(--white)',
               width: '32px',
               height: '32px',
               cursor: 'pointer',
@@ -111,7 +143,7 @@ export default function ModalVisorImagen({
             maxHeight: '80vh',
             objectFit: 'contain',
             borderRadius: '6px',
-            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)'
+            boxShadow: '0 10px 25px -5px rgba(15, 23, 42, 0.5)'
           }}
         />
       </div>

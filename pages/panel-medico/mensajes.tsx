@@ -1,15 +1,12 @@
-import React, { useEffect, useState } from 'react'
-import Head from 'next/head'
+import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { getAccessToken } from '../../lib/admin'
 import { fetchMyProfile } from '../../lib/consultations'
-import { getInboxSummary, InboxThread } from '../../lib/messages'
+import { getInboxSummary, InboxThread, useInboxSignal } from '../../lib/messages'
 import { supabase } from '../../lib/supabase'
 import { isPanelRole, tiempoTranscurrido } from '../../lib/utils'
 import IndicadorPresenciaPaciente from '../../components/mensajes/IndicadorPresenciaPaciente'
 import Seo from '../../components/Seo'
-import { playNotificationSound } from '../../lib/sound'
 import { notify } from '../../lib/nativeNotifications'
 
 export default function BuzonMensajes() {
@@ -21,10 +18,14 @@ export default function BuzonMensajes() {
   const [token, setToken] = useState<string>('')
   const prevUnreadRef = React.useRef<number>(-1)
 
+  // Sesión y guard de rol: UNA sola vez. Antes esto vivía en el mismo effect que el buzón, con
+  // `token` entre sus dependencias y un `setToken()` dentro: al llegar el token el effect se
+  // reejecutaba entero (sesión + perfil + buzón). Ahora el token es la SALIDA de este effect y la
+  // ENTRADA del de abajo.
   useEffect(() => {
     let mounted = true
 
-    async function init() {
+    async function autenticar() {
       try {
         const { data: sessionData } = await supabase.auth.getSession()
         if (!sessionData.session) {
@@ -33,55 +34,75 @@ export default function BuzonMensajes() {
         }
 
         const accessToken = sessionData.session.access_token
-        setToken(accessToken)
-
         const me = await fetchMyProfile(accessToken)
         if (!me.active || !isPanelRole(me.role)) {
           router.push('/')
           return
         }
 
-        const data = await getInboxSummary({ onlyUnread }, { token: accessToken })
+        if (mounted) setToken(accessToken)
+      } catch {
         if (mounted) {
-          setThreads(data)
-          prevUnreadRef.current = data.reduce((acc, t) => acc + (t.unread_count || 0), 0)
-          setLoading(false)
-        }
-      } catch (err: unknown) {
-        if (mounted) {
-          setError('No se pudo cargar el buzón de mensajes')
+          setError('No se pudo verificar tu sesión')
           setLoading(false)
         }
       }
     }
 
-    init()
-
-    const interval = setInterval(() => {
-      if (token) {
-        getInboxSummary({ onlyUnread }, { token })
-          .then((data) => {
-            if (!mounted) return
-            const newUnread = data.reduce((acc, t) => acc + (t.unread_count || 0), 0)
-            if (prevUnreadRef.current !== -1 && newUnread > prevUnreadRef.current) {
-              playNotificationSound('message')
-              notify(
-                'Nuevo mensaje en consulta',
-                'Tienes nuevos mensajes de pacientes en tu buzón.'
-              )
-            }
-            prevUnreadRef.current = newUnread
-            setThreads(data)
-          })
-          .catch(() => {})
-      }
-    }, 12000)
+    autenticar()
 
     return () => {
       mounted = false
-      clearInterval(interval)
     }
-  }, [onlyUnread, router, token])
+  }, [router])
+
+  // Traer el buzón. Separado de aplicarlo para que el `setState` viva en el callback de la
+  // promesa y no en el cuerpo de un effect (react-hooks/set-state-in-effect).
+  const fetchBuzon = useCallback(
+    () => getInboxSummary({ onlyUnread }, { token }),
+    [onlyUnread, token]
+  )
+
+  const aplicarBuzon = useCallback((data: InboxThread[], avisarNuevos: boolean) => {
+    const newUnread = data.reduce((acc, t) => acc + (t.unread_count || 0), 0)
+    if (avisarNuevos && prevUnreadRef.current !== -1 && newUnread > prevUnreadRef.current) {
+      // El sonido es opt-in en `notify` (no suena salvo que se pida): aquí sí se pide.
+      notify('Nuevo mensaje en consulta', 'Tienes nuevos mensajes de pacientes en tu buzón.', {
+        sound: true,
+        soundKind: 'message'
+      })
+    }
+    prevUnreadRef.current = newUnread
+    setThreads(data)
+    setError(null)
+    setLoading(false)
+  }, [])
+
+  const aplicarErrorBuzon = useCallback(() => {
+    setError('No se pudo cargar el buzón de mensajes')
+    setLoading(false)
+  }, [])
+
+  const refrescarBuzon = useCallback(
+    (avisarNuevos = false) => {
+      fetchBuzon()
+        .then((data) => aplicarBuzon(data, avisarNuevos))
+        .catch(aplicarErrorBuzon)
+    },
+    [fetchBuzon, aplicarBuzon, aplicarErrorBuzon]
+  )
+
+  // Primera carga y recarga al cambiar el filtro. Ya no hay sondeo: lo que avisa de que algo
+  // cambió es el stream de abajo.
+  useEffect(() => {
+    if (!token) return
+    refrescarBuzon(false)
+  }, [token, refrescarBuzon])
+
+  // CA2.3: el buzón se suscribe a `GET /inbox/stream` y REFRESCA POR REST al recibir el evento
+  // (CA8.3: la señal no trae cuerpos). Si el stream no está disponible, `useInboxSignal` emite
+  // un tic cada 12 s y esto sigue funcionando como el sondeo anterior.
+  useInboxSignal(Boolean(token), () => refrescarBuzon(true))
 
   const totalUnread = threads.reduce((acc, t) => acc + (t.unread_count || 0), 0)
 
@@ -113,10 +134,9 @@ export default function BuzonMensajes() {
             <Link
               href="/panel-medico"
               style={{
-                color: '#0d9488',
+                color: 'var(--brand)',
                 fontSize: '13px',
-                fontWeight: 500,
-                textDecoration: 'none',
+                fontWeight: 600,
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px',
@@ -125,30 +145,23 @@ export default function BuzonMensajes() {
             >
               ← Volver al Panel Médico
             </Link>
-            <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: '#0f172a' }}>
+            <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: 'var(--navy)' }}>
               Buzón de Mensajes
             </h1>
-            <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '14px' }}>
+            <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: '14px' }}>
               Conversaciones activas con los pacientes que tienes asignados.
             </p>
           </div>
 
-          {/* Filtros y sonido */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={() => playNotificationSound('message')}
-              title="Probar sonido de notificación"
-              style={{ fontSize: '13px', padding: '6px 12px' }}
-            >
-              🔔 Probar sonido
-            </button>
+          {/* Filtros */}
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
             <button
               type="button"
               className={`btn ${!onlyUnread ? 'btn-primary' : 'btn-outline'}`}
               onClick={() => setOnlyUnread(false)}
+              aria-pressed={!onlyUnread}
               style={{ fontSize: '13px', padding: '6px 12px' }}
+              data-testid="filtro-todos"
             >
               Todos ({threads.length})
             </button>
@@ -156,7 +169,9 @@ export default function BuzonMensajes() {
               type="button"
               className={`btn ${onlyUnread ? 'btn-primary' : 'btn-outline'}`}
               onClick={() => setOnlyUnread(true)}
+              aria-pressed={onlyUnread}
               style={{ fontSize: '13px', padding: '6px 12px' }}
+              data-testid="filtro-no-leidos"
             >
               Solo no leídos {totalUnread > 0 && `(${totalUnread})`}
             </button>
@@ -165,14 +180,17 @@ export default function BuzonMensajes() {
 
         {/* Mensaje de error */}
         {error && (
-          <div className="notice notice-warning" style={{ marginBottom: '16px' }}>
+          <div className="notice notice-warning" style={{ marginBottom: '16px' }} role="alert">
             {error}
           </div>
         )}
 
         {/* Estado de carga */}
         {loading && (
-          <div className="card" style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+          <div
+            className="card"
+            style={{ textAlign: 'center', padding: '40px', color: 'var(--muted)' }}
+          >
             Cargando conversaciones...
           </div>
         )}
@@ -181,15 +199,12 @@ export default function BuzonMensajes() {
         {!loading && threads.length === 0 && (
           <div
             className="card"
-            style={{
-              textAlign: 'center',
-              padding: '48px 16px',
-              color: '#64748b',
-              backgroundColor: '#ffffff'
-            }}
+            style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--muted)' }}
           >
-            <div style={{ fontSize: '32px', marginBottom: '8px' }}>💬</div>
-            <h3 style={{ margin: '0 0 4px', color: '#1e293b' }}>
+            <div style={{ fontSize: '32px', marginBottom: '8px' }} aria-hidden="true">
+              💬
+            </div>
+            <h3 style={{ margin: '0 0 4px', color: 'var(--text)' }}>
               {onlyUnread
                 ? 'No tienes mensajes pendientes por leer'
                 : 'No tienes conversaciones activas'}
@@ -215,34 +230,34 @@ export default function BuzonMensajes() {
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    padding: '16px',
-                    borderRadius: '10px',
-                    border: hasUnread ? '1.5px solid #0d9488' : '1px solid #e2e8f0',
-                    backgroundColor: hasUnread ? '#f0fdfa' : '#ffffff',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    // Un hilo con mensajes sin leer se destaca con el azul de marca, no con un
+                    // teal suelto: es el mismo acento que el resto del panel.
+                    border: hasUnread ? '1.5px solid var(--brand)' : '1px solid var(--border)',
+                    backgroundColor: hasUnread ? 'var(--brand-light)' : 'var(--white)',
                     flexWrap: 'wrap',
                     gap: '12px'
                   }}
                   data-testid="thread-item"
                   data-consultation-id={thread.consultation_id}
                 >
-                  <div style={{ flex: 1, minWidth: '240px' }}>
+                  <div style={{ flex: 1, minWidth: 'min(240px, 100%)' }}>
                     <div
                       style={{
                         display: 'flex',
                         alignItems: 'center',
+                        flexWrap: 'wrap',
                         gap: '10px',
                         marginBottom: '4px'
                       }}
                     >
-                      <strong style={{ fontSize: '16px', color: '#0f172a' }}>
+                      <strong style={{ fontSize: '16px', color: 'var(--navy)' }}>
                         {thread.patient_display_name || thread.patient_name}
                       </strong>
                       <span className="badge badge-blue" style={{ fontSize: '11px' }}>
                         {thread.code}
                       </span>
                       {thread.specialty_name && (
-                        <span className="tag" style={{ fontSize: '11px' }}>
+                        <span className="tag" style={{ fontSize: '11px', cursor: 'default' }}>
                           {thread.specialty_name}
                         </span>
                       )}
@@ -256,17 +271,27 @@ export default function BuzonMensajes() {
                       />
                     </div>
 
-                    <div style={{ fontSize: '13px', color: '#64748b' }}>
-                      Última actividad: hace {tiempoTranscurrido(thread.last_message_at)}
+                    <div style={{ fontSize: '13px', color: 'var(--muted)' }}>
+                      {/* Sin fecha no se inventa una: `tiempoTranscurrido(null)` devuelve
+                          «0 min», y «hace 0 min» en un hilo sin actividad es mentira. */}
+                      {thread.last_message_at
+                        ? `Última actividad: hace ${tiempoTranscurrido(thread.last_message_at)}`
+                        : 'Sin actividad registrada'}
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '12px'
+                    }}
+                  >
                     {hasUnread && (
                       <span
                         className="badge badge-red"
                         style={{ fontSize: '12px', padding: '4px 8px' }}
-                        title={`${thread.unread_count} mensajes no leídos`}
                       >
                         {thread.unread_count} nuevo{thread.unread_count === 1 ? '' : 's'}
                       </span>
@@ -275,7 +300,7 @@ export default function BuzonMensajes() {
                     <Link
                       href={`/panel-medico/consulta/${thread.consultation_id}`}
                       className="btn btn-primary"
-                      style={{ fontSize: '13px', padding: '8px 14px', textDecoration: 'none' }}
+                      style={{ fontSize: '13px', padding: '8px 14px' }}
                     >
                       Abrir chat
                     </Link>

@@ -17,7 +17,12 @@ export async function requestNotifyPermission(): Promise<boolean> {
   }
 }
 
-// Muestra una notificación en pantalla y reproduce un aviso sonoro si está habilitado.
+// Muestra una notificación ya (si hay permiso). Silenciosa si no se puede.
+//
+// El aviso sonoro es OPT-IN (`{ sound: true }`) y no al revés: esta función la comparten módulos
+// que nacieron sin sonido —los recordatorios de la agenda y el aviso de cita confirmada del
+// detalle de la consulta—, y hacerlo por defecto les metía un pitido que nadie pidió. Sin la
+// opción, el comportamiento es exactamente el de siempre: si no hay permiso, no pasa nada.
 export function notify(
   title: string,
   body?: string,
@@ -25,9 +30,10 @@ export function notify(
 ): void {
   if (typeof window === 'undefined') return
 
-  // Reproducir aviso sonoro (activado por defecto)
-  if (options?.sound !== false) {
-    playNotificationSound(options?.soundKind || 'message')
+  // El sonido va antes del gate de permiso porque es un canal aparte: quien lo pide explícitamente
+  // (la mensajería) quiere oírlo aunque el navegador tenga las notificaciones bloqueadas.
+  if (options?.sound === true) {
+    playNotificationSound(options.soundKind || 'message')
   }
 
   if (!('Notification' in window) || Notification.permission !== 'granted') return
