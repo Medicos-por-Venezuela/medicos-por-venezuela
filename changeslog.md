@@ -5,6 +5,49 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-10-06
+
+- **feat(donaciones): `/donaciones`, la plantilla de la campaña integrada sin que su CSS toque al
+  resto del sitio** — porte de `mxv-donativos/index.html` (513 líneas con maquetación, estilos y
+  comportamiento en un solo archivo) a una página de Pages Router más 23 archivos en
+  `components/donaciones/`. La plantilla trae su **propia cabecera y su propio pie y se quedan**:
+  el cliente pidió fidelidad del 100 % y usar el layout del sitio los habría sustituido. Sin
+  enlace en la navegación: solo se llega por la URL.
+  - **Aislamiento por CSS Module, no por `styled-jsx`.** La plantilla estiliza `:root`, `*`,
+    `html`, `body`, `img`, `section`, `h2` y `footer`, y además usa `.btn` y `.hero`, **dos clases
+    que `globals.css` ya define**. `styled-jsx` acota el ámbito pero **no renombra**, así que esas
+    reglas globales habrían seguido entrando en cascada y tocaría parchearlas cada vez que alguien
+    tocara `globals.css`. Un módulo hashea el nombre y el conflicto desaparece por construcción.
+    Verificado en el CSS compilado: todas las reglas llevan el prefijo del contenedor, sin
+    `:global` ni selectores de elemento sueltos, y los `@keyframes` también hasheados.
+  - **Sentido contrario, neutralizado dentro del ámbito** y sin tocar `globals.css`: el
+    `text-decoration: none` de los enlaces (en la plantilla el pie y «Más detalles» van
+    subrayados) y el `color`/`transition` que el sitio aplica a todo `input`.
+  - **Fotos del equipo alojadas aquí.** Venían enlazadas desde Google Drive y el propio material
+    avisaba de que si cambiaban los permisos «dejarían de verse» y saldrían las iniciales — mala
+    señal en una página donde se pide dinero. Además la CSP del sitio (`img-src 'self'`) **las
+    habría bloqueado**. Las 9 están en `public/donaciones/`.
+  - **Comportamiento portado a React**, no pegado en un efecto: alternador ES/EN que recuerda la
+    elección (`useSyncExternalStore` con `getServerSnapshot`, que es la API hecha para leer
+    `localStorage` sin romper la hidratación), reproductor de la nota de voz con subtítulos
+    sincronizados, contadores que animan al entrar en pantalla, carruseles y botones de compartir.
+  - **Hidratación sin errores**: el HTML del servidor es siempre el mismo (castellano, cifras ya
+    en su valor final), el DOM lleva los dos idiomas y el CSS esconde uno, y los millares se
+    formatean a mano porque el ICU de Node y el del navegador no tienen por qué coincidir.
+  - **Tipografía propia** (`nunito-sans-donaciones.woff2`, subconjunto latino): la plantilla usa
+    `font-stretch: 120%` en los titulares y la fuente de marca del repo tiene ese eje fijado en
+    100, así que con ella los titulares saldrían más estrechos. Familia con nombre propio para no
+    competir con el `@font-face` de `globals.css`.
+  - **Accesibilidad corregida sin cambiar el aspecto**: las etiquetas del reproductor y de las
+    flechas no seguían al idioma activo, y **los carruseles no eran enfocables** — por debajo de
+    920 px las flechas desaparecen, así que no había forma de recorrerlos sin ratón ni dedo.
+  - **Fidelidad medida, no estimada**: sobre el build de producción las capturas de página
+    completa son **idénticas byte a byte** al original a 1440 y a 360 px (mismo md5), con las
+    mismas alturas (4730 px y 6041 px) y sin desborde horizontal.
+  - 4 escenarios E2E en `e2e/donaciones.spec.ts`, **verificados por mutación**: con el alternador
+    de idioma congelado, una aserción con `textContent` pasa en verde —la página lleva los dos
+    idiomas en el DOM— mientras la de `innerText` falla. De ahí el `useInnerText: true`.
+
 ## 2026-09-30
 
 - **feat(registro): verificación de correo por código de 6 dígitos (pacientes y médicos)** —
