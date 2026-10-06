@@ -5,6 +5,111 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-10-06
+
+- **feat(mensajeria): el médico inicia la videoconsulta desde el hilo (R16)** — en la cabecera del
+  hilo, junto al indicador de presencia, aparece un botón con icono de cámara que asegura la sala
+  (`POST /api/v1/consultations/{id}/video-call`), la abre en una ventana aparte y deja en el hilo
+  un aviso de sistema para el paciente. Ese aviso **no lleva enlace ni token**: solo el texto, y el
+  botón de entrada lo construye la interfaz con el contexto del hilo (ver más abajo). Solo el botón
+  y la asimetría de R16: nada de `call_sessions`, timbre, banner de llamada entrante,
+  aceptar/rechazar ni WebSocket.
+  - **Asimetría de render, no de CSS (CA16.1)**: el botón lo pinta el componente solo para el
+    médico tratante (`isDoctor && !readOnly`), igual que `IndicadorPresenciaPaciente`. En
+    `/mi-caso` y `/sala-espera` **no existe en el DOM**; a un médico ajeno o a un admin en
+    auditoría tampoco se le pinta (el backend les responde 404).
+  - **Habilitado solo con el paciente en línea (CA16.2)**, con el motivo en palabras y no solo en
+    color: `title` y `aria-label` dicen «El paciente no está conectado». El estado deshabilitado se
+    pinta con `--muted`/`--border` a opacidad plena porque el `.btn:disabled` global (55 %) dejaba
+    el azul de marca por debajo de AA. Durante la petición el botón queda deshabilitado y hay
+    además un candado por `ref`: dos clics en el mismo tic dejarían dos avisos en el hilo.
+  - **`window.open` dentro del gesto del clic (CA16.8)**: aquí el POST va siempre delante, así que
+    el `await` consume la activación del usuario y el navegador bloquearía el pop-up. Se abre
+    `about:blank` de forma síncrona en el `onConfirm` de `AntesDeEntrarModal` (`para="medico"`, el
+    mismo modal del detalle de la consulta) y se le asigna `location` al volver la respuesta. Sin
+    `noreferrer` porque con esa opción `window.open` devuelve `null` y no habría ventana que
+    navegar: se desvincula a mano con `opener = null`. La URL pasa SIEMPRE por `browserRoomUrl`.
+  - **Aviso de sistema en el hilo**: `direction: "system"` se pinta centrado y neutral, sin burbuja
+    de emisor, sin etiqueta de remitente y sin marcas de entrega. El de llamada (`kind: "call"`)
+    lleva además el icono de cámara en un círculo de `--brand-light`, la hora relativa del aviso y
+    un **botón** de marca «Entrar a la videoconsulta».
+  - **La interfaz NO imprime el cuerpo de un aviso de llamada.** Es el arreglo de fondo de la fuga:
+    el backend quitó la URL y el token del cuerpo, pero los avisos creados ANTES siguen guardados
+    (y cifrados) con ellos dentro, así que seguían saliendo en pantalla. Limpiar la base no arregla
+    la clase de problema. Un aviso de sistema lo genera el servidor y su contenido es predecible,
+    así que para `kind: "call"` la interfaz **enuncia su propio texto** («El médico inició la
+    videoconsulta.», literal lo que guarda el backend, para que historial y pantalla no se
+    contradigan) más la hora y el botón, y `msg.body` no se lee. Con eso queda cubierto el aviso
+    viejo, un cambio futuro de redacción y cualquier cosa que acabe en ese campo. Cualquier OTRO
+    aviso de sistema sí pinta su cuerpo —la interfaz no sabe qué dice— como texto y sin
+    interpretarlo (nada de `dangerouslySetInnerHTML`).
+  - **Misma fuga tapada en el aviso nativo**: `notify()` tomaba el texto del ÚLTIMO mensaje nuevo,
+    y ese puede ser el de sistema (el médico escribe y acto seguido llama), así que un aviso viejo
+    podía mandar la URL con el token a una notificación del sistema operativo. Ahora el texto sale
+    del último mensaje que **no** es de sistema.
+  - **El destino del botón NO sale del cuerpo del mensaje (CA16.6, arreglo de seguridad).** La
+    primera versión extraía la URL del cuerpo y la validaba contra el origen del frontend; la
+    validación hacía su trabajo —en local el cuerpo traía la URL de producción y no se enlazaba—
+    pero el respaldo era peor que el problema: dejaba **el token de acceso a la consulta, válido 24
+    h, escrito en el historial clínico y a la vista en pantalla y en cualquier captura**. El
+    backend quitó la URL y el token del cuerpo (ahora es solo «El médico inició la
+    videoconsulta.»), y la interfaz construye el acceso con lo que el hilo ya tiene:
+    `consultationId` más la credencial con la que el lector está ahí (sesión en `/mi-caso`,
+    `X-Consultation-Token` en `/sala-espera`). Reutiliza la vía de entrada que ya existía en
+    `pages/sala-espera.tsx`, `pages/mi-caso.tsx` y `pages/entrar-videoconsulta.tsx`:
+    `ensureVideoRoom` (idempotente) para pedir la sala, `browserRoomUrl` para abrirla y
+    `markEnteredCall` para que el médico vea que entró. No se compone ninguna URL a mano y el
+    token no vuelve a pasar por la barra de direcciones. Fuera, por tanto, el parseo del cuerpo y
+    la validación de origen (`trozosDelAviso`, `origenDelSitio`, `etiquetaDelEnlace`): sin URL en
+    el cuerpo no hay nada que validar, y no quedaban otros usuarios.
+  - **El botón de entrada es del paciente y solo del aviso vigente**: el médico tiene el suyo en la
+    cabecera, con su modal, así que no se le duplica la acción ni se le deja saltarse el aviso
+    clínico-operativo. Y solo lo lleva el aviso de llamada MÁS RECIENTE del hilo: uno de hace tres
+    días invitando a entrar a una sala vacía es ruido. Los anteriores se quedan como constancia,
+    con su hora. Mismo recurso del pop-up que en la cabecera (`about:blank` síncrono) y mismo
+    candado por `ref` contra el doble clic.
+  - **Variante `para="medico-llamada"` de `AntesDeEntrarModal`**: la rama `medico` le promete al
+    médico «El paciente recibe un correo avisándole que ya estás en la sala», y `start_video_call`
+    **no** dispara `video_ready_email` a propósito (el botón solo se habilita con el paciente en
+    línea, así que el correo sería redundante); la otra rama, `pacienteSinCorreo`, también miente
+    aquí porque dice «quizá no sepa que ya estás en la sala» cuando sí lo sabe. La variante nueva
+    dice lo que de verdad ocurre: «Al paciente le aparece el aviso **en el chat de la consulta**,
+    con un botón para unirse. No se le envía ningún correo.» Las variantes `paciente`, `medico` y
+    el caso `pacienteSinCorreo` quedan **palabra por palabra como estaban** (las usan la sala de
+    espera, `/mi-caso`, el panel y el detalle de la consulta, donde el correo sí sale), igual que
+    el marco, el subtítulo, los otros dos avisos del médico y las instrucciones de Jitsi.
+  - **Error del 409 visible** con el mensaje que da la API, en el mismo patrón de aviso que el
+    compositor (`error-videollamada`), y el compositor se cierra con ese motivo como ya hacía al
+    enviar. Al volver la respuesta se refresca el hilo para no esperar la vuelta del sondeo de 8 s.
+  - **`last_direction` ya puede venir `"system"`**: el tipo lo admitía pero nadie lo pintaba. El
+    buzón ahora dice quién escribió lo último cubriendo los **tres** casos
+    (`etiquetaUltimaDireccion`), así que un hilo cuyo único mensaje sea el aviso de llamada no se
+    lee como si lo hubiera escrito el paciente (y sigue sin contar como no leído).
+  - Cliente nuevo `startVideoCall` en `lib/messages.ts`, por `apiClient` como el resto.
+  - Sin aviso instantáneo a propósito: el hilo del paciente ya sondea cada 8 s
+    (`HiloMensajes.tsx`), así que ve el aviso en 8 segundos o menos sin tocar nada. No se añade SSE
+    ni WebSocket para esto.
+  - E2E nuevo `e2e/mensajes-videollamada.spec.ts` (7 escenarios): el botón **no existe** en
+    `/sala-espera` ni en `/mi-caso` (las dos mitades anclan en que el hilo esté montado, para que
+    la negación no pueda pasar en vacío); con el paciente desconectado está deshabilitado, lo dice
+    en su nombre accesible y no dispara la petición; con el paciente en línea (por Realtime
+    Presence, como `paciente-en-linea.spec.ts`) se habilita y su modal **no promete correo** —dice
+    el aviso del chat— y abrirlo no inicia nada; la **ruta feliz** completa de CA16.8 contra el
+    backend real —confirmar el modal hace **un solo** `POST /video-call`, la ventana se abrió con
+    `about:blank` dentro del clic y se navega después al destino ya pasado por `browserRoomUrl`
+    (lleva `config.disableDeepLinking`, no apunta a `meet.jit.si`), y el aviso queda en el hilo sin
+    botón de entrada para el médico—, con `window.open` espiado por `addInitScript` para no abrir
+    una ventana real a Jitsi en medio de la suite; el aviso de sistema sale centrado, sin
+    burbuja ni estado de entrega, con su botón de entrada y con su hora; **un aviso VIEJO cuyo
+    cuerpo trae la URL de producción y un token con pinta de JWT no imprime nada de eso** (ni
+    `http`, ni `://`, ni `eyj`, ni `t=`, ni la ruta de entrada, ni el dominio) y el botón sigue
+    estando —prueba la defensa, no la ausencia del ataque—; y un aviso de sistema que **no** es de
+    llamada sí muestra su cuerpo, sin botón de entrada. Los dos últimos simulan `GET /messages` con `page.route`: el cuerpo
+    real viaja cifrado y el aviso solo lo crea el médico tratante al llamar, así que simular el
+    hilo es la forma de fijar exactamente lo que se pinta.
+    Ficheros: `components/mensajes/HiloMensajes.tsx`, `components/AntesDeEntrarModal.tsx`,
+    `lib/messages.ts`, `pages/panel-medico/mensajes.tsx`, `e2e/mensajes-videollamada.spec.ts`.
+
 ## 2026-10-05
 
 - **fix(sala-espera): la misma fuga de oyentes de `waitMs`, ahora en `lib/waitingRoom.ts`** —

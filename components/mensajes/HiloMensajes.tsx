@@ -8,11 +8,15 @@ import {
   Message,
   MessagesThread,
   sendMessage,
+  startVideoCall,
   uploadAttachment,
   validateAttachmentFile
 } from '../../lib/messages'
 import { fmtDateTime } from '../../lib/admin'
+import { browserRoomUrl } from '../../lib/jitsi'
+import { ensureVideoRoom, markEnteredCall } from '../../lib/patients'
 import { minutesSince, tiempoTranscurrido } from '../../lib/utils'
+import AntesDeEntrarModal from '../AntesDeEntrarModal'
 import AdjuntoMensaje from './AdjuntoMensaje'
 import EstadoEntrega from './EstadoEntrega'
 import IndicadorPresenciaPaciente from './IndicadorPresenciaPaciente'
@@ -50,6 +54,30 @@ function fechaRelativa(sentAt: string): string {
   return `hace ${tiempoTranscurrido(sentAt)}`
 }
 
+/**
+ * Texto que la INTERFAZ enuncia para un aviso de llamada. El cuerpo del mensaje no se imprime
+ * nunca (CA16.6).
+ *
+ * El motivo no es solo el cuerpo de hoy: los avisos creados ANTES del arreglo del backend siguen
+ * guardados con la URL y el token de 24 h dentro, y limpiar la base no arregla la clase de
+ * problema. Un aviso de sistema lo genera el servidor y su contenido es predecible, así que la
+ * interfaz puede enunciarlo ella misma: con eso queda a prueba de los avisos viejos, de un cambio
+ * de redacción en el backend y de cualquier cosa que acabe en ese campo más adelante. Es la misma
+ * lógica por la que no se interpreta HTML: si no hace falta mostrar el contenido, no se muestra.
+ *
+ * Se mantiene literal lo que el backend guarda (`_CALL_STARTED_BODY`), para que el historial y la
+ * pantalla no se contradigan si alguien los compara.
+ */
+const TEXTO_AVISO_LLAMADA = 'El médico inició la videoconsulta.'
+
+// Id del último mensaje de sistema de tipo llamada del hilo, o `null` si no hay ninguno.
+function ultimoAvisoDeLlamada(lista: Message[]): string | null {
+  for (let i = lista.length - 1; i >= 0; i -= 1) {
+    if (lista[i].kind === 'call') return lista[i].id
+  }
+  return null
+}
+
 export default function HiloMensajes({
   consultationId,
   currentUserRole,
@@ -69,6 +97,16 @@ export default function HiloMensajes({
   // el compositor y el botón de adjuntos quedan deshabilitados: reintentar solo da otro 409.
   const [ventanaCerrada, setVentanaCerrada] = useState<string | null>(null)
 
+  // Videollamada desde el hilo (R16). `avisoVideo` abre `AntesDeEntrarModal`, que no abre nada por
+  // su cuenta: la sala la abre su `onConfirm`, dentro del clic.
+  const [avisoVideo, setAvisoVideo] = useState<boolean>(false)
+  const [iniciandoLlamada, setIniciandoLlamada] = useState<boolean>(false)
+  const [errorLlamada, setErrorLlamada] = useState<string | null>(null)
+  // Entrada del PACIENTE desde el botón del aviso. Estado aparte del de la cabecera: son dos
+  // acciones distintas (el médico inicia la llamada, el paciente entra a la sala).
+  const [entrandoASala, setEntrandoASala] = useState<boolean>(false)
+  const [errorEntrada, setErrorEntrada] = useState<string | null>(null)
+
   // Compositor state
   const [text, setText] = useState<string>('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -78,6 +116,11 @@ export default function HiloMensajes({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const lastMsgIdRef = useRef<string | null>(null)
   const isFirstLoadRef = useRef<boolean>(true)
+  // Candado del doble disparo. El `disabled` del botón ya lo cubre en cuanto React repinta, pero
+  // dos clics en el MISMO tic leen el estado viejo: un doble clic accidental dejaría dos avisos en
+  // el hilo (el backend lo permite a propósito, pero nadie lo pidió dos veces).
+  const llamadaEnVueloRef = useRef<boolean>(false)
+  const entradaEnVueloRef = useRef<boolean>(false)
 
   const isDoctor = currentUserRole === 'doctor' || currentUserRole === 'specialist'
   const isPatient = currentUserRole === 'patient'
@@ -140,7 +183,12 @@ export default function HiloMensajes({
         })
 
         if (hasIncoming) {
-          const latest = newMsgs[newMsgs.length - 1]
+          // El ÚLTIMO mensaje nuevo puede ser el aviso de sistema (el médico escribe y acto
+          // seguido llama), y su cuerpo es justo el que no debe salir a ninguna parte: en los
+          // avisos viejos lleva la URL con el token dentro. Para el texto del aviso nativo se
+          // coge el último mensaje que NO es de sistema.
+          const conversables = newMsgs.filter((m) => m.direction !== 'system')
+          const latest = conversables[conversables.length - 1]
           // El sonido es opt-in en `notify` (no suena salvo que se pida): la mensajería lo pide.
           notify(
             isDoctor ? 'Nuevo mensaje del paciente' : 'Nuevo mensaje del médico',
@@ -204,6 +252,68 @@ export default function HiloMensajes({
     const interval = setInterval(() => refrescarHilo(false), 8000)
     return () => clearInterval(interval)
   }, [refrescarHilo])
+
+  /**
+   * CA16.8 — abre la videoconsulta. Se llama desde el `onConfirm` de `AntesDeEntrarModal`, es
+   * decir, DENTRO del clic de «Entendido».
+   *
+   * `window.open` fuera de un gesto del usuario lo bloquea el navegador como pop-up, y aquí el
+   * POST va siempre delante (hay que pedir la sala): el `await` consume la activación. El recurso
+   * conocido —y el que usa este flujo— es abrir `about:blank` de forma SÍNCRONA en el clic y
+   * asignarle `location` cuando vuelve la respuesta. El patrón de
+   * `pages/panel-medico/consulta/[id].tsx` (`joinVideo`) podía abrir directo porque muchas veces
+   * ya tenía la sala en memoria; aquí nunca la tiene.
+   *
+   * Sin `noreferrer` a propósito: con esa opción `window.open` devuelve `null` y no quedaría
+   * ventana que navegar. Se desvincula a mano con `opener = null` (about:blank es del mismo
+   * origen, así que se puede), que es lo que `noreferrer` aportaba aquí.
+   */
+  function iniciarVideollamada() {
+    if (llamadaEnVueloRef.current) return
+    llamadaEnVueloRef.current = true
+
+    const ventana = window.open('about:blank', '_blank')
+    if (ventana) {
+      try {
+        ventana.opener = null
+      } catch {
+        // Si el navegador lo niega no se cancela la llamada: la sala es lo importante.
+      }
+    }
+
+    setIniciandoLlamada(true)
+    setErrorLlamada(null)
+
+    startVideoCall(consultationId, authOptions)
+      .then(({ room_url }) => {
+        // SIEMPRE por `browserRoomUrl`: reescribe las salas legacy de meet.jit.si y añade el
+        // hash-config que salta el interstitial móvil. La URL no se compone a mano.
+        const destino = browserRoomUrl(room_url)
+        if (ventana && !ventana.closed) ventana.location.replace(destino)
+        // Si el bloqueador se comió la ventana vacía, último intento directo.
+        else window.open(destino, '_blank', 'noreferrer')
+        // El aviso de sistema ya está en el hilo: se trae sin esperar la vuelta del sondeo.
+        refrescarHilo()
+      })
+      .catch((err: unknown) => {
+        if (ventana && !ventana.closed) ventana.close()
+        if (err instanceof ApiError) {
+          setErrorLlamada(err.message)
+          // 409: esta consulta ya no admite mensajes. Se muestra el motivo que da la API tal
+          // cual y se cierra el compositor, igual que al enviar (CA1.8).
+          if (err.status === 409) {
+            setVentanaCerrada(err.message || 'Esta consulta ya no admite mensajes.')
+            refrescarHilo()
+          }
+        } else {
+          setErrorLlamada('No se pudo iniciar la videoconsulta. Intente de nuevo.')
+        }
+      })
+      .finally(() => {
+        llamadaEnVueloRef.current = false
+        setIniciandoLlamada(false)
+      })
+  }
 
   // Manejo de selección/drop de archivos con validación estricta
   const handleSelectFile = (file: File) => {
@@ -326,6 +436,65 @@ export default function HiloMensajes({
     }
   }
 
+  /**
+   * CA16.6 — el paciente entra a la sala desde el botón del aviso.
+   *
+   * El destino NO sale del cuerpo del mensaje: el cuerpo ya no lleva URL ni token. Se construye
+   * con lo que este hilo ya tiene —`consultationId` y la credencial con la que está leyendo
+   * (sesión en `/mi-caso`, `X-Consultation-Token` en `/sala-espera`)—, que es la misma vía que
+   * usan hoy `pages/sala-espera.tsx`, `pages/mi-caso.tsx` y `pages/entrar-videoconsulta.tsx`:
+   * `ensureVideoRoom` (idempotente) para pedir la sala, `browserRoomUrl` para abrirla y
+   * `markEnteredCall` para que el médico vea que entró. No se compone ninguna URL a mano y el
+   * token no vuelve a pasar por la barra de direcciones.
+   *
+   * Mismo recurso que en la cabecera para el pop-up: `about:blank` síncrono en el clic y
+   * `location` al volver la respuesta.
+   */
+  function entrarALaSala() {
+    if (entradaEnVueloRef.current) return
+    entradaEnVueloRef.current = true
+
+    const ventana = window.open('about:blank', '_blank')
+    if (ventana) {
+      try {
+        ventana.opener = null
+      } catch {
+        // Si el navegador lo niega, la sala sigue siendo lo importante.
+      }
+    }
+
+    setEntrandoASala(true)
+    setErrorEntrada(null)
+
+    ensureVideoRoom(consultationId, authConsultationToken, authToken)
+      .then((consulta) => {
+        const sala = consulta.video_room_url
+        if (!sala) {
+          if (ventana && !ventana.closed) ventana.close()
+          setErrorEntrada('Todavía no hay una sala para esta consulta.')
+          return
+        }
+        const destino = browserRoomUrl(sala)
+        if (ventana && !ventana.closed) ventana.location.replace(destino)
+        else window.open(destino, '_blank', 'noreferrer')
+        // Fire-and-forget, como en las dos páginas del paciente: que no se registre la entrada no
+        // puede impedir que entre a su consulta.
+        markEnteredCall(consultationId, authConsultationToken, authToken).catch(() => {})
+      })
+      .catch((err: unknown) => {
+        if (ventana && !ventana.closed) ventana.close()
+        setErrorEntrada(
+          err instanceof ApiError
+            ? err.message
+            : 'No se pudo abrir la videoconsulta. Intenta de nuevo.'
+        )
+      })
+      .finally(() => {
+        entradaEnVueloRef.current = false
+        setEntrandoASala(false)
+      })
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault()
@@ -334,6 +503,40 @@ export default function HiloMensajes({
   }
 
   const composerBloqueado = Boolean(ventanaCerrada)
+
+  // Solo el aviso de llamada MÁS RECIENTE lleva botón de entrada. Uno de hace tres días con un
+  // botón que invita a entrar a una sala vacía es ruido; los anteriores se quedan como lo que son,
+  // constancia de que hubo una llamada, con su hora al lado.
+  //
+  // Sin `useMemo` a propósito: `messages` se deriva en el render (`current?.list ?? []`), así que
+  // memorizar esto pediría memorizar antes la lista entera. Es un recorrido de 100 elementos como
+  // máximo (el `limit` del hilo), no una cuenta que valga una dependencia más.
+  const idUltimoAvisoLlamada = ultimoAvisoDeLlamada(messages)
+
+  // CA16.1 — el botón de llamar es del MÉDICO, y el componente NO LO PINTA para nadie más: ni
+  // para el paciente, ni para un admin en auditoría, ni para un médico ajeno en solo lectura (a
+  // ese el backend le responde 404). Es el mismo criterio que `IndicadorPresenciaPaciente`, y es
+  // asimetría de render, no de CSS: en las pantallas del paciente el botón no existe en el DOM.
+  const mostrarBotonLlamada = isDoctor && !readOnly && !esRolDeAuditoria
+
+  // CA16.2 — habilitado SOLO con el paciente en línea. La señal es la presencia que el hilo ya
+  // recibe por prop; no se introduce una tercera fuente de presencia. El motivo se dice con
+  // palabras (`title` + `aria-label`), no solo con el color.
+  const motivoSinLlamada =
+    patientOnline !== true
+      ? 'El paciente no está conectado'
+      : ventanaCerrada
+        ? 'Esta consulta ya no admite mensajes'
+        : null
+  const puedeLlamar = motivoSinLlamada === null && !iniciandoLlamada
+  const textoLlamada = iniciandoLlamada ? 'Abriendo…' : 'Videollamada'
+  // El nombre accesible CONTIENE el texto visible (WCAG 2.5.3) y añade el motivo cuando no se
+  // puede llamar.
+  const etiquetaLlamada = iniciandoLlamada
+    ? 'Abriendo la videollamada…'
+    : motivoSinLlamada
+      ? `Videollamada no disponible. ${motivoSinLlamada}`
+      : 'Videollamada: iniciar la videoconsulta con el paciente'
   const textareaId = `hilo-mensaje-texto-${consultationId}`
   const etiquetaCompositor = isDoctor
     ? 'Escribe una respuesta para el paciente'
@@ -377,11 +580,72 @@ export default function HiloMensajes({
           <span style={{ fontSize: '12px', color: 'var(--muted)' }}>({messages.length})</span>
         </div>
 
-        {/* REGLA DE ORO DE ASIMETRÍA: Solo se renderiza si el usuario actual es médico */}
+        {/* REGLA DE ORO DE ASIMETRÍA: Solo se renderiza si el usuario actual es médico. El botón
+            de videollamada (CA16.1) viaja con el indicador, con el mismo criterio y en el mismo
+            grupo: a 360 px los dos caen juntos a la línea siguiente en vez de desbordar. */}
         {isDoctor && (
-          <IndicadorPresenciaPaciente online={patientOnline} lastSeenAt={patientLastSeenAt} />
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '6px 10px',
+              minWidth: 0
+            }}
+          >
+            <IndicadorPresenciaPaciente online={patientOnline} lastSeenAt={patientLastSeenAt} />
+
+            {mostrarBotonLlamada && (
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => {
+                  setErrorLlamada(null)
+                  setAvisoVideo(true)
+                }}
+                disabled={!puedeLlamar}
+                title={etiquetaLlamada}
+                aria-label={etiquetaLlamada}
+                style={{
+                  padding: '7px 11px',
+                  fontSize: '13px',
+                  gap: '6px',
+                  flex: '0 0 auto',
+                  whiteSpace: 'nowrap',
+                  // El `.btn:disabled` global baja la opacidad al 55 %, y eso deja el azul de
+                  // marca por debajo de AA. Deshabilitado se pinta con los grises de marca a
+                  // opacidad plena (`--muted` sobre blanco, 4,8:1).
+                  ...(puedeLlamar
+                    ? {}
+                    : {
+                        opacity: 1,
+                        color: 'var(--muted)',
+                        borderColor: 'var(--border)',
+                        cursor: 'not-allowed'
+                      })
+                }}
+                data-testid="btn-iniciar-videollamada"
+              >
+                <IconoCamara />
+                <span>{textoLlamada}</span>
+              </button>
+            )}
+          </div>
         )}
       </div>
+
+      {/* Error al iniciar la llamada, con el mensaje que da la API (el 409 trae su motivo exacto).
+          Mismo patrón de aviso que el compositor. */}
+      {errorLlamada && (
+        <div
+          className="notice notice-danger"
+          style={{ margin: 0, borderRadius: 0, borderWidth: '0 0 1px', fontSize: '12px' }}
+          role="alert"
+          data-testid="error-videollamada"
+        >
+          ⚠️ {errorLlamada}
+        </div>
+      )}
 
       {/* Aviso de auditoría: se pinta cuando la API dice que esta respuesta salió SIN grant
           clínico (`clinical_access: "none"`), que es exactamente cuando los cuerpos vienen en
@@ -469,7 +733,13 @@ export default function HiloMensajes({
           // Determina si el mensaje fue enviado por el usuario actual
           const isMyMessage = (isDoctor && isFromDoctor) || (isPatient && isFromPatient)
 
+          // Mensaje de sistema (R16, CA16.5): separador informativo, CENTRADO y neutral. Sin
+          // burbuja de emisor, sin etiqueta de remitente, sin marcas de entrega y sin alineación a
+          // izquierda ni derecha: no lo escribió ninguno de los dos.
           if (isSystem) {
+            // Un aviso de llamada se presenta como tal (icono de cámara en un círculo de marca);
+            // cualquier otro aviso de sistema se queda como el separador de una línea de antes.
+            const esAvisoDeLlamada = msg.kind === 'call'
             return (
               <div
                 key={msg.id}
@@ -480,13 +750,90 @@ export default function HiloMensajes({
                   border: '1px solid var(--border)',
                   color: 'var(--muted)',
                   fontSize: '12px',
-                  padding: '4px 12px',
+                  lineHeight: '1.5',
+                  // Más aire que un separador de una línea: este aviso lleva un botón dentro.
+                  padding: '10px 14px',
                   borderRadius: '12px',
                   margin: '4px 0',
-                  textAlign: 'center'
+                  textAlign: 'center',
+                  wordBreak: 'break-word',
+                  overflowWrap: 'anywhere'
                 }}
+                data-testid="mensaje-sistema"
+                data-direction={msg.direction}
+                data-kind={msg.kind}
               >
-                {msg.body || 'Aviso del sistema'}
+                {esAvisoDeLlamada && (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '32px',
+                      height: '32px',
+                      marginBottom: '6px',
+                      borderRadius: '50%',
+                      backgroundColor: 'var(--brand-light)',
+                      color: 'var(--brand)'
+                    }}
+                    aria-hidden="true"
+                  >
+                    <IconoCamara size={17} />
+                  </span>
+                )}
+
+                {/* Aviso de llamada: texto PROPIO de la interfaz, nunca `msg.body` — ahí es
+                    donde vivía (y en los avisos viejos sigue viviendo) la URL con el token.
+                    Cualquier OTRO aviso de sistema sí pinta su cuerpo, porque la interfaz no sabe
+                    qué dice; eso sí, como texto y sin interpretarlo. */}
+                <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '13px' }}>
+                  {esAvisoDeLlamada ? TEXTO_AVISO_LLAMADA : msg.body || 'Aviso del sistema'}
+                </div>
+
+                {/* La hora, para que un aviso viejo se lea como viejo. */}
+                <time
+                  dateTime={msg.sent_at}
+                  title={fmtDateTime(msg.sent_at)}
+                  style={{ display: 'block', marginTop: '2px', fontSize: '11px' }}
+                >
+                  {fechaRelativa(msg.sent_at)}
+                </time>
+
+                {/* Botón de entrada: del PACIENTE (el médico tiene el suyo en la cabecera, con su
+                    modal) y solo en el aviso vigente. El destino lo construye `entrarALaSala` con
+                    el contexto del hilo, no con el cuerpo del mensaje. */}
+                {isPatient && msg.id === idUltimoAvisoLlamada && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={entrarALaSala}
+                      disabled={entrandoASala}
+                      style={{
+                        display: 'inline-flex',
+                        marginTop: '10px',
+                        padding: '10px 16px',
+                        fontSize: '14px',
+                        gap: '8px'
+                      }}
+                      data-testid="btn-entrar-videoconsulta"
+                    >
+                      <IconoCamara />
+                      <span>{entrandoASala ? 'Abriendo…' : 'Entrar a la videoconsulta'}</span>
+                    </button>
+
+                    {errorEntrada && (
+                      <div
+                        className="notice notice-danger"
+                        style={{ marginTop: '8px', fontSize: '12px', textAlign: 'left' }}
+                        role="alert"
+                        data-testid="error-entrar-videoconsulta"
+                      >
+                        ⚠️ {errorEntrada}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )
           }
@@ -786,6 +1133,44 @@ export default function HiloMensajes({
           </div>
         </div>
       )}
+
+      {/* CA16.8: el mismo modal que el detalle de la consulta, en su variante `medico-llamada`:
+          misma copia clínico-operativa, pero diciendo lo que de verdad ocurre aquí —al paciente le
+          llega el aviso en el chat, no un correo—. No abre nada por su cuenta; la sala la abre su
+          `onConfirm`, dentro del clic. */}
+      {mostrarBotonLlamada && (
+        <AntesDeEntrarModal
+          para="medico-llamada"
+          open={avisoVideo}
+          onCancel={() => setAvisoVideo(false)}
+          onConfirm={() => {
+            setAvisoVideo(false)
+            iniciarVideollamada()
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+// Icono de cámara de vídeo (trazo, hereda el color del botón). `aria-hidden`: el nombre accesible
+// del botón lo da su texto, no el icono.
+function IconoCamara({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M23 7l-7 5 7 5V7z" />
+      <rect x="1" y="5" width="15" height="14" rx="2" />
+    </svg>
   )
 }

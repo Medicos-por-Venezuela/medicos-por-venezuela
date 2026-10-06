@@ -2,7 +2,12 @@ import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { fetchMyProfile } from '../../lib/consultations'
-import { getInboxSummary, InboxThread, useInboxSignal } from '../../lib/messages'
+import {
+  etiquetaUltimaDireccion,
+  getInboxSummary,
+  InboxThread,
+  useInboxSignal
+} from '../../lib/messages'
 import { supabase } from '../../lib/supabase'
 import { isPanelRole, tiempoTranscurrido } from '../../lib/utils'
 import IndicadorPresenciaPaciente from '../../components/mensajes/IndicadorPresenciaPaciente'
@@ -278,6 +283,19 @@ export default function BuzonMensajes() {
                         ? `Última actividad: hace ${tiempoTranscurrido(thread.last_message_at)}`
                         : 'Sin actividad registrada'}
                     </div>
+
+                    {/* Quién escribió lo último. Son TRES casos desde R16: el aviso de
+                        videollamada es un mensaje de sistema y puede ser el último del hilo
+                        (y no cuenta como no leído para nadie). */}
+                    {thread.last_message_at && (
+                      <div
+                        style={{ fontSize: '12px', color: 'var(--muted)' }}
+                        data-testid="ultima-direccion"
+                        data-direction={thread.last_direction}
+                      >
+                        {etiquetaUltimaDireccion(thread.last_direction)}
+                      </div>
+                    )}
                   </div>
 
                   <div

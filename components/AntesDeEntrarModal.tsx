@@ -35,10 +35,16 @@ export default function AntesDeEntrarModal({
   open: boolean
   onCancel: () => void
   onConfirm: () => void
-  para?: 'paciente' | 'medico'
+  // `medico-llamada` es la variante del botón de cámara del hilo (R16): misma copia
+  // clínico-operativa que `medico`, pero el aviso del paciente NO es un correo. Ahí
+  // `start_video_call` no dispara `video_ready_email` a propósito —el botón solo se habilita con
+  // el paciente en línea, así que el correo sería redundante— y lo que recibe es el mensaje de
+  // sistema del propio hilo, que ve en 8 segundos o menos.
+  para?: 'paciente' | 'medico' | 'medico-llamada'
   // Solo para el médico: el correo "tu médico te está esperando" sale al tomar el caso por video
   // y solo si el paciente dejó correo. Quien lo sabe (el detalle de la consulta) lo dice, para no
-  // prometerle al médico un aviso que nunca salió.
+  // prometerle al médico un aviso que nunca salió. No aplica a `medico-llamada`: ahí no hay correo
+  // en ningún caso.
   pacienteSinCorreo?: boolean
 }) {
   const tituloId = useId()
@@ -46,7 +52,10 @@ export default function AntesDeEntrarModal({
 
   if (!open) return null
 
-  const esMedico = para === 'medico'
+  // Las dos variantes del médico comparten marco, subtítulo y avisos; solo cambia cómo se le
+  // avisa al paciente (correo al tomar el caso / mensaje en el hilo al llamar desde el chat).
+  const esLlamadaDesdeChat = para === 'medico-llamada'
+  const esMedico = para === 'medico' || esLlamadaDesdeChat
 
   return (
     <div
@@ -107,9 +116,14 @@ export default function AntesDeEntrarModal({
               </div>
               <div className="aviso">
                 <div className="ic" aria-hidden="true">
-                  <Sobre />
+                  {esLlamadaDesdeChat ? <Mensaje /> : <Sobre />}
                 </div>
-                {pacienteSinCorreo ? (
+                {esLlamadaDesdeChat ? (
+                  <p>
+                    Al paciente le aparece el aviso <mark>en el chat de la consulta</mark>, con un
+                    botón para unirse. No se le envía ningún correo.
+                  </p>
+                ) : pacienteSinCorreo ? (
                   <p>
                     Este paciente <mark>no recibió el aviso por correo</mark>, así que quizá no sepa
                     que ya estás en la sala.

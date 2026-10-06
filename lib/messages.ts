@@ -83,12 +83,48 @@ export interface InboxThread {
   // mensaje; se declara anulable porque la spec de dominio lo permite y porque imprimir
   // «hace 0 min» por un nulo es peor que decir que no se sabe.
   last_message_at: string | null
+  // TRES valores desde R16, no dos: el aviso de videollamada que el médico deja en el hilo es un
+  // mensaje de sistema (`direction: "system"`), así que puede ser el último del hilo. Una consulta
+  // cuyo ÚNICO mensaje sea ese aviso sí aparece en el buzón, con `unread_count: 0` (la dirección
+  // `system` queda fuera de los dos contadores). Quien lo pinte tiene que cubrir el tercer caso:
+  // ver `etiquetaUltimaDireccion`.
   last_direction: 'doctor_to_patient' | 'patient_to_doctor' | 'system' | string
   unread_count: number
   // Solo presentes en las vistas del médico profesional (asimetría estricta)
   patient_online?: boolean
   patient_last_seen_at?: string | null
   active_call?: string | null
+}
+
+/**
+ * Cuerpo de `POST /consultations/{id}/video-call` (R16, CA16.4).
+ *
+ * `room_url` es la sala Jitsi y solo se le devuelve al médico tratante: se abre en una ventana
+ * aparte pasando SIEMPRE por `browserRoomUrl` (reescribe salas legacy y salta el interstitial
+ * móvil). `message_id` es el mensaje de sistema que quedó en el hilo para que el paciente se
+ * entere; su cuerpo es SOLO el texto del aviso: no lleva URL ni token (CA16.6), porque un enlace
+ * con token dentro del cuerpo deja un secreto de 24 h escrito en el historial clínico y a la vista
+ * en pantalla. El acceso del paciente lo construye la interfaz con el `consultation_id` y la
+ * credencial con la que ya está leyendo el hilo.
+ */
+export interface VideoCallStart {
+  room_url: string
+  message_id: string
+}
+
+/**
+ * Quién escribió el último mensaje de un hilo del buzón, en español y cubriendo los TRES valores
+ * de `last_direction`. Sin el caso `system` un hilo cuyo último mensaje sea el aviso de
+ * videollamada (R16) se pintaría como si lo hubiera escrito el paciente o el propio médico, que
+ * es justo lo que no es: no lo escribió nadie y no cuenta como no leído.
+ */
+export function etiquetaUltimaDireccion(dir: InboxThread['last_direction']): string {
+  if (dir === 'patient_to_doctor') return 'Último mensaje: del paciente'
+  if (dir === 'doctor_to_patient') return 'Último mensaje: tu respuesta'
+  if (dir === 'system') return 'Último mensaje: aviso del sistema'
+  // Un valor que esta versión del cliente no conoce todavía: se dice que no se sabe, no se
+  // adivina una dirección.
+  return 'Último mensaje: sin clasificar'
 }
 
 export interface SendMessagePayload {
@@ -295,6 +331,31 @@ export async function markRead(
     path,
     {},
     'No se pudo actualizar el estado de lectura',
+    token,
+    extraHeaders
+  )
+}
+
+/**
+ * Inicia la videoconsulta desde el hilo (R16). Asegura la sala de la consulta (idempotente: dos
+ * clics devuelven la misma URL) y deja en el hilo un mensaje de sistema con el aviso y el enlace
+ * de entrada para el paciente.
+ *
+ * Solo el médico tratante: el paciente —con sesión o con `X-Consultation-Token`— recibe 404, igual
+ * que un médico ajeno o un admin no tratante (CA16.3). Un 409 significa que la consulta ya no
+ * admite mensajes, y su `message` trae el motivo exacto para mostrarlo tal cual.
+ */
+export async function startVideoCall(
+  consultationId: string,
+  auth?: AuthOptions
+): Promise<VideoCallStart> {
+  const path = `/api/v1/consultations/${consultationId}/video-call`
+  const { token, extraHeaders } = resolveAuthHeaders(auth)
+
+  return postJson<VideoCallStart>(
+    path,
+    {},
+    'No se pudo iniciar la videoconsulta',
     token,
     extraHeaders
   )
