@@ -68,6 +68,7 @@ test('médico general: el formulario sale completo, la disponibilidad es obligat
   // los botones de otras filas.
   await expect(admin.getByText('(1 respuesta)')).toBeVisible()
   await expect(admin.getByRole('cell', { name: email })).toBeVisible()
+  const filaMedico = admin.locator('tr', { hasText: email })
   // "Cómo quiere participar" es largo: sale recortado para no alargar la fila, y "Ver más" lo
   // despliega entero.
   const roles =
@@ -79,7 +80,9 @@ test('médico general: el formulario sale completo, la disponibilidad es obligat
     'aria-expanded',
     'true'
   )
-  await expect(admin.getByRole('cell', { name: 'Entre 1 y 3 horas a la semana' })).toBeVisible()
+  await expect(
+    filaMedico.getByRole('cell', { name: 'Entre 1 y 3 horas a la semana' })
+  ).toBeVisible()
   // Médicos generales no pregunta la ubicación: esa columna no existe en su pestaña.
   await expect(admin.getByRole('columnheader', { name: 'Dónde está' })).toHaveCount(0)
 
@@ -140,8 +143,11 @@ test('psicólogo: sin correo en el enlace, el campo es editable y la ubicación 
   )
   await admin.getByPlaceholder('Buscar por correo').fill(email)
   await expect(admin.getByRole('cell', { name: email })).toBeVisible()
-  await expect(admin.getByRole('cell', { name: 'Grupos de apoyo' })).toBeVisible()
-  await expect(admin.getByRole('cell', { name: 'Japón (GMT+9)' })).toBeVisible()
+  // Por FILA (la del correo único de esta corrida): la tabla acumula respuestas de corridas
+  // anteriores y los valores se repiten, así que una celda global da strict mode violation.
+  const fila = admin.locator('tr', { hasText: email })
+  await expect(fila.getByRole('cell', { name: 'Grupos de apoyo', exact: true })).toBeVisible()
+  await expect(fila.getByRole('cell', { name: 'Japón (GMT+9)' })).toBeVisible()
   await expect(admin.getByRole('columnheader', { name: 'Dónde está' })).toBeVisible()
 
   // Cada pestaña lleva el total de respuestas de su encuesta. El número exacto depende de lo que

@@ -6,6 +6,7 @@
 // el nombre empieza con "E2E Paciente" para que el cleanup del global-setup borre su
 // patient+consultation. Dominio @example.com: el EmailStr del backend rechaza .local.
 import { test, expect } from '@playwright/test'
+import { completarVerificacionCorreo } from './helpers'
 
 test('registro adulto por UI: formulario → signup → sala de espera en cola', async ({ page }) => {
   // Ninguna petición a Google debe salir de local: el guard de lib/analytics.ts comprueba el
@@ -20,7 +21,8 @@ test('registro adulto por UI: formulario → signup → sala de espera en cola',
   await page.getByPlaceholder('Ej. 12345678').fill('99990034') // CedulaField emite "V-99990034"
   await page.getByPlaceholder('Ej. María González').fill('E2E Paciente Registro UI')
   await page.getByPlaceholder('Ej. 4121234567').fill('4120000034') // PhoneField emite "584120000034"
-  await page.locator('input[type="email"]').fill(`e2e-paciente-${Date.now()}@example.com`)
+  const email = `e2e-paciente-${Date.now()}@example.com`
+  await page.locator('input[type="email"]').fill(email)
   await page.locator('input[type="password"]').fill('e2e-Test-123456')
 
   // Teléfono de emergencia (distinto al WhatsApp).
@@ -28,9 +30,7 @@ test('registro adulto por UI: formulario → signup → sala de espera en cola',
 
   // Único select con "Selecciona..." en la rama adulto (cédula y teléfono tienen V/E y +58).
   // selectOption espera a que el catálogo de zonas cargue del backend antes de elegir.
-  const zona = page.locator('select', {
-    has: page.locator('option', { hasText: 'Selecciona...' })
-  })
+  const zona = page.locator('label:has-text("Zona") + select')
   await zona.selectOption({ index: 1 })
 
   await page.getByPlaceholder('Ej. 34').fill('34')
@@ -42,6 +42,9 @@ test('registro adulto por UI: formulario → signup → sala de espera en cola',
 
   await page.getByRole('button', { name: 'Registrarse' }).click()
 
+  // Modal de confirmación de correo → modal de código 6 dígitos
+  await completarVerificacionCorreo(page, email)
+
   // Aterriza en la sala de espera EN COLA: todavía ningún médico tomó el caso, así que no hay
   // botón para entrar (antes lo había y el paciente entraba a una sala vacía). La sala le dice
   // que espere y que esté atento al correo.
@@ -49,10 +52,6 @@ test('registro adulto por UI: formulario → signup → sala de espera en cola',
   await expect(page.getByText('Estás en la sala de espera')).toBeVisible()
   await expect(page.getByText(/Atento a tu correo/)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Entrar a la videoconsulta' })).toHaveCount(0)
-  // Y "Otra" no se le ofreció: no es la cola de nadie.
-  await page.goBack()
-  await page.getByRole('checkbox', { name: 'Conozco la especialidad que necesito' }).check()
-  await expect(page.locator('option', { hasText: /^Otra$/ })).toHaveCount(0)
 
   // La conversión `generate_lead` se dispara aquí en PRODUCCIÓN. Lo que se puede comprobar en
   // local es lo contrario, que es lo que protege este assert: que no se filtre analítica desde

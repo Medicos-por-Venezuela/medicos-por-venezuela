@@ -242,6 +242,24 @@ Each entry: date, a short summary of what changed and why, and the key files/are
     `pages/panel-medico/consulta/[id].tsx`, `pages/panel-medico/mensajes.tsx`, `pages/panel-medico.tsx`,
     `components/PanelHeader.tsx`, `pages/mi-caso.tsx`, `pages/sala-espera.tsx`, `e2e/mensajes-*.spec.ts`.
 
+## 2026-09-30
+
+- **feat(registro): verificación de correo por código de 6 dígitos (pacientes y médicos)** —
+  nuevo flujo obligatorio antes de crear la cuenta: (1) modal de confirmación del correo
+  (`components/ConfirmarCorreoModal.tsx`), (2) modal de código con cuenta atrás de reenvío y
+  captura de `debug_code` en local (`components/VerificacionCodigoModal.tsx`). El backend devuelve
+  `email_verification_token` que se envía en `POST /patients` y `POST /doctors` (`lib/patients.ts`,
+  `lib/doctors.ts`). Cliente: `lib/emailVerification.ts` con `sendEmailVerification` y
+  `verifyEmailCode`. En `registro-paciente.tsx`: elimina checkbox "Conozco la especialidad que
+  necesito"; el select de especialidad queda siempre visible y opcional (cae en Medicina general);
+  preselección de Psicología por `?especialidad=psicologia` intacta. En `registro-medico.tsx`: el
+  camino `incomplete` (signInWithPassword) salta la verificación. E2E: helper
+  `completarVerificacionCorreo` en `e2e/helpers.ts`; actualizados `e2e/registro-paciente.spec.ts` y
+  `e2e/mi-caso-videoconsulta.spec.ts`. Ficheros: `lib/emailVerification.ts`, `lib/patients.ts`,
+  `lib/doctors.ts`, `components/ConfirmarCorreoModal.tsx`, `components/VerificacionCodigoModal.tsx`,
+  `pages/registro-paciente.tsx`, `pages/registro-medico.tsx`, `e2e/helpers.ts`,
+  `e2e/registro-paciente.spec.ts`, `e2e/mi-caso-videoconsulta.spec.ts`.
+
 ## 2026-09-27
 
 - **fix(registro/panel): fuera la dirección del paciente; el motivo vuelve a la cola del admin** —
