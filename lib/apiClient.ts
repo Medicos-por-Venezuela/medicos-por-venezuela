@@ -146,9 +146,10 @@ function filenameFromDisposition(disposition: string | null): string | null {
 export async function getFile(
   path: string,
   defaultErrorMessage: string,
-  token?: string
+  token?: string,
+  extraHeaders?: Record<string, string>
 ): Promise<{ blob: Blob; filename: string | null }> {
-  const res = await authedFetch(path, {}, token)
+  const res = await authedFetch(path, {}, token, extraHeaders)
   // El error de un endpoint de descarga sigue llegando como JSON (`detail`), así que se procesa
   // con el mismo camino que el resto: el usuario ve "Acota el reporte...", no "error 422".
   if (!res.ok) await raiseApiError(res, defaultErrorMessage)
@@ -156,6 +157,18 @@ export async function getFile(
     blob: await res.blob(),
     filename: filenameFromDisposition(res.headers.get('Content-Disposition'))
   }
+}
+
+export async function postFormData<T>(
+  path: string,
+  formData: FormData,
+  defaultErrorMessage: string,
+  token?: string,
+  extraHeaders?: Record<string, string>
+): Promise<T> {
+  const res = await authedFetch(path, { method: 'POST', body: formData }, token, extraHeaders)
+  if (!res.ok) await raiseApiError(res, defaultErrorMessage)
+  return res.json()
 }
 
 export async function deleteJson(

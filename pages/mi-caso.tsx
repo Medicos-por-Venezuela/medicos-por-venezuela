@@ -15,6 +15,7 @@ import { downloadIcs } from '../lib/calendar'
 import { browserRoomUrl } from '../lib/jitsi'
 import { trackPatientInRoom } from '../lib/patientPresence'
 import { useWaitingRoom, type WaitingRoomState } from '../lib/waitingRoom'
+import HiloMensajes from '../components/mensajes/HiloMensajes'
 
 // Casos en los que el paciente sigue la sala en vivo: en cola, en atención o CITA AGENDADA (el
 // médico la inicia al entrar a la videollamada y la sala pasa a `ready` sin recargar). El botón de
@@ -29,6 +30,7 @@ export default function MiCaso() {
   const [patientName, setPatientName] = useState('')
   const [consultations, setConsultations] = useState<MyConsultation[]>([])
   const [conSesion, setConSesion] = useState(false)
+  const [token, setToken] = useState('')
   // La sala que pidió abrir (mientras el modal de instrucciones está arriba).
   const [salaPendiente, setSalaPendiente] = useState<WaitingRoomState | null>(null)
   // La consulta cuya sala ya abrió. Mientras esta página siga abierta, se anuncia al médico que
@@ -107,6 +109,7 @@ export default function MiCaso() {
     // del paciente + sus consultas por sus endpoints (el backend los scopea a la propia cuenta).
     const token = session.access_token
     setConSesion(true)
+    setToken(token)
     try {
       const profile = await fetchMyProfile(token)
       // Mismo resolvedor que /login y /auth/callback: si a este usuario le toca otro sitio, se va
@@ -271,6 +274,16 @@ export default function MiCaso() {
                       ocultarAgendada={c.status === 'scheduled'}
                     />
                   )}
+
+                  {/* Hilo de mensajes con el médico (U3 - Paciente con cuenta) */}
+                  <div style={{ marginTop: 16 }}>
+                    <HiloMensajes
+                      consultationId={c.id}
+                      currentUserRole="patient"
+                      auth={{ token }}
+                      isCaseClosed={!CASO_ABIERTO.has(c.status)}
+                    />
+                  </div>
                 </div>
               ))}
             </div>

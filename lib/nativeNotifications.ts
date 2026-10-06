@@ -3,6 +3,8 @@
 // complemento del email (que es el canal confiable, lo manda el backend). Upgrade futuro: service
 // worker + push para avisar con la pestaña cerrada.
 
+import { playNotificationSound, type SoundKind } from './sound'
+
 // Pide permiso una vez (si el usuario aún no decidió). No molesta si ya está granted/denied.
 export async function requestNotifyPermission(): Promise<boolean> {
   if (typeof window === 'undefined' || !('Notification' in window)) return false
@@ -15,10 +17,20 @@ export async function requestNotifyPermission(): Promise<boolean> {
   }
 }
 
-// Muestra una notificación ya (si hay permiso). Silenciosa si no se puede.
-export function notify(title: string, body?: string): void {
-  if (typeof window === 'undefined' || !('Notification' in window)) return
-  if (Notification.permission !== 'granted') return
+// Muestra una notificación en pantalla y reproduce un aviso sonoro si está habilitado.
+export function notify(
+  title: string,
+  body?: string,
+  options?: { sound?: boolean; soundKind?: SoundKind }
+): void {
+  if (typeof window === 'undefined') return
+
+  // Reproducir aviso sonoro (activado por defecto)
+  if (options?.sound !== false) {
+    playNotificationSound(options?.soundKind || 'message')
+  }
+
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
   try {
     new Notification(title, { body })
   } catch {

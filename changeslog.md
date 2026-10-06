@@ -5,6 +5,28 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-10-05
+
+- **feat(mensajeria): Fase 1 UI — buzón web, visor de adjuntos clínicos y chat asimétrico** —
+  se implementa el módulo de mensajería médico ↔ paciente en el frontend con soporte para adjuntos
+  clínicos (PDF e imágenes JPG/PNG/WEBP) y regla de asimetría estricta de presencia (solo el médico ve
+  si el paciente está en línea; el paciente nunca ve el estado del médico para proteger su privacidad
+  y disponibilidad).
+  - Bloqueo estricto de GIF en cliente: los archivos `.gif` e `image/gif` son rechazados inmediatamente
+    en drop, paste o selección manual con alerta descriptiva y sin emitir peticiones HTTP.
+  - Subida desacoplada en dos pasos y visualización protegida de adjuntos clínicos vía
+    `fetchAttachmentBlob` con `URL.createObjectURL(blob)` y liberación obligatoria de memoria
+    (`revokeObjectURL`) al desmontar.
+  - Nueva ruta `/panel-medico/mensajes` (buzón unificado de conversaciones con filtros y badges de no leídos),
+    acceso directo en `PanelHeader` y tarjeta de KPI en `/panel-medico`.
+  - Integración en las vistas del paciente `/mi-caso` (sesión autenticada) y `/sala-espera`
+    (`X-Consultation-Token`), con omisión total en el DOM de cualquier indicador de presencia médica.
+  - Suites E2E Playwright: `e2e/mensajes-medico.spec.ts`, `e2e/mensajes-paciente.spec.ts`,
+    `e2e/mensajes-admin.spec.ts` (verificación de privacidad clínica fail-closed para administradores).
+    Ficheros: `lib/messages.ts`, `lib/apiClient.ts`, `lib/notificationPrefs.ts`, `components/mensajes/*`,
+    `pages/panel-medico/consulta/[id].tsx`, `pages/panel-medico/mensajes.tsx`, `pages/panel-medico.tsx`,
+    `components/PanelHeader.tsx`, `pages/mi-caso.tsx`, `pages/sala-espera.tsx`, `e2e/mensajes-*.spec.ts`.
+
 ## 2026-09-27
 
 - **fix(registro/panel): fuera la dirección del paciente; el motivo vuelve a la cola del admin** —

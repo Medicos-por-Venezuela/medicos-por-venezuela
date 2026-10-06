@@ -49,6 +49,7 @@ import { usePatientsInRoom } from '../../../lib/patientPresence'
 import EstadoPacienteBadge from '../../../components/EstadoPacienteBadge'
 import AntesDeEntrarModal from '../../../components/AntesDeEntrarModal'
 import { clinicalValue } from '../../../components/ConfidentialText'
+import HiloMensajes from '../../../components/mensajes/HiloMensajes'
 
 type Patient = {
   id: string
@@ -176,6 +177,7 @@ export default function ConsultaDetalle() {
   // Preferencias de notificación (para respetar el aviso push de confirmación). null = opt-out.
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs | null>(null)
   const [loading, setLoading] = useState(true)
+  const [token, setToken] = useState('')
   // in-flight guard compartido por las acciones de escritura (evita dobles submits).
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -265,6 +267,7 @@ export default function ConsultaDetalle() {
       router.push('/login')
       return
     }
+    setToken(sessionData.session.access_token)
 
     // Perfil propio vía GET /auth/me (backend), ya no la vista `profiles`. Trae id/full_name/role/
     // specialty/active, justo lo que necesita el guard y el "médico asignado = yo".
@@ -850,6 +853,31 @@ export default function ConsultaDetalle() {
               )}
             </section>
 
+            {/* Mensajería médico ↔ paciente (U1) */}
+            <section
+              className="card detail-full-span"
+              style={{ padding: 0, overflow: 'hidden' }}
+              aria-label="Mensajería del caso"
+            >
+              <HiloMensajes
+                consultationId={consultation.id}
+                currentUserRole={
+                  consultation.assigned_doctor_id === profile?.id
+                    ? 'doctor'
+                    : profile?.role || 'doctor'
+                }
+                auth={{ token }}
+                patientOnline={patientsInRoom.has(consultation.id)}
+                patientLastSeenAt={consultation.patient_last_seen_at}
+                isCaseClosed={isCaseClosed}
+                readOnly={
+                  (Boolean(consultation.assigned_doctor_id) &&
+                    consultation.assigned_doctor_id !== profile?.id) ||
+                  (isAdminRole(profile?.role) && consultation.assigned_doctor_id !== profile?.id)
+                }
+              />
+            </section>
+
             <section className="card detail-full-span">
               <h2 style={{ marginTop: 0 }}>Referencia y trazabilidad</h2>
               <div className="detail-timeline">
@@ -918,10 +946,33 @@ export default function ConsultaDetalle() {
               <h2 style={{ marginTop: 0 }}>Gestión de la consulta</h2>
               <div className="detail-actions">
                 {isCaseClosed && (
-                  <div className="notice">
-                    Este caso ya está finalizado (
-                    {STATUS_LABELS[consultation.status] || consultation.status}). Solo la nota sigue
-                    editable.
+                  <div>
+                    <div className="notice" style={{ marginBottom: 12 }}>
+                      Este caso ya está finalizado (
+                      {STATUS_LABELS[consultation.status] || consultation.status}). Solo la nota
+                      sigue editable.
+                    </div>
+                    {(isAdminRole(profile?.role) ||
+                      consultation.assigned_doctor_id === profile?.id) && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-full"
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              '¿Deseas reabrir esta consulta? Volverá al estado "En atención" para continuar la comunicación médica.'
+                            )
+                          ) {
+                            updateStatus('in_progress')
+                          }
+                        }}
+                        disabled={busy}
+                        style={{ marginTop: 8 }}
+                        data-testid="btn-reabrir-consulta"
+                      >
+                        🔄 Reabrir consulta (volver a En atención)
+                      </button>
+                    )}
                   </div>
                 )}
                 {consultation.attended_via_whatsapp && !isCaseClosed && (
