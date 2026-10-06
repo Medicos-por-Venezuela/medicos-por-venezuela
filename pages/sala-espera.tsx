@@ -125,6 +125,12 @@ export default function SalaEspera() {
                     consultationId={vigenteId}
                     currentUserRole="patient"
                     auth={{ consultationToken: vigenteToken }}
+                    // CA16.2c: el botón «Entrar a la videoconsulta» del aviso del hilo no debe
+                    // dejar entrar a la sala de un caso finalizado. `phase === 'finished'` es
+                    // exactamente eso (lo calcula `phase_of` en la API: cualquier estado que no
+                    // sea de atención). Sin esta prop el hilo lo daba por abierto y el botón
+                    // quedaba habilitado en un caso cerrado.
+                    isCaseClosed={state?.phase === 'finished'}
                   />
                 </div>
               </>

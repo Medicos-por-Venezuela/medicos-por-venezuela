@@ -29,8 +29,19 @@ interface HiloMensajesProps {
   patientOnline?: boolean
   patientLastSeenAt?: string | null
   isCaseClosed?: boolean
+  // Cita AGENDADA (`status === 'scheduled'`). Booleano derivado por la página, igual que
+  // `isCaseClosed`: la lista de estados vive en el detalle de la consulta (`FINAL_STATUSES`,
+  // `STATUS_LABELS`) y el hilo no tiene por qué conocer los nombres de los estados. Es la
+  // excepción al candado por presencia (CA16.2): en una cita agendada el paciente todavía NO puede
+  // estar conectado, porque es el propio inicio de la cita lo que dispara el correo que le avisa.
+  isScheduled?: boolean
   readOnly?: boolean
   onMessageSent?: (msg: Message) => void
+  // Aviso de que la llamada arrancó. Quien monta el hilo tiene la consulta en su estado y la
+  // recarga: desde CA16.2b este botón es el único camino a la sala y el endpoint puede cambiar el
+  // estado de la consulta al llamar (una cita `scheduled` pasa a `in_progress`). Sin esto el caso
+  // seguiría pintado como «agendado» y el médico no sabría que ya empezó.
+  onCallStarted?: () => void
   className?: string
 }
 
@@ -85,8 +96,10 @@ export default function HiloMensajes({
   patientOnline,
   patientLastSeenAt,
   isCaseClosed = false,
+  isScheduled = false,
   readOnly = false,
   onMessageSent,
+  onCallStarted,
   className = ''
 }: HiloMensajesProps) {
   const [thread, setThread] = useState<ThreadState | null>(null)
@@ -294,6 +307,9 @@ export default function HiloMensajes({
         else window.open(destino, '_blank', 'noreferrer')
         // El aviso de sistema ya está en el hilo: se trae sin esperar la vuelta del sondeo.
         refrescarHilo()
+        // Y la consulta puede haber cambiado de estado con esta misma llamada (CA16.2b: una cita
+        // `scheduled` pasa a `in_progress`). Quien monta el hilo la recarga.
+        if (onCallStarted) onCallStarted()
       })
       .catch((err: unknown) => {
         if (ventana && !ventana.closed) ventana.close()
@@ -452,6 +468,9 @@ export default function HiloMensajes({
    */
   function entrarALaSala() {
     if (entradaEnVueloRef.current) return
+    // El `disabled` ya lo impide, pero la guarda de estado se repite aquí: es la que evita entrar
+    // a la sala de un caso cerrado, y no debe depender de que el atributo esté bien puesto.
+    if (isCaseClosed || ventanaCerrada) return
     entradaEnVueloRef.current = true
 
     const ventana = window.open('about:blank', '_blank')
@@ -519,16 +538,59 @@ export default function HiloMensajes({
   // asimetría de render, no de CSS: en las pantallas del paciente el botón no existe en el DOM.
   const mostrarBotonLlamada = isDoctor && !readOnly && !esRolDeAuditoria
 
-  // CA16.2 — habilitado SOLO con el paciente en línea. La señal es la presencia que el hilo ya
-  // recibe por prop; no se introduce una tercera fuente de presencia. El motivo se dice con
-  // palabras (`title` + `aria-label`), no solo con el color.
-  const motivoSinLlamada =
-    patientOnline !== true
-      ? 'El paciente no está conectado'
-      : ventanaCerrada
-        ? 'Esta consulta ya no admite mensajes'
+  // CA16.2, tercera redacción (2026-10-06, probando el producto). El candado por presencia VUELVE,
+  // con una excepción explícita. La secuencia de las tres decisiones, porque el resultado no se
+  // entiende sin ella:
+  //
+  //  1. Habilitado solo con el paciente en línea.
+  //  2. Habilitado siempre, al retirar el «Unirse a videoconsulta» de la cabecera (CA16.2b):
+  //     aquel botón no gateaba por presencia e iniciaba las citas agendadas, así que con un solo
+  //     botón el candado dejaba esos casos sin cubrir.
+  //  3. De vuelta al candado, EXCEPTO en una cita agendada — que es lo que resuelve la tensión
+  //     entre las dos anteriores.
+  //
+  // Lo aprendido: la presencia sí debe bloquear, porque llamar a quien no está delante abre una
+  // sala vacía; pero una cita `scheduled` es justo el caso en que el paciente todavía *no puede*
+  // estar conectado, porque es el inicio de la cita lo que dispara el correo que le avisa.
+  //
+  // Y además (CA16.2c) deshabilitan el CASO FINALIZADO y la ventana de mensajes cerrada (409). El
+  // caso finalizado no es un añadido mío: el botón que se retiró vivía dentro de un
+  // `{!isCaseClosed && …}`, y quitarlo sin esta guarda habría CONCEDIDO una capacidad que antes no
+  // existía —llamar sobre un caso cerrado—, porque el backend admite mensajes (y por tanto la
+  // llamada) durante las 72 h de seguimiento. El hilo cerrado sirve para escribir; para llamar, no.
+  //
+  // El orden va de lo más permanente a lo más circunstancial: así el motivo que se le dice al
+  // médico es el que de verdad le impide llamar. Todos se dicen con palabras (`title` +
+  // `aria-label`), no solo con el color.
+  const motivoSinLlamada = isCaseClosed
+    ? 'El caso está finalizado'
+    : ventanaCerrada
+      ? 'Esta consulta ya no admite mensajes'
+      : patientOnline !== true && !isScheduled
+        ? 'El paciente no está conectado'
         : null
   const puedeLlamar = motivoSinLlamada === null && !iniciandoLlamada
+
+  // CA16.2c — el botón de ENTRADA del paciente tiene las mismas guardas de estado que el del
+  // médico. Si él no puede llamar en un caso finalizado, el paciente no puede entrar a la sala
+  // desde un aviso anterior: antes solo se deshabilitaba mientras la petición volaba, así que un
+  // aviso viejo seguía siendo una puerta abierta.
+  //
+  // La presencia NO entra aquí: es el paciente, está delante por definición.
+  const motivoSinEntrada = isCaseClosed
+    ? 'El caso está finalizado'
+    : ventanaCerrada
+      ? 'Esta consulta ya no admite mensajes'
+      : null
+  const puedeEntrarALaSala = motivoSinEntrada === null && !entrandoASala
+  // Al paciente no le basta un botón gris: tiene que leer por qué. El aviso visible va debajo del
+  // botón, y el motivo entra además en el nombre accesible (que CONTIENE el texto visible del
+  // botón, WCAG 2.5.3).
+  const etiquetaEntrada = entrandoASala
+    ? 'Abriendo la videoconsulta…'
+    : motivoSinEntrada
+      ? `Entrar a la videoconsulta: no disponible. ${motivoSinEntrada}`
+      : 'Entrar a la videoconsulta'
   const textoLlamada = iniciandoLlamada ? 'Abriendo…' : 'Videollamada'
   // El nombre accesible CONTIENE el texto visible (WCAG 2.5.3) y añade el motivo cuando no se
   // puede llamar.
@@ -808,19 +870,44 @@ export default function HiloMensajes({
                       type="button"
                       className="btn btn-primary"
                       onClick={entrarALaSala}
-                      disabled={entrandoASala}
+                      disabled={!puedeEntrarALaSala}
+                      title={etiquetaEntrada}
+                      aria-label={etiquetaEntrada}
                       style={{
                         display: 'inline-flex',
                         marginTop: '10px',
                         padding: '10px 16px',
                         fontSize: '14px',
-                        gap: '8px'
+                        gap: '8px',
+                        // El `.btn:disabled` global baja la opacidad al 55 %, y sobre el azul de
+                        // marca con texto blanco eso queda por debajo de AA. Deshabilitado se
+                        // pinta con los grises de marca a opacidad plena.
+                        ...(puedeEntrarALaSala
+                          ? {}
+                          : {
+                              opacity: 1,
+                              backgroundColor: 'var(--bg)',
+                              color: 'var(--muted)',
+                              border: '1px solid var(--border)',
+                              cursor: 'not-allowed'
+                            })
                       }}
                       data-testid="btn-entrar-videoconsulta"
                     >
                       <IconoCamara />
                       <span>{entrandoASala ? 'Abriendo…' : 'Entrar a la videoconsulta'}</span>
                     </button>
+
+                    {/* El motivo, VISIBLE: un botón gris sin explicación deja al paciente sin
+                        saber qué hacer, y este es el momento en que menos conviene. */}
+                    {motivoSinEntrada && (
+                      <div
+                        style={{ marginTop: '6px', fontSize: '11px', color: 'var(--muted)' }}
+                        data-testid="motivo-sin-entrada"
+                      >
+                        {motivoSinEntrada}: ya no puedes entrar a la videoconsulta.
+                      </div>
+                    )}
 
                     {errorEntrada && (
                       <div

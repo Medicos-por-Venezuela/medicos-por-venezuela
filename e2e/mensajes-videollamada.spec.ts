@@ -6,11 +6,16 @@
 //  1. ASIMETRÍA (CA16.1). El botón de llamar es del médico y **no existe en el DOM** de las
 //     pantallas del paciente (`/sala-espera` por token y `/mi-caso` con cuenta). No basta con
 //     ocultarlo: el componente no lo pinta, igual que el indicador de presencia.
-//  2. DESHABILITADO CON MOTIVO (CA16.2). Con el paciente desconectado el botón está deshabilitado
-//     y dice por qué («El paciente no está conectado»), en el nombre accesible y no solo en el
-//     color. Con el paciente en línea se habilita, y su modal no le promete al médico un correo
-//     que `start_video_call` no manda ni inicia nada por su cuenta. Confirmarlo sí llama, una
-//     sola vez, y abre la sala: eso es la ruta feliz, con `window.open` espiado y el resto real.
+//  2. LA PRESENCIA BLOQUEA, SALVO EN UNA CITA AGENDADA (CA16.2, tercera redacción del
+//     2026-10-06). Llamar a quien no está delante abre una sala vacía, así que el botón exige
+//     presencia — excepto con la consulta en `scheduled`, donde el paciente todavía no puede
+//     estar conectado porque es el inicio de la cita lo que dispara el correo que le avisa. Esa
+//     excepción es la que protege a las citas agendadas, y tiene su propio escenario. También
+//     deshabilitan el caso finalizado y el 409 (CA16.2c). Y es el ÚNICO botón de videoconsulta
+//     del detalle (CA16.2b): el antiguo «Unirse a videoconsulta» de la cabecera ya no existe. Su
+//     modal no le promete al médico un correo que `start_video_call` no manda, ni inicia nada por
+//     su cuenta; confirmarlo sí llama, una sola vez, y abre la sala: eso es la ruta feliz, con
+//     `window.open` espiado.
 //  3. EL AVISO ES ACCIONABLE. El mensaje de sistema sale centrado y neutral (sin burbuja de
 //     emisor ni marcas de entrega) y lleva un BOTÓN de entrada: si se queda en texto, el paciente
 //     no puede entrar y la funcionalidad no sirve de nada.
@@ -176,6 +181,46 @@ async function responderHiloConAviso(
   )
 }
 
+/**
+ * Fija la fase de la sala de espera del paciente. Es lo que `/sala-espera` traduce a
+ * `isCaseClosed` del hilo (`phase === 'finished'`).
+ *
+ * Se simula porque llevar una consulta a `finished` de verdad pide claim, nota, firma y cierre del
+ * médico: cuatro pasos de otro módulo para comprobar un `disabled`. El stream se deja caer (503),
+ * como un proxy que no admite SSE, y la sala tira del GET.
+ */
+async function responderSalaDeEspera(page: Page, cid: string, fase: string): Promise<void> {
+  await page.route(
+    (url) => url.pathname.startsWith(`/api/v1/consultations/${cid}/waiting-room`),
+    async (route) => {
+      if (route.request().url().includes('/stream')) {
+        return route.fulfill({
+          status: 503,
+          headers: JSON_HEADERS,
+          body: '{"detail":"stream no disponible"}'
+        })
+      }
+      await route.fulfill({
+        status: 200,
+        headers: JSON_HEADERS,
+        body: JSON.stringify({
+          consultation_id: cid,
+          code: 'VZ-FIN',
+          status: 'closed',
+          phase: fase,
+          specialty: 'Medicina general',
+          derived_from_specialty: null,
+          doctor_name: 'Doctora E2E',
+          video_room_url: 'https://meet.medicosporvenezuela.org/vamed-e2e-cerrado',
+          scheduled_at: null,
+          patient_first_name: 'Test',
+          access_token: null
+        })
+      })
+    }
+  )
+}
+
 test.describe('Videollamada desde el hilo (CA16.x)', () => {
   test('el botón de videollamada NO existe en las pantallas del paciente', async ({ page }) => {
     // Paciente SIN cuenta: sala de espera con el token de su consulta.
@@ -209,7 +254,7 @@ test.describe('Videollamada desde el hilo (CA16.x)', () => {
     await expect(page.locator('[data-testid="indicador-presencia-paciente"]')).toHaveCount(0)
   })
 
-  test('con el paciente desconectado, el botón está deshabilitado y dice por qué', async ({
+  test('con el paciente desconectado el botón está deshabilitado, y es el único del detalle', async ({
     browser
   }) => {
     const token = accessToken('e2e/.auth/doc1.json')
@@ -233,12 +278,57 @@ test.describe('Videollamada desde el hilo (CA16.x)', () => {
     const boton = page.locator(BOTON)
     await expect(boton).toBeVisible()
     await expect(boton).toBeDisabled()
-    // El motivo va en el nombre accesible, no solo en el color.
+    // El motivo va en el nombre accesible y en el `title`, no solo en el color.
     await expect(boton).toHaveAccessibleName(/El paciente no está conectado/)
     await expect(boton).toHaveAttribute('title', /El paciente no está conectado/)
 
+    // CA16.2b: es el único botón de videoconsulta del detalle.
+    await expect(page.getByRole('button', { name: 'Unirse a videoconsulta' })).toHaveCount(0)
+
     await page.waitForTimeout(1_000)
     expect(llamadas, 'un botón deshabilitado no puede iniciar la llamada').toBe(0)
+
+    await ctx.close()
+  })
+
+  test('una CITA AGENDADA habilita el botón aunque el paciente no esté conectado', async ({
+    browser
+  }) => {
+    // La excepción de CA16.2, y el escenario que de verdad protege a las citas: en una consulta
+    // `scheduled` el paciente todavía NO puede estar conectado —es el inicio de la cita lo que
+    // dispara el correo «tu médico ya está en la sala»—, así que exigir presencia dejaría las
+    // citas agendadas sin forma de empezar. Fue el agujero que hizo quitar el candado en la
+    // segunda redacción; ahora se cubre con esta excepción en vez de abriendo el candado entero.
+    const token = accessToken('e2e/.auth/doc1.json')
+    const padre = await sembrarConsultaTomada(token, 'E2E Videollamada Cita Agendada')
+
+    // «Agendar seguimiento» cierra el padre (firmado) y crea la HIJA en `scheduled`, con el mismo
+    // médico asignado. Es la vía real por la que nace una cita agendada.
+    const ctxApi = await request.newContext()
+    const manana = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    const res = await ctxApi.post(`${API}/consultations/${padre}/schedule-follow-up`, {
+      data: {
+        scheduled_at: manana,
+        closing_note: 'Nota E2E de cierre para agendar el seguimiento.',
+        signature: 'data:image/png;base64,iVBORw0KGgo='
+      },
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (!res.ok()) throw new Error(`schedule-follow-up devolvió ${res.status()}`)
+    const hija: string = (await res.json()).id
+    await ctxApi.dispose()
+
+    const ctx = await browser.newContext({ storageState: 'e2e/.auth/doc1.json' })
+    const page = await ctx.newPage()
+    await page.goto(`/panel-medico/consulta/${hija}`)
+    await expect(page.getByRole('heading', { name: 'Detalle de consulta' })).toBeVisible()
+
+    // El paciente no está conectado y, aun así, se puede llamar: es una cita agendada.
+    await expect(page.getByText('○ Sin conexión')).toBeVisible()
+    const boton = page.locator(BOTON)
+    await expect(boton).toBeVisible()
+    await expect(boton).toBeEnabled()
+    await expect(page.getByText('El paciente no está conectado')).toHaveCount(0)
 
     await ctx.close()
   })
@@ -260,14 +350,20 @@ test.describe('Videollamada desde el hilo (CA16.x)', () => {
     await panel.goto(`/panel-medico/consulta/${cid}`)
     await expect(panel.getByRole('heading', { name: 'Detalle de consulta' })).toBeVisible()
 
-    // El PACIENTE abre su sala de espera: se anuncia por Realtime Presence y el botón se habilita.
+    // El PACIENTE abre su sala de espera y se anuncia por Realtime Presence. Ya no condiciona al
+    // botón, pero CA16.2 pide que siga ahí como INFORMACIÓN para que el médico decida.
     const ctxPaciente = await browser.newContext()
     const paciente = await ctxPaciente.newPage()
     await paciente.goto(`/sala-espera?cid=${cid}&nombre=Test&room=r&code=ABC`)
     await expect(paciente.getByRole('heading', { name: /Gracias/ })).toBeVisible()
 
+    // El indicador se entera en vivo, al lado del botón.
+    const presencia = panel.locator('[data-testid="indicador-presencia-paciente"]')
+    await expect(presencia).toContainText('En línea', { timeout: 20_000 })
+    await expect(presencia).toHaveAttribute('data-online', 'true')
+
     const boton = panel.locator(BOTON)
-    await expect(boton).toBeEnabled({ timeout: 20_000 })
+    await expect(boton).toBeEnabled()
     await expect(boton).toHaveAccessibleName(/Videollamada/)
 
     await boton.click()
@@ -295,7 +391,7 @@ test.describe('Videollamada desde el hilo (CA16.x)', () => {
   test('ruta feliz: confirmar el modal llama una vez, abre la sala y deja el aviso en el hilo', async ({
     browser
   }) => {
-    // La costura COMPLETA de CA16.8 contra el backend real: presencia → botón habilitado → modal →
+    // La costura COMPLETA de CA16.10 contra el backend real: botón → modal →
     // «Entendido» → un solo `POST /video-call` → la ventana que se abrió vacía en el clic se navega
     // a la sala pasada por `browserRoomUrl` → el aviso de sistema queda en el hilo. Lo único
     // simulado es `window.open`: una ventana real a Jitsi en medio de la suite es ruido y pediría
@@ -315,6 +411,8 @@ test.describe('Videollamada desde el hilo (CA16.x)', () => {
     await panel.goto(`/panel-medico/consulta/${cid}`)
     await expect(panel.getByRole('heading', { name: 'Detalle de consulta' })).toBeVisible()
 
+    // El PACIENTE abre su sala de espera: con el candado de CA16.2 de vuelta, el botón lo necesita
+    // (esta consulta está en atención, no es una cita agendada).
     const ctxPaciente = await browser.newContext()
     const paciente = await ctxPaciente.newPage()
     await paciente.goto(`/sala-espera?cid=${cid}&nombre=Test&room=r&code=ABC`)
@@ -428,6 +526,43 @@ test.describe('Videollamada desde el hilo (CA16.x)', () => {
     // estando —el aviso tiene que seguir siendo accionable—.
     await expect(aviso.locator('a')).toHaveCount(0)
     await expect(aviso.locator('[data-testid="btn-entrar-videoconsulta"]')).toBeVisible()
+  })
+
+  test('con el caso finalizado, el paciente NO puede entrar desde el aviso y lee por qué', async ({
+    page
+  }) => {
+    // CA16.2c, y el hallazgo del cliente: este botón solo se deshabilitaba mientras la petición
+    // volaba, así que con el caso cerrado un aviso viejo seguía siendo una puerta a la sala. Es
+    // incoherente con el lado del médico, que no puede llamar en un caso finalizado.
+    const { id: cid, token } = await crearConsultaEnEspera('E2E Videollamada Entrada Cerrada')
+    await responderHiloConAviso(page, cid, CUERPO_AVISO)
+    await responderSalaDeEspera(page, cid, 'finished')
+
+    // Si el botón llegara a disparar la petición de sala, se vería aquí.
+    let salas = 0
+    page.on('request', (req) => {
+      if (req.method() === 'POST' && req.url().includes('/video-room')) salas += 1
+    })
+
+    await page.goto(`/sala-espera?cid=${cid}&t=${token}`)
+
+    const aviso = page.locator('[data-testid="mensaje-sistema"]')
+    await expect(aviso).toBeVisible()
+
+    // El botón sigue ahí —el aviso es constancia de que hubo llamada— pero no se puede pulsar.
+    const entrar = aviso.locator('[data-testid="btn-entrar-videoconsulta"]')
+    await expect(entrar).toBeVisible()
+    await expect(entrar).toBeDisabled()
+    await expect(entrar).toHaveAccessibleName(/El caso está finalizado/)
+
+    // Y al paciente no se le deja un botón gris sin explicación: el motivo se LEE.
+    const motivo = aviso.locator('[data-testid="motivo-sin-entrada"]')
+    await expect(motivo).toBeVisible()
+    await expect(motivo).toContainText('El caso está finalizado')
+    await expect(motivo).toContainText('ya no puedes entrar a la videoconsulta')
+
+    await page.waitForTimeout(1_000)
+    expect(salas, 'un caso finalizado no puede pedir la sala').toBe(0)
   })
 
   test('un aviso de sistema que NO es de llamada sí muestra su cuerpo, como texto', async ({

@@ -7,6 +7,101 @@ Each entry: date, a short summary of what changed and why, and the key files/are
 
 ## 2026-10-06
 
+- **fix(mensajeria): vuelve el candado por presencia, con excepción para las citas agendadas, y
+  el paciente tampoco entra en un caso cerrado (CA16.2 tercera redacción + CA16.2c)** — el cliente
+  corrigió su propia decisión anterior probando el producto, y encontró de paso un hueco que nadie
+  había cubierto.
+  - **Vuelve el candado por presencia.** El razonamiento que lo trae de vuelta: **llamar a quien no
+    está delante abre una sala vacía**. En la ronda anterior se había quitado del todo porque, al
+    retirar el «Unirse a videoconsulta» de la cabecera (que no gateaba por presencia e iniciaba las
+    citas agendadas), el candado dejaba esos casos sin cubrir. La tensión se resuelve ahora con una
+    **excepción explícita, no abriendo el candado entero**.
+  - **Excepción: consulta en `scheduled`.** Ahí el botón se habilita aunque el paciente no esté en
+    línea, porque es el inicio de la cita lo que dispara el correo «tu médico ya está en la sala»:
+    exigir que ya esté conectado dejaría las citas agendadas sin forma de empezar. Vuelve el motivo
+    «El paciente no está conectado» en `title` y `aria-label`.
+  - **Prop nueva `isScheduled`** en `HiloMensajes`, booleano **derivado por la página**
+    (`consultation.status === 'scheduled'`), con el mismo estilo que `isCaseClosed`: la lista de
+    estados vive en el detalle de la consulta y el hilo no conoce los nombres de los estados.
+  - **El botón de entrada del PACIENTE no tenía guarda de caso finalizado** (hallazgo del cliente,
+    mirando la pantalla). Solo se deshabilitaba mientras la petición volaba, así que con el caso
+    cerrado un aviso viejo seguía siendo una puerta a la sala — incoherente con el lado del médico,
+    que sí la tiene. Ahora se deshabilita con el caso finalizado y con la ventana de mensajes
+    cerrada, con el motivo en el nombre accesible **y visible debajo del botón**: un botón gris sin
+    explicación deja al paciente sin saber qué pasa, y este es el momento en que menos conviene.
+    La guarda se repite dentro de `entrarALaSala`, para que no dependa de que el atributo esté bien
+    puesto. El estado deshabilitado se pinta con `--bg`/`--muted`/`--border` a opacidad plena,
+    porque el `.btn:disabled` global (55 %) deja el `btn-primary` por debajo de AA.
+  - **Segundo sitio con el mismo hueco, cerrado**: `/sala-espera` montaba el hilo **sin**
+    `isCaseClosed`, así que ahí la guarda nueva no habría hecho nada. Se le pasa
+    `state?.phase === 'finished'`, que es exactamente «caso finalizado» según `phase_of` de la API.
+    `/mi-caso` ya lo pasaba.
+  - **Orden de los motivos**, de lo más permanente a lo más circunstancial: caso finalizado →
+    ventana cerrada (409) → paciente desconectado. Así al médico se le dice el motivo que de verdad
+    le impide llamar, y no el primero que se cumpla.
+  - **E2E dados la vuelta**, porque los de la ronda anterior afirmaban lo contrario:
+    - `e2e/mensajes-videollamada.spec.ts`: paciente desconectado y caso en atención →
+      **deshabilitado** con «El paciente no está conectado» (y sin disparar la petición);
+      **cita agendada** nacida por `schedule-follow-up` → **habilitado** con el paciente
+      desconectado, que es el escenario que protege a las citas; y caso finalizado → el botón de
+      entrada del paciente **deshabilitado**, con su motivo legible y sin pedir la sala (la fase de
+      la sala de espera se simula: llevar una consulta a `finished` de verdad pide claim, nota,
+      firma y cierre, cuatro pasos de otro módulo para comprobar un `disabled`). La ruta feliz
+      vuelve a conectar al paciente, que ahora hace falta.
+    - `e2e/consulta-cerrada.spec.ts`: compara los dos motivos en la misma consulta — abierta, el
+      botón está deshabilitado por **presencia**; cerrada, pasa a estarlo por el **cierre**.
+    - `e2e/panel-atender-video.spec.ts`: al llegar al detalle el botón del chat está deshabilitado
+      por presencia, y se habilita **en vivo** cuando el paciente abre su sala de espera; desde ahí
+      sigue el camino de reentrada (modal `medico-llamada` + un solo `POST /video-call` + aviso en
+      el hilo).
+      Ficheros: `components/mensajes/HiloMensajes.tsx`, `pages/panel-medico/consulta/[id].tsx`,
+      `pages/sala-espera.tsx`, `e2e/mensajes-videollamada.spec.ts`, `e2e/consulta-cerrada.spec.ts`,
+      `e2e/panel-atender-video.spec.ts`.
+
+- **feat(mensajeria)!: el botón del chat es el único camino a la videoconsulta (CA16.2b)** — el
+  cliente, usando el producto, pidió retirar «Unirse a videoconsulta» de la cabecera del detalle:
+  hacía lo mismo que el botón de cámara del hilo y obligaba a mantener dos caminos a la sala.
+  - **Fuera el CTA de la cabecera** de `pages/panel-medico/consulta/[id].tsx`, y con él lo que solo
+    él usaba: `joinVideo()`, el estado `avisoVideo`, su instancia de `AntesDeEntrarModal` y los
+    imports que quedaron huérfanos (`startConsultation`, `ensureVideoRoom`, `browserRoomUrl`,
+    `AntesDeEntrarModal`). Comprobado uno a uno que nadie más los usaba en esa página.
+  - **La presencia deja de bloquear (CA16.2 revisada).** El indicador sigue justo al lado del botón
+    diciendo si el paciente está conectado, pero como información para decidir, no como candado.
+    El CTA que se fue tampoco gateaba por presencia, así que mantener el candado habría dejado al
+    médico sin poder entrar con el paciente desconectado, que es un caso normal: el aviso queda
+    igual en el hilo y lo verá al volver. Fuera el texto «El paciente no está conectado».
+  - **Se conserva la guarda de caso finalizado.** El CTA retirado vivía dentro de un
+    `{!isCaseClosed && …}`; sin esa guarda, quitarlo habría **concedido** una capacidad que antes no
+    existía —arrancar una videollamada sobre un caso cerrado—, porque el backend admite mensajes (y
+    por tanto la llamada) durante las 72 h de seguimiento. El botón del hilo queda deshabilitado en
+    un caso finalizado, con «El caso está finalizado» en `title` y `aria-label`. El hilo cerrado
+    sigue sirviendo para escribir; para llamar, no.
+  - **El hilo avisa del cambio de estado**: prop nueva `onCallStarted` en `HiloMensajes`, que el
+    detalle conecta a `loadConsultation`. El endpoint puede cambiar el estado de la consulta al
+    llamar (una cita `scheduled` pasa a `in_progress`, que es lo que hacía `joinVideo` con su
+    `setConsultation` a mano); sin esto el caso seguiría pintado como «agendado» y el médico no
+    sabría que ya empezó. No depende del canal de Realtime del detalle, que también sincroniza
+    `status`.
+  - **E2E ajustados al camino nuevo, no borrados:**
+    - `e2e/consulta-cerrada.spec.ts`: donde afirmaba que el CTA estaba arriba, ahora afirma que el
+      botón del hilo está **habilitado con el paciente desconectado** y que el CTA no existe; y
+      donde afirmaba que el CTA desaparecía al cerrar, ahora afirma que el botón del hilo queda
+      **deshabilitado** con su motivo. Es la misma regla, vigilada en el botón que la hereda.
+    - `e2e/panel-atender-video.spec.ts`: la primera mitad (claim + sala + pestaña nueva) no cambia.
+      La segunda, que reentraba por el CTA, reentra ahora por el botón del hilo: comprueba que el
+      CTA no está, que el del chat sí y habilitado, que pasa por el modal `medico-llamada` (que no
+      promete correo ni dice que no llegó) y que confirmarlo hace **un solo** `POST /video-call` y
+      deja el aviso en el hilo. El destino de la ventana no se asierta ahí: lo cubre
+      `mensajes-videollamada.spec.ts` espiando `window.open`, sin depender de que Jitsi responda.
+    - `e2e/mensajes-videollamada.spec.ts`: el escenario de «deshabilitado con el paciente
+      desconectado» pasa a ser **«se habilita igual, y es el único del detalle»** (afirma además
+      que el texto viejo ya no se anuncia en ninguna parte); el de paciente en línea comprueba que
+      la presencia sigue mostrándose **al lado** del botón habilitado («En línea», `data-online`);
+      y la ruta feliz ya no necesita al paciente conectado.
+      Ficheros: `pages/panel-medico/consulta/[id].tsx`, `components/mensajes/HiloMensajes.tsx`,
+      `e2e/consulta-cerrada.spec.ts`, `e2e/panel-atender-video.spec.ts`,
+      `e2e/mensajes-videollamada.spec.ts`.
+
 - **feat(mensajeria): el médico inicia la videoconsulta desde el hilo (R16)** — en la cabecera del
   hilo, junto al indicador de presencia, aparece un botón con icono de cámara que asegura la sala
   (`POST /api/v1/consultations/{id}/video-call`), la abre en una ventana aparte y deja en el hilo
