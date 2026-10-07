@@ -1,0 +1,1248 @@
+/* Estilos de la página de donaciones (/donaciones).
+ *
+ * PORTE 1:1 del bloque <style> de la plantilla `mxv-donativos/index.html`. Las reglas van en el
+ * MISMO orden y con los MISMOS nombres de clase que el original, para que cualquiera pueda
+ * comparar los dos archivos de un vistazo. Se conservan incluso las reglas sin marcado que las
+ * use hoy (`.donde`, `.zelle`, `dl.pago`, `.pronto`, `.btn-sec`, `.z-nombre`, `.z-correo`): son
+ * del diseño original y borrarlas obligaría a auditar una por una sin ganar nada.
+ *
+ * POR QUÉ UN CSS MODULE Y NO styled-jsx (el patrón habitual del repo).
+ * La plantilla estiliza clases que el sitio YA usa con otro significado: `.btn` y `.hero` están
+ * en `styles/globals.css`. styled-jsx aísla por ÁMBITO pero no renombra: el `.btn` de la
+ * plantilla seguiría llamándose `btn`, así que el `.btn { border-radius: 10px; … }` y el
+ * `.btn:hover { opacity: .92 }` globales seguirían entrando en cascada y habría que neutralizar
+ * a mano, propiedad por propiedad, cada cosa que la plantilla no redeclara (y volver a hacerlo
+ * cada vez que alguien toque globals.css). Un CSS Module HASHEA el nombre: aquí `.btn` se
+ * compila a `estilos_btn__xxxx`, un selector que `globals.css` no puede nombrar. El conflicto
+ * desaparece por construcción en los dos sentidos, no por una lista de parches.
+ *
+ * Lo que un CSS Module NO hashea son los selectores de ELEMENTO (`section`, `h2`, `footer`,
+ * `img`, `a`): esos sí se filtrarían a todo el sitio. Por eso cada regla de la plantilla va
+ * prefijada con `.donaciones`, el contenedor de la página, y lo que el original ponía en
+ * `:root`, `html` y `body` está reescrito sobre ese contenedor.
+ */
+
+/* Nunito Sans con el eje de ANCHURA (wdth) vivo.
+ *
+ * La plantilla usa `font-stretch: 120%` / `125%` en todos los titulares (h2, .cita, .dato,
+ * .cifras b, .foto::before). La woff2 de marca del sitio (`/brand/nunito-sans-variable.woff2`)
+ * tiene ese eje FIJADO en 100 (ver la cabecera de `styles/globals.css` y
+ * `scripts/build-fonts.mjs`), así que con ella `font-stretch` no hace nada y los titulares
+ * saldrían más estrechos que en el original.
+ *
+ * Se sirve desde el repo —no desde fonts.googleapis.com— por tres razones: la CSP de
+ * `next.config.js` solo admite `font-src 'self' data:`, es el mismo criterio que el resto del
+ * sitio, y así la página no depende de un tercero. Y con un nombre de familia PROPIO
+ * ('Nunito Sans Donaciones') para no competir con el `@font-face` de 'Nunito Sans' que ya
+ * declara globals.css: dos caras con el mismo nombre y el mismo rango de peso dejarían en manos
+ * del orden de carga cuál gana. Es la misma tipografía y la misma licencia OFL que ya viaja en
+ * `public/brand/OFL.txt`.
+ */
+@font-face {
+  font-family: 'Nunito Sans Donaciones';
+  src: url('/donaciones/nunito-sans-donaciones.woff2') format('woff2');
+  font-weight: 400 900;
+  font-stretch: 75% 125%;
+  font-style: normal;
+  font-display: swap;
+  /* El subconjunto "latin" de Google Fonts: cubre el castellano, el inglés y los signos
+     tipográficos del copy (« » “ ” … –). */
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* El contenedor de la página. Reúne lo que la plantilla repartía entre `:root`, `html` y `body`.
+   `--estrellas` no se porta: el original la declaraba y no la usaba en ninguna regla. */
+.donaciones {
+  --abismo: #0a1220;
+  --noche: #14213d;
+  --tarjeta: #121b2e;
+  --borde: #233252;
+  --senal: #0066fe;
+  --cielo: #8fb4ff;
+  --tinta: #e7ecf5;
+  --gris: #9fb0cb;
+  --amarillo: #ffcc00;
+  --azulbandera: #0033a0;
+  --rojo: #cf142b;
+  --papel: #f4f4f4;
+  --oscuro: #18202b;
+  --suave: #5a6472;
+  --linea: #dde2e8;
+  --f: 'Nunito Sans Donaciones', 'Nunito Sans', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  /* De `:root` */
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* De `html` y `body`. `scroll-behavior:smooth` NO se porta: el elemento que hace scroll es
+     `html`, que está fuera del ámbito, así que el desplazamiento suave de los enlaces internos
+     lo hace la página con `scrollIntoView` (ver `pages/donaciones.tsx`). */
+  background: var(--abismo);
+  color: var(--tinta);
+  font-family: var(--f);
+  font-size: 18px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  /* `clip` y no `hidden`: con `hidden` el contenedor se vuelve un contexto de scroll y algunos
+     navegadores recortan los descendientes `position:fixed` (la barra `.fija`). `clip` corta el
+     desborde horizontal igual, sin crear ese contexto. */
+  overflow-x: clip;
+  /* El fondo oscuro tiene que llegar abajo aunque el contenido no llene la pantalla. */
+  min-height: 100vh;
+}
+
+/* El reset del original (`*, *::before, *::after { box-sizing: inherit }`), acotado a los
+   descendientes. El contenedor queda fuera a propósito: es quien declara `border-box` y de quien
+   heredan los demás, igual que `html` en la plantilla. */
+.donaciones *,
+.donaciones *::before,
+.donaciones *::after {
+  box-sizing: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .donaciones,
+  .donaciones * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* NEUTRALIZAR globals.css DENTRO del ámbito (el sentido contrario del aislamiento).
+ *
+ * Los nombres de clase de la plantilla ya no colisionan —el módulo los hashea—, pero
+ * `globals.css` también estiliza ELEMENTOS, y eso sí alcanza a esta página. Se deshace aquí,
+ * dentro del contenedor, sin tocar `globals.css`:
+ *
+ *   · `a { text-decoration: none }` — en la plantilla los enlaces del pie, el de "Más detalles"
+ *     y el del comprobante van SUBRAYADOS (el estilo por omisión del navegador). Se restituye.
+ *     Las reglas de `.btn`, `.compartir-btns a` y `.vzla-btns a` que quitan el subrayado vienen
+ *     después en el archivo y ganan por orden (misma especificidad) o por especificidad.
+ *   · `input { color: var(--text); transition: border-color .15s }` — el `<input>` del monto
+ *     "Otro" no declaraba color en la plantilla (heredaba el negro del navegador) ni transición.
+ *     El resto (ancho, borde, radio, relleno, tipografía) ya lo redeclara `.otro input`.
+ */
+.donaciones a {
+  text-decoration: underline;
+}
+.donaciones input {
+  color: var(--oscuro);
+  transition: none;
+}
+
+/* A partir de aquí, la plantilla tal cual. */
+.donaciones img {
+  max-width: 100%;
+  display: block;
+}
+.donaciones :focus-visible {
+  outline: 3px solid var(--cielo);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+.donaciones[data-lang='es'] [lang='en'],
+.donaciones[data-lang='en'] [lang='es'] {
+  display: none !important;
+}
+.donaciones [hidden] {
+  display: none !important;
+}
+.donaciones .wrap {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+.donaciones .est {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex: none;
+}
+.donaciones .bandera {
+  display: flex;
+  height: 6px;
+}
+.donaciones .bandera i {
+  flex: 1;
+}
+.donaciones .bandera i:nth-child(1) {
+  background: var(--amarillo);
+}
+.donaciones .bandera i:nth-child(2) {
+  background: var(--azulbandera);
+}
+.donaciones .bandera i:nth-child(3) {
+  background: var(--rojo);
+}
+.donaciones section {
+  padding: 84px 0;
+  position: relative;
+}
+.donaciones h2 {
+  font-weight: 900;
+  font-stretch: 120%;
+  font-size: clamp(30px, 4.2vw, 50px);
+  line-height: 1.03;
+  letter-spacing: -0.015em;
+  margin: 0 0 16px;
+  max-width: 17em;
+  text-wrap: balance;
+}
+.donaciones .lead {
+  font-size: 19px;
+  max-width: 34em;
+  margin: 0 0 12px;
+  color: var(--gris);
+}
+.donaciones .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font: 900 19px var(--f);
+  background: var(--senal);
+  color: #fff;
+  border: 0;
+  border-radius: 18px;
+  padding: 18px 32px;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 12px 34px rgba(0, 102, 254, 0.45);
+  transition:
+    transform 0.15s,
+    background 0.15s;
+}
+.donaciones .btn:hover {
+  background: #0a57d6;
+}
+.donaciones .btn:active {
+  transform: scale(0.97);
+}
+.donaciones .btn .est {
+  width: 20px;
+  height: 20px;
+}
+.donaciones .btn[aria-disabled='true'] {
+  background: #c9d3de;
+  color: #5a6472;
+  box-shadow: none;
+  pointer-events: none;
+}
+.donaciones .btn-sec {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 800 15px var(--f);
+  border: 2px solid var(--oscuro);
+  color: var(--oscuro);
+  background: transparent;
+  border-radius: 12px;
+  padding: 10px 16px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.donaciones .cta-sec {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  flex-wrap: wrap;
+  margin-top: 36px;
+  padding-top: 26px;
+  border-top: 1px solid rgba(127, 140, 160, 0.25);
+}
+.donaciones .cta-sec p {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  max-width: 22em;
+}
+.donaciones .foto {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(150deg, #1d3a78, var(--senal));
+}
+.donaciones .foto::before {
+  content: attr(data-ini);
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  font-stretch: 125%;
+  font-size: 2.2em;
+  color: rgba(255, 255, 255, 0.85);
+}
+.donaciones .foto img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 0%;
+}
+.donaciones .deco {
+  position: absolute;
+  pointer-events: none;
+  color: var(--senal);
+  opacity: 0.35;
+  filter: blur(1px);
+  z-index: 0;
+}
+.donaciones .hero,
+.donaciones .porque,
+.donaciones .voces,
+.donaciones .cierre {
+  overflow: hidden;
+}
+.donaciones .hero .wrap,
+.donaciones .porque .wrap,
+.donaciones .voces .wrap,
+.donaciones .cierre .wrap,
+.donaciones .equipo .wrap {
+  position: relative;
+  z-index: 1;
+}
+.donaciones .d1 {
+  width: 420px;
+  height: 420px;
+  right: -120px;
+  top: -90px;
+  opacity: 0.28;
+}
+.donaciones .d2 {
+  width: 220px;
+  height: 220px;
+  left: -80px;
+  bottom: 40px;
+  opacity: 0.18;
+}
+.donaciones .d3 {
+  width: 300px;
+  height: 300px;
+  right: -110px;
+  bottom: -120px;
+  opacity: 0.12;
+  filter: none;
+}
+.donaciones .d4 {
+  width: 360px;
+  height: 360px;
+  left: -140px;
+  top: -120px;
+  color: #fff;
+  opacity: 0.12;
+}
+.donaciones .d5 {
+  width: 260px;
+  height: 260px;
+  right: -90px;
+  top: 40px;
+  opacity: 0.15;
+  filter: none;
+}
+.donaciones .marca-azul {
+  display: inline;
+  background: var(--senal);
+  color: #fff;
+  padding: 0.02em 0.22em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  line-height: 1.3;
+}
+/* Header */
+.donaciones .top {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 6px;
+  z-index: 6;
+}
+.donaciones .top .wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 18px;
+}
+.donaciones .logo svg {
+  height: 46px;
+  width: auto;
+  display: block;
+}
+.donaciones .der {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.donaciones .btn-top {
+  padding: 10px 20px;
+  font-size: 15px;
+  border-radius: 999px;
+  box-shadow: none;
+}
+.donaciones .idioma {
+  display: flex;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(10, 18, 32, 0.4);
+}
+.donaciones .idioma button {
+  font: 800 14px var(--f);
+  background: transparent;
+  color: #fff;
+  border: 0;
+  padding: 8px 15px;
+  cursor: pointer;
+}
+.donaciones .idioma button[aria-pressed='true'] {
+  background: #fff;
+  color: var(--oscuro);
+}
+/* HERO con donación */
+.donaciones .hero {
+  padding: 0;
+  background:
+    radial-gradient(80% 70% at 85% 20%, rgba(0, 102, 254, 0.5), transparent 60%),
+    linear-gradient(180deg, var(--noche), var(--abismo));
+}
+.donaciones .hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
+  gap: 56px;
+  align-items: start;
+  padding-top: 124px;
+  padding-bottom: 80px;
+}
+.donaciones .cita {
+  font-weight: 900;
+  font-stretch: 125%;
+  font-size: clamp(38px, 5.4vw, 72px);
+  line-height: 0.97;
+  letter-spacing: -0.02em;
+  margin: 0 0 16px;
+  text-wrap: balance;
+  color: #fff;
+}
+.donaciones .cita .comilla {
+  color: var(--senal);
+}
+.donaciones .firma {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  color: var(--gris);
+  margin: 0 0 22px;
+}
+.donaciones .firma strong {
+  color: #fff;
+}
+.donaciones .hero .cuerpo {
+  max-width: 32em;
+  color: #cdd7e6;
+  margin: 22px 0 22px;
+}
+.donaciones .hero .cuerpo strong {
+  color: #fff;
+}
+.donaciones .lema-hero {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--cielo);
+  margin: 26px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Nota de voz */
+.donaciones .nota {
+  background: #fff;
+  color: var(--oscuro);
+  border-radius: 24px 24px 24px 8px;
+  padding: 16px 16px 14px;
+  max-width: 440px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+}
+.donaciones .nota-cab {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 12px;
+}
+.donaciones .nota-cab img {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.donaciones .nota-cab b {
+  display: block;
+  font-size: 16px;
+  line-height: 1.2;
+}
+.donaciones .nota-cab span {
+  font-size: 13px;
+  color: var(--suave);
+}
+.donaciones .reproductor {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.donaciones .play {
+  flex: none;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--senal);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.donaciones .play svg {
+  width: 20px;
+  height: 20px;
+}
+.donaciones .onda {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+}
+.donaciones .onda i {
+  flex: 1 1 0;
+  min-width: 2px;
+  background: #c9d3de;
+  border-radius: 3px;
+  min-height: 4px;
+}
+.donaciones .onda i.on {
+  background: var(--senal);
+}
+.donaciones .tiempo {
+  font-size: 13px;
+  color: var(--suave);
+  font-variant-numeric: tabular-nums;
+  width: 34px;
+  text-align: right;
+}
+.donaciones .subt {
+  min-height: 3.2em;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  background: var(--papel);
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+.donaciones .subt.espera {
+  font-weight: 600;
+  color: var(--suave);
+}
+/* Caja de donación */
+.donaciones .caja {
+  background: #fff;
+  color: var(--oscuro);
+  border-radius: 28px;
+  padding: 26px 26px 22px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+.donaciones .caja .bandera {
+  margin: -26px -26px 22px;
+}
+.donaciones .caja-t {
+  font-weight: 900;
+  font-stretch: 115%;
+  font-size: 24px;
+  line-height: 1.15;
+  margin: 0 0 4px;
+}
+.donaciones .caja-s {
+  font-size: 15px;
+  color: var(--suave);
+  margin: 0 0 18px;
+}
+.donaciones .paso-t {
+  font-weight: 900;
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+.donaciones .montos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.donaciones .montos button,
+.donaciones .donde button {
+  font: 900 20px var(--f);
+  border: 2px solid var(--linea);
+  background: #fff;
+  color: var(--oscuro);
+  border-radius: 14px;
+  padding: 13px 6px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.donaciones .montos button[aria-pressed='true'],
+.donaciones .donde button[aria-pressed='true'] {
+  border-color: var(--senal);
+  background: #eaf2ff;
+  color: var(--senal);
+}
+.donaciones .otro {
+  display: none;
+  margin: -8px 0 18px;
+}
+.donaciones .otro input {
+  font: 800 18px var(--f);
+  width: 180px;
+  padding: 11px 14px;
+  border: 2px solid var(--linea);
+  border-radius: 12px;
+}
+.donaciones .donde {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.donaciones .donde button {
+  font-size: 15px;
+  padding: 12px 6px;
+}
+.donaciones .metodo {
+  border: 1.5px solid var(--linea);
+  border-radius: 18px;
+  padding: 16px;
+  margin-bottom: 10px;
+}
+.donaciones .metodo h3 {
+  margin: 0 0 2px;
+  font-size: 18px;
+}
+.donaciones .metodo p {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--suave);
+}
+.donaciones .metodo .btn {
+  width: 100%;
+  box-shadow: none;
+  padding: 15px;
+}
+.donaciones .zelle {
+  display: grid;
+  grid-template-columns: 128px 1fr;
+  gap: 14px;
+  align-items: center;
+}
+.donaciones .zelle img {
+  width: 128px;
+  height: auto;
+  border-radius: 12px;
+}
+.donaciones dl.pago {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 10px;
+  font-size: 14px;
+  margin: 6px 0 10px;
+  word-break: break-word;
+}
+.donaciones dl.pago dt {
+  color: var(--suave);
+}
+.donaciones dl.pago dd {
+  margin: 0;
+  font-weight: 800;
+}
+.donaciones .pronto {
+  font-size: 14px;
+  color: var(--suave);
+  background: var(--papel);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 0;
+}
+.donaciones .comprobante {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--suave);
+}
+.donaciones .comprobante a {
+  color: #0b7a37;
+  font-weight: 800;
+}
+.donaciones .nota-trans {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--suave);
+}
+.donaciones .nota-trans a {
+  color: var(--senal);
+}
+.donaciones .zelle-card {
+  text-align: center;
+}
+.donaciones .zelle-card h3 {
+  text-align: left;
+}
+.donaciones .z-inst {
+  margin: 6px 0 2px !important;
+  font-size: 15px !important;
+  color: var(--oscuro) !important;
+}
+.donaciones .z-nombre {
+  margin: 0 !important;
+  font-size: 17px !important;
+  font-weight: 800;
+  color: var(--oscuro) !important;
+  letter-spacing: 0.01em;
+}
+.donaciones .z-correo {
+  margin: 0 0 12px !important;
+  font-size: 15px !important;
+  color: var(--oscuro) !important;
+  word-break: break-all;
+}
+.donaciones .z-qr {
+  width: 200px;
+  max-width: 70%;
+  margin: 0 auto;
+}
+.donaciones .z-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.donaciones .z-marca {
+  margin: 10px 0 6px !important;
+  font-weight: 900;
+  font-size: 26px !important;
+  color: #6d1ed4 !important;
+  letter-spacing: -0.02em;
+}
+.donaciones .z-alt {
+  font-size: 13px !important;
+}
+.donaciones .vzla-nota {
+  margin-top: 6px;
+  background: var(--papel);
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+.donaciones .vzla-nota p {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--oscuro);
+}
+.donaciones .vzla-btns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.donaciones .vzla-btns a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 900 14px var(--f);
+  border-radius: 12px;
+  padding: 11px 8px;
+  text-decoration: none;
+  text-align: center;
+}
+.donaciones .solo-pc {
+  display: block;
+}
+@media (max-width: 920px) {
+  .donaciones .solo-pc {
+    display: none !important;
+  }
+}
+.donaciones .zelle-card .btn {
+  margin-top: 8px;
+}
+.donaciones .elige-metodo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.donaciones .m-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border: 2px solid var(--linea);
+  background: #fff;
+  border-radius: 16px;
+  padding: 14px 8px;
+  cursor: pointer;
+  font: 700 13px var(--f);
+  color: var(--suave);
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.donaciones .m-btn .m-logo {
+  font-weight: 900;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+.donaciones .m-logo.z {
+  color: #6d1ed4;
+}
+.donaciones .m-logo.p {
+  color: #003087;
+}
+.donaciones .m-btn[aria-expanded='true'] {
+  border-color: var(--senal);
+  background: #eaf2ff;
+}
+.donaciones .panel-metodo .metodo {
+  margin-top: 0;
+  animation: abre 0.25s ease;
+}
+@keyframes abre {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.donaciones details.vzla-nota {
+  padding: 0;
+}
+.donaciones details.vzla-nota summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 16px;
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--oscuro);
+  display: flex;
+  justify-content: space-between;
+}
+.donaciones details.vzla-nota summary::-webkit-details-marker {
+  display: none;
+}
+.donaciones details.vzla-nota summary::after {
+  content: '+';
+  font-weight: 900;
+  color: var(--senal);
+}
+.donaciones details.vzla-nota[open] summary::after {
+  content: '–';
+}
+.donaciones details.vzla-nota p,
+.donaciones details.vzla-nota .vzla-btns {
+  margin-left: 16px;
+  margin-right: 16px;
+}
+.donaciones details.vzla-nota .vzla-btns {
+  margin-bottom: 14px;
+}
+/* Por qué */
+.donaciones .porque {
+  background: #fff;
+  color: var(--oscuro);
+}
+.donaciones .porque .lead {
+  color: var(--suave);
+}
+.donaciones .porque-grid {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: 56px;
+  align-items: center;
+}
+.donaciones .dato {
+  font-weight: 900;
+  font-stretch: 125%;
+  font-size: clamp(100px, 14vw, 190px);
+  line-height: 0.82;
+  letter-spacing: -0.03em;
+  color: var(--senal);
+  margin: 0;
+}
+.donaciones .dato-txt {
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.3;
+  max-width: 16em;
+  margin: 14px 0 8px;
+}
+.donaciones .fuente {
+  font-size: 13px;
+  color: var(--suave);
+}
+.donaciones .cifras {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 40px 0 0;
+}
+.donaciones .cifras div {
+  background: var(--noche);
+  color: #fff;
+  border-radius: 20px;
+  padding: 20px 18px;
+}
+.donaciones .cifras b {
+  display: block;
+  font-weight: 900;
+  font-stretch: 125%;
+  font-size: clamp(30px, 3.6vw, 46px);
+  line-height: 1;
+  margin-bottom: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.donaciones .cifras span {
+  font-size: 15px;
+  color: #c9d6ea;
+  font-weight: 700;
+}
+.donaciones .acomp {
+  margin-top: 14px;
+  background: var(--papel);
+  border-radius: 22px;
+  padding: 24px 26px;
+  border-left: 8px solid var(--senal);
+}
+.donaciones .acomp h3 {
+  margin: 0 0 6px;
+  font-size: clamp(20px, 2.2vw, 26px);
+  font-weight: 900;
+  line-height: 1.2;
+}
+.donaciones .acomp p {
+  margin: 0;
+  font-size: 17px;
+  color: var(--suave);
+  max-width: 48em;
+}
+/* Carruseles */
+.donaciones .carrusel {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 6px 24px 18px;
+  margin: 26px -24px 0;
+  scrollbar-width: none;
+}
+.donaciones .carrusel::-webkit-scrollbar {
+  display: none;
+}
+.donaciones .carrusel > * {
+  scroll-snap-align: start;
+  flex: none;
+}
+.donaciones .pista-d {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--gris);
+  margin-top: 4px;
+}
+.donaciones .flechas {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.donaciones .flechas button {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font: 900 18px var(--f);
+  cursor: pointer;
+}
+/* Voces */
+.donaciones .voces {
+  background: var(--papel);
+  color: var(--oscuro);
+}
+.donaciones .voces .lead,
+.donaciones .voces .pista-d {
+  color: var(--suave);
+}
+.donaciones .voz {
+  margin: 0;
+  width: min(78vw, 340px);
+  background: #fff;
+  border-radius: 22px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.donaciones .voz:nth-child(odd) {
+  background: var(--noche);
+  color: #fff;
+}
+.donaciones .voz:nth-child(odd) figcaption {
+  color: var(--gris);
+}
+.donaciones .voz blockquote {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.35;
+  flex: 1;
+}
+.donaciones .voz figcaption {
+  font-size: 14px;
+  color: var(--suave);
+  font-weight: 700;
+}
+/* Equipo */
+.donaciones .equipo {
+  background: linear-gradient(180deg, var(--abismo), var(--noche));
+  overflow: hidden;
+}
+.donaciones .card-eq {
+  margin: 0;
+  width: min(62vw, 250px);
+  border-radius: 22px;
+  overflow: hidden;
+  background: var(--tarjeta);
+  border: 1px solid var(--borde);
+}
+.donaciones .card-eq .foto {
+  aspect-ratio: 4/5;
+  font-size: 16px;
+}
+.donaciones .card-eq figcaption {
+  padding: 14px 16px 16px;
+}
+.donaciones .card-eq b {
+  display: block;
+  font-size: 17px;
+  color: #fff;
+  line-height: 1.2;
+}
+.donaciones .card-eq span {
+  font-size: 14px;
+  color: var(--gris);
+}
+.donaciones .card-eq .rol {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 900;
+  color: #fff;
+  background: var(--senal);
+  border-radius: 6px;
+  padding: 3px 9px;
+}
+/* Cierre */
+.donaciones .cierre {
+  text-align: center;
+  background: radial-gradient(80% 90% at 50% 0%, var(--senal), var(--noche) 70%);
+  overflow: hidden;
+}
+.donaciones .cierre .cita {
+  max-width: 14em;
+  margin: 0 auto 14px;
+}
+.donaciones .cierre p.sub {
+  font-size: 20px;
+  max-width: 28em;
+  margin: 0 auto 28px;
+  color: #d5e2f7;
+}
+.donaciones .cierre .btn {
+  background: #fff;
+  color: var(--oscuro);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+}
+.donaciones .cierre .btn .est {
+  color: var(--senal);
+}
+.donaciones .compartir {
+  margin: 44px auto 0;
+  max-width: 620px;
+  padding-top: 32px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+.donaciones .compartir p {
+  margin: 0 0 16px;
+  font-weight: 800;
+  font-size: 18px;
+}
+.donaciones .compartir-btns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.donaciones .compartir-btns a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: 900 16px var(--f);
+  border-radius: 14px;
+  padding: 14px;
+  text-decoration: none;
+  text-align: center;
+}
+.donaciones .b-wa {
+  background: #25d366;
+  color: #0a2e17;
+}
+.donaciones .b-ig {
+  background: linear-gradient(90deg, #f58529, #dd2a7b, #8134af);
+  color: #fff;
+}
+.donaciones footer {
+  background: var(--abismo);
+  color: var(--gris);
+  font-size: 14px;
+  padding: 40px 0 120px;
+  border-top: 1px solid var(--borde);
+}
+.donaciones footer .logo svg {
+  height: 40px;
+  margin-bottom: 12px;
+}
+.donaciones footer .lema-txt {
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 18px;
+}
+.donaciones footer a {
+  color: var(--cielo);
+}
+.donaciones .transparencia {
+  max-width: 760px;
+  margin: 0 0 22px;
+  padding: 18px 20px;
+  border: 1px solid var(--borde);
+  border-left: 5px solid var(--senal);
+  border-radius: 14px;
+  color: #c9d6ea;
+}
+.donaciones .transparencia h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  color: #fff;
+}
+.donaciones .transparencia p {
+  margin: 0;
+  font-size: 14px;
+}
+.donaciones .fija {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: rgba(10, 18, 32, 0.94);
+  backdrop-filter: blur(8px);
+  transform: translateY(110%);
+  transition: transform 0.25s;
+  border-top: 1px solid var(--borde);
+}
+.donaciones .fija {
+  opacity: 0;
+  pointer-events: none;
+}
+.donaciones .fija.ver {
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+}
+.donaciones .fija .btn {
+  width: 100%;
+}
+@media (min-width: 921px) {
+  .donaciones .fija {
+    left: auto;
+    right: 28px;
+    bottom: 28px;
+    padding: 0;
+    background: none;
+    border: 0;
+    backdrop-filter: none;
+  }
+  .donaciones .fija .btn {
+    width: auto;
+  }
+}
+@media (max-width: 920px) {
+  .donaciones {
+    font-size: 17px;
+  }
+  .donaciones section {
+    padding: 60px 0;
+  }
+  .donaciones .logo svg {
+    height: 38px;
+  }
+  .donaciones .btn-top {
+    display: none;
+  }
+  .donaciones .hero-grid {
+    grid-template-columns: 1fr;
+    gap: 40px;
+    padding-top: 100px;
+    padding-bottom: 48px;
+  }
+  .donaciones .caja {
+    padding: 22px 16px 18px;
+    border-radius: 24px;
+  }
+  .donaciones .caja .bandera {
+    margin: -22px -16px 20px;
+  }
+  .donaciones .porque-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .donaciones .cifras {
+    grid-template-columns: 1fr 1fr;
+  }
+  .donaciones .cta-sec .btn {
+    width: 100%;
+  }
+  .donaciones .zelle {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+  .donaciones .zelle img {
+    width: 150px;
+  }
+  .donaciones dl.pago {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .donaciones dl.pago dd {
+    margin-bottom: 6px;
+  }
+  .donaciones .flechas {
+    display: none;
+  }
+}
