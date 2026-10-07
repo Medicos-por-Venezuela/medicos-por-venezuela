@@ -136,6 +136,35 @@ test('a 360 px no hay desborde horizontal, ni con los paneles de pago abiertos',
   expect(await sinDesborde()).toBe(true)
 })
 
+test('la onda enciende sus 34 barras al terminar el audio', async ({ page }) => {
+  await page.goto('/donaciones')
+
+  // El divisor de la onda es la duración REAL del archivo (57,03 s), no la de por omisión que se
+  // pinta antes de tener metadatos (57,1 s). Con la de por omisión la última barra NO encendía
+  // nunca —33 de 34 al acabar, medido frente a la plantilla original— porque `loadedmetadata`
+  // puede dispararse ANTES de que React hidrate y enganche su escuchador; ver `montarAudio` en
+  // `components/donaciones/NotaDeVoz.tsx`. Las barras sin encender no llevan atributo `class`,
+  // así que `i[class]` cuenta exactamente las encendidas.
+  const onda = page.getByRole('slider', { name: 'Progreso' })
+  const encendidas = page.locator('[role="slider"] i[class]')
+  await expect(page.locator('[role="slider"] i')).toHaveCount(34)
+  await expect(encendidas).toHaveCount(0)
+
+  // El clic da el gesto de usuario que las políticas de autoplay exigen; a partir de ahí se puede
+  // saltar al final sin esperar los 57 segundos reales.
+  await page.getByRole('button', { name: 'Reproducir nota de voz' }).click()
+  await page.locator('audio').evaluate(async (elemento) => {
+    const audio = elemento as HTMLAudioElement
+    audio.currentTime = Math.max(0, audio.duration - 1)
+    await audio.play()
+  })
+
+  await expect(encendidas).toHaveCount(34)
+  await expect(onda).toHaveAttribute('aria-valuenow', '100')
+  // Y al acabar vuelve a ofrecer reproducir, no se queda en "Pausar".
+  await expect(page.getByRole('button', { name: 'Reproducir nota de voz' })).toBeVisible()
+})
+
 test('la nota de voz es operable con el teclado', async ({ page }) => {
   await page.goto('/donaciones')
 

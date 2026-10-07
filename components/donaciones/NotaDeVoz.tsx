@@ -13,10 +13,11 @@
 //
 // HIDRATACIÓN. Nada de lo que se pinta en el primer render depende del navegador: el cronómetro
 // muestra la duración por omisión (0:57, la del archivo, igual que el HTML de la plantilla), la
-// onda va a cero y el subtítulo es el aviso bilingüe. La duración REAL llega con
-// `loadedmetadata`, ya en el cliente.
+// onda va a cero y el subtítulo es el aviso bilingüe. La duración REAL se recoge ya en el
+// cliente, y por DOS vías que se complementan —ver `tomarDuracionReal` y `montarAudio`—, porque
+// con una sola se perdía: el navegador puede saber la duración antes de que React hidrate.
 
-import { useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { useCallback, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import Bilingue from './Bilingue'
 import { cls } from './clases'
 import { ONDA, SUBTITULOS } from './contenido'
@@ -49,6 +50,7 @@ export default function NotaDeVoz({ idioma }: Props) {
   const [reproduciendo, setReproduciendo] = useState(false)
   const [segundo, setSegundo] = useState(0)
   const [duracion, setDuracion] = useState(DURACION_POR_OMISION)
+
   /**
    * Hasta que no se le da al play (o se pincha la onda), el recuadro muestra el aviso "Escucha a
    * Luis, con subtítulos" en vez de ir soltando frases sueltas. Es el `escuchado` del original.
@@ -56,6 +58,44 @@ export default function NotaDeVoz({ idioma }: Props) {
   const [escuchado, setEscuchado] = useState(false)
   /** Qué tramo de subtítulo toca. `null` = todavía el aviso. */
   const [tramo, setTramo] = useState<number | null>(null)
+
+  /**
+   * Le pregunta al elemento cuánto dura y se queda con el dato si ya lo sabe.
+   *
+   * `duration` es `NaN` mientras no hay metadatos, e `Infinity` en una emisión sin final. Si no
+   * es un número normal y positivo NO se toca el estado: así, si el archivo no llega a cargar
+   * nunca, sigue valiendo `DURACION_POR_OMISION` y la página se comporta igual que hoy (el
+   * cronómetro dice `0:57`, la onda avanza y el `aria-valuenow` también).
+   */
+  const tomarDuracionReal = useCallback((elemento: HTMLAudioElement | null) => {
+    const real = elemento?.duration
+    if (real !== undefined && Number.isFinite(real) && real > 0) setDuracion(real)
+  }, [])
+
+  /**
+   * La `ref` del `<audio>` es una FUNCIÓN, y no solo el objeto de `useRef`, porque aquí había una
+   * carrera y la perdíamos siempre.
+   *
+   * El `<audio>` viene en el HTML del servidor con `preload="metadata"`, así que el navegador se
+   * pone a leer el archivo en cuanto parsea la página, mucho antes de haber descargado el
+   * JavaScript. Medido en Chromium con la caché vacía: `loadedmetadata` sale a los ~364 ms y
+   * React no engancha sus escuchadores (los props `onLoadedMetadata`, `onTimeUpdate`…) hasta los
+   * ~605 ms, al hidratar. Un evento que ya pasó no se recupera, así que `duracion` se quedaba en
+   * `DURACION_POR_OMISION` (57,1 s) de por vida en lugar de tomar los 57,03 s reales, y con ese
+   * divisor la última de las 34 barras de la onda no encendía nunca.
+   *
+   * React llama a esta función en el commit, con el nodo ya en el DOM: es el primer instante del
+   * cliente en el que se le puede PREGUNTAR la duración en vez de esperar a que la anuncie. Si
+   * todavía no la sabe (carga lenta, que es la carrera contraria), no se hace nada y la recoge el
+   * `onLoadedMetadata` de abajo, que para entonces ya está puesto.
+   */
+  const montarAudio = useCallback(
+    (nodo: HTMLAudioElement | null) => {
+      audio.current = nodo
+      tomarDuracionReal(nodo)
+    },
+    [tomarDuracionReal]
+  )
 
   const avance = duracion > 0 ? Math.min(1, segundo / duracion) : 0
   const barrasEncendidas = Math.floor(avance * ONDA.length)
@@ -199,13 +239,14 @@ export default function NotaDeVoz({ idioma }: Props) {
       </p>
 
       <audio
-        ref={audio}
+        ref={montarAudio}
         preload="metadata"
         src="/donaciones/luis-nota-de-voz.mp3"
-        onLoadedMetadata={(evento) => {
-          const real = evento.currentTarget.duration
-          if (Number.isFinite(real) && real > 0) setDuracion(real)
-        }}
+        onLoadedMetadata={(evento) => tomarDuracionReal(evento.currentTarget)}
+        // En un MP3 el navegador puede empezar con una duración estimada por el bitrate y
+        // corregirla al tener el archivo entero. `durationchange` es ese aviso, y lleva al mismo
+        // sitio: el divisor de la onda, el cronómetro y el `aria-valuenow` salen todos de aquí.
+        onDurationChange={(evento) => tomarDuracionReal(evento.currentTarget)}
         onTimeUpdate={alAvanzar}
         onPlay={() => setReproduciendo(true)}
         onPause={() => setReproduciendo(false)}
