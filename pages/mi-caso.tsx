@@ -15,6 +15,7 @@ import { downloadIcs } from '../lib/calendar'
 import { browserRoomUrl } from '../lib/jitsi'
 import { trackPatientInRoom } from '../lib/patientPresence'
 import { useWaitingRoom, type WaitingRoomState } from '../lib/waitingRoom'
+import HiloMensajes from '../components/mensajes/HiloMensajes'
 
 // Casos en los que el paciente sigue la sala en vivo: en cola, en atención o CITA AGENDADA (el
 // médico la inicia al entrar a la videollamada y la sala pasa a `ready` sin recargar). El botón de
@@ -29,12 +30,15 @@ export default function MiCaso() {
   const [patientName, setPatientName] = useState('')
   const [consultations, setConsultations] = useState<MyConsultation[]>([])
   const [conSesion, setConSesion] = useState(false)
+  const [token, setToken] = useState('')
   // La sala que pidió abrir (mientras el modal de instrucciones está arriba).
   const [salaPendiente, setSalaPendiente] = useState<WaitingRoomState | null>(null)
   // La consulta cuya sala ya abrió. Mientras esta página siga abierta, se anuncia al médico que
   // el paciente está en sala (mismo criterio que `/sala-espera`, que anuncia mientras ELLA está
   // abierta y no mientras lo está la pestaña de Jitsi — que no hay forma de vigilar).
   const [enSala, setEnSala] = useState('')
+  // El hilo de mensajes que el paciente tiene abierto (ver `hiloVisible` más abajo).
+  const [hiloAbierto, setHiloAbierto] = useState<string | null>(null)
 
   useEffect(() => {
     load()
@@ -107,6 +111,7 @@ export default function MiCaso() {
     // del paciente + sus consultas por sus endpoints (el backend los scopea a la propia cuenta).
     const token = session.access_token
     setConSesion(true)
+    setToken(token)
     try {
       const profile = await fetchMyProfile(token)
       // Mismo resolvedor que /login y /auth/callback: si a este usuario le toca otro sitio, se va
@@ -175,6 +180,13 @@ export default function MiCaso() {
   // Devuelve el <Seo> y no `null`: no pinta nada visible, pero deja el `noindex` en el <head>
   // durante el instante en que el redirect está en vuelo.
   if (!authed) return seo
+
+  // Qué hilo de mensajes está montado. `null` = el paciente no ha tocado nada todavía, así que se
+  // abre el de su consulta vigente (la primera abierta, o la primera de la lista); `''` = lo cerró
+  // a mano. Es un valor derivado a propósito: nada de `setState` en un effect.
+  const consultaVigente =
+    consultations.find((c) => CASO_ABIERTO.has(c.status))?.id || consultations[0]?.id || ''
+  const hiloVisible = hiloAbierto === null ? consultaVigente : hiloAbierto
 
   return (
     <>
@@ -271,6 +283,44 @@ export default function MiCaso() {
                       ocultarAgendada={c.status === 'scheduled'}
                     />
                   )}
+
+                  {/* Hilo de mensajes con el médico (U3 - Paciente con cuenta).
+                      Se monta SOLO el hilo abierto: cada `HiloMensajes` sondea la API cada 8 s,
+                      así que montarlos todos a la vez ponía N bucles en marcha en una pantalla
+                      donde el paciente lee uno. El de la consulta vigente viene abierto. */}
+                  <div style={{ marginTop: 16 }}>
+                    {hiloVisible === c.id ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-muted"
+                          style={{ marginBottom: 10, padding: '8px 14px', fontSize: 14 }}
+                          onClick={() => setHiloAbierto('')}
+                          aria-expanded={true}
+                          aria-controls={`hilo-${c.id}`}
+                        >
+                          Ocultar mensajes
+                        </button>
+                        <div id={`hilo-${c.id}`}>
+                          <HiloMensajes
+                            consultationId={c.id}
+                            currentUserRole="patient"
+                            auth={{ token }}
+                            isCaseClosed={!CASO_ABIERTO.has(c.status)}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-full"
+                        onClick={() => setHiloAbierto(c.id)}
+                        aria-expanded={false}
+                      >
+                        Ver mensajes con mi médico
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

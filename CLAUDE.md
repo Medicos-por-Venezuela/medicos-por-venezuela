@@ -269,7 +269,8 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
   everything else they can see, computed by elimination. Cards offer "Atender paciente" (always
   video) and "Derivar a especialista". Doctors with "Otra" or no specialty get a notice pointing
   to their profile
-- `/panel-medico/consulta/[id]` — case detail page (patient details, video, note, close/no-show)
+- `/panel-medico/consulta/[id]` — case detail page (patient details, video, note, close/no-show, chat block with attachments)
+- `/panel-medico/mensajes` — doctor unified inbox (active message threads with patient presence indicators, unread counters, and filtering)
 - `/panel-medico/perfil` — doctor self-service profile (view/edit; FastAPI `GET`/`PATCH /doctors/me`).
   **Especialidades** is a checkbox list (several allowed, first one is the primary → `specialty_ids`)
   plus a separate "Otra: mi especialidad no está en la lista" with a free-text field;

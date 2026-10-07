@@ -3,6 +3,8 @@
 // complemento del email (que es el canal confiable, lo manda el backend). Upgrade futuro: service
 // worker + push para avisar con la pestaña cerrada.
 
+import { playNotificationSound, type SoundKind } from './sound'
+
 // Pide permiso una vez (si el usuario aún no decidió). No molesta si ya está granted/denied.
 export async function requestNotifyPermission(): Promise<boolean> {
   if (typeof window === 'undefined' || !('Notification' in window)) return false
@@ -16,9 +18,25 @@ export async function requestNotifyPermission(): Promise<boolean> {
 }
 
 // Muestra una notificación ya (si hay permiso). Silenciosa si no se puede.
-export function notify(title: string, body?: string): void {
-  if (typeof window === 'undefined' || !('Notification' in window)) return
-  if (Notification.permission !== 'granted') return
+//
+// El aviso sonoro es OPT-IN (`{ sound: true }`) y no al revés: esta función la comparten módulos
+// que nacieron sin sonido —los recordatorios de la agenda y el aviso de cita confirmada del
+// detalle de la consulta—, y hacerlo por defecto les metía un pitido que nadie pidió. Sin la
+// opción, el comportamiento es exactamente el de siempre: si no hay permiso, no pasa nada.
+export function notify(
+  title: string,
+  body?: string,
+  options?: { sound?: boolean; soundKind?: SoundKind }
+): void {
+  if (typeof window === 'undefined') return
+
+  // El sonido va antes del gate de permiso porque es un canal aparte: quien lo pide explícitamente
+  // (la mensajería) quiere oírlo aunque el navegador tenga las notificaciones bloqueadas.
+  if (options?.sound === true) {
+    playNotificationSound(options.soundKind || 'message')
+  }
+
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
   try {
     new Notification(title, { body })
   } catch {
