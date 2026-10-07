@@ -51,7 +51,7 @@ Each entry: date, a short summary of what changed and why, and the key files/are
     los ~600 ms, y el evento ya había pasado. La duración se quedaba en el valor por omisión
     (57,1 s frente a los 57,03 reales) y el divisor del progreso era el equivocado. Se toma ahora
     también desde la `ref` del `<audio>` en el commit —el primer instante del cliente en que se le
-    puede *preguntar* en vez de esperar a que lo anuncie—, con `onLoadedMetadata` y
+    puede _preguntar_ en vez de esperar a que lo anuncie—, con `onLoadedMetadata` y
     `onDurationChange` cubriendo la carrera contraria. Sin redondeos que tapen el síntoma: el
     divisor es la duración real, así que progreso, `aria-valuenow` y cronómetro se corrigen
     juntos. Con el audio en caché nunca falló, de ahí que solo se viera en carga en frío.
