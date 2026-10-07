@@ -65,13 +65,26 @@ test('atender paciente crea la sala en el claim y se reentra desde el botón del
   await expect(page).toHaveURL(/\/panel-medico$/)
   await expect(card).toBeVisible()
 
-  // Confirmar el aviso: el claim crea la sala y la abre en pestaña nueva (popup con Jitsi).
+  // Confirmar el aviso hace DOS cosas, y la segunda es nueva: el claim (crea la sala) y
+  // `POST /video-call`, que deja el aviso en el hilo para que el PACIENTE tenga su botón de
+  // entrada. Es la pieza que sustituye al botón que la sala de espera dejó de tener: esta es la
+  // única forma de tomar un caso de la cola, así que sin ella el paciente se quedaba con el correo
+  // como única vía y el médico esperando en una sala vacía.
+  let avisosEnHilo = 0
+  page.on('request', (req) => {
+    if (req.method() === 'POST' && req.url().includes('/video-call')) avisosEnHilo += 1
+  })
+
   await atender.click()
   const popupPromise = page.waitForEvent('popup')
   await aviso.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
   const popup = await popupPromise
-  expect(popup.url()).toContain('/vamed-')
+  // La URL del popup no se asierta aquí: ahora se abre como `about:blank` dentro del clic y se la
+  // navega a la sala al volver la respuesta (lo que evita que el navegador la bloquee), así que
+  // justo después del evento todavía es `about:blank`. El destino —pasado por `browserRoomUrl`—
+  // lo cubre `mensajes-videollamada.spec.ts` con su espía de `window.open`.
   await popup.close()
+  await expect.poll(() => avisosEnHilo, { timeout: 15_000 }).toBe(1)
 
   // El detalle ya NO tiene el CTA de la cabecera: salió en CA16.2b por duplicar el camino.
   await expect(page).toHaveURL(new RegExp(`/panel-medico/consulta/${cid}`))

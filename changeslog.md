@@ -5,6 +5,60 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-10-07
+
+- **fix(sala-espera): la sala de espera ya no invita a entrar a una sala que puede estar vacía, y
+  el claim desde la cola deja el aviso en el hilo** — el aviso «{Médico} tomó tu caso **y te está
+  esperando en la videoconsulta**» con su botón de entrada podía ser mentira: **tomar un caso no es
+  estar en la sala**, el médico puede tomarlo para leerlo y responder por escrito. El paciente
+  entraba a una videollamada vacía a esperar a alguien que no iba a venir. Es el mismo bug que esta
+  pantalla arregló una vez un paso antes (el botón se veía desde el registro); esto lo cierra.
+  - **Fuera el botón** de `SalaEsperaEnVivo` en `phase === 'ready'`, en los **dos** sitios donde se
+    monta (`/sala-espera` y `/mi-caso`): el problema era idéntico en ambos, sin excepción que
+    justificara dejarlo en uno. El acceso vive ahora solo donde refleja una llamada real: el aviso
+    de sistema del hilo (R16), que crea `POST /consultations/{id}/video-call`.
+  - **El aviso se queda, con el texto corregido** a lo que sí es verdad: «tomó tu caso. Puedes
+    escribirle por el chat de aquí abajo; cuando inicie la videoconsulta te avisaremos en este
+    mismo hilo». También se corrigió la pista de la fase en cola, que prometía un botón que ya no
+    existe («el botón para entrar aparecerá aquí solo»).
+  - **Y lo que de verdad hacía falta investigar antes de borrar: quitarlo dejaba un hueco real.**
+    El aviso del hilo lo crea UN solo endpoint, y en el frontend lo llamaba UN solo sitio: el botón
+    de cámara del chat. **El claim desde la cola no lo creaba** — y es la única forma de tomar un
+    caso de la cola, o sea la vía principal, no un caso marginal. Un médico que pulsaba «Atender
+    paciente» y entraba a la sala dejaba al paciente con el correo del claim como única vía
+    (asíncrono, best-effort, a veces en spam), mientras el paciente mira la pantalla y el médico
+    espera dentro: el bug del revés.
+  - **Cerrado en `openConsultation`** (`pages/panel-medico.tsx`): tras el claim llama también a
+    `startVideoCall`, que deja el aviso en el hilo. Es idempotente (reutiliza el aviso reciente) y
+    no manda correo salvo en cita agendada, así que no duplica el del claim. Dos cuidados: el
+    `window.open` se abre como **`about:blank` síncrono dentro del clic** y se le asigna `location`
+    al volver la respuesta (ahora hay dos peticiones por delante y el navegador lo bloquearía como
+    pop-up), y **si `startVideoCall` falla el médico entra igual** — el claim ya ocurrió, el caso es
+    suyo, y un fallo del aviso no puede dejarlo fuera de su propia sala.
+  - **Presencia de `/mi-caso`, regresión evitada**: la disparaba el botón de entrada, así que al
+    retirarlo nadie anunciaba al paciente y le aparecía al médico como «Aún no ha entrado» para
+    siempre — es decir, el médico **no podía llamarlo desde el chat**, justo la vía que sustituye al
+    botón. Ahora se anuncia mientras la página está abierta, el mismo criterio que `/sala-espera`.
+  - **Copia del modal `para="medico"`**, que prometía solo «recibe un correo» (y lo afirmaba
+    siempre, porque el panel no pasa `pacienteSinCorreo`): ahora dice las dos vías reales. Las
+    variantes `paciente`, `medico-llamada` y el caso `pacienteSinCorreo` no se tocaron.
+  - **Specs ajustados, ninguno borrado.** `e2e/sala-espera.spec.ts` y
+    `e2e/mi-caso-videoconsulta.spec.ts` pasan de «al tomar el caso aparece el botón» a «al tomar el
+    caso el paciente lee que lo tomaron y **puede escribir**, NO le aparece ninguna puerta a la
+    sala, y la entrada llega por el aviso del hilo». `e2e/panel-atender-video.spec.ts` y
+    `e2e/panel-race.spec.ts` asertaban `popup.url()` justo tras el evento, que con el
+    `about:blank` ya no es la sala; el primero gana además una aserción del `POST /video-call`.
+  - **Pendiente declarado, no tocado**: la variante `para="paciente"` de `AntesDeEntrarModal` se
+    quedó **sin montar** (la abrían los dos botones retirados), así que el paciente dejó de leer las
+    instrucciones de Jitsi antes de entrar. `/sala-espera` las sigue dando en su propio bloque de la
+    página; `/mi-caso`, no. Engancharla al botón del aviso del hilo es una decisión aparte.
+  - Archivos: `components/SalaEsperaEnVivo.tsx`, `components/AntesDeEntrarModal.tsx`,
+    `pages/sala-espera.tsx`, `pages/mi-caso.tsx`, `pages/panel-medico.tsx`,
+    `e2e/sala-espera.spec.ts`, `e2e/mi-caso-videoconsulta.spec.ts`,
+    `e2e/panel-atender-video.spec.ts`, `e2e/panel-race.spec.ts`.
+  - El correo del claim **no se tocó**: es del backend y es otra decisión. Con esto deja de ser la
+    única notificación de esa vía.
+
 ## 2026-10-06
 
 - **feat(donaciones): `/donaciones`, la plantilla de la campaña integrada sin que su CSS toque al

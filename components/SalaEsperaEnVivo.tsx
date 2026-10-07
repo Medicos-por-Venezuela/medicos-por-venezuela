@@ -1,9 +1,17 @@
 // Estado de la sala de espera del paciente, según `lib/waitingRoom.ts`. Lo pintan `/sala-espera` y
 // `/mi-caso`: una sola copia del texto, para que la próxima corrección se aplique en las dos.
 //
-// La regla que motivó esto: el botón "Entrar a la videoconsulta" SOLO aparece cuando un médico
-// tomó el caso (`phase === 'ready'`). Antes se mostraba desde el registro y el paciente entraba a
-// una sala vacía.
+// ESTA PANTALLA NO DA ACCESO A LA VIDEOCONSULTA, y es la regla que la define. Hubo aquí un botón
+// "Entrar a la videoconsulta" que aparecía con `phase === 'ready'`, es decir, en cuanto un médico
+// TOMABA el caso. Pero tomar un caso no es estar en la sala: el médico puede tomarlo para leerlo y
+// responder por escrito, y el paciente entraba a una videollamada vacía a esperar a alguien que no
+// iba a venir. La primera versión de esta sala arregló el mismo bug un paso antes (el botón se veía
+// desde el registro); esto lo arregla del todo.
+//
+// El acceso vive donde sí refleja una llamada real: el aviso de sistema del hilo (R16), que crea
+// `POST /consultations/{id}/video-call` cuando el médico INICIA la videoconsulta —desde el botón de
+// cámara del chat o al tomar el caso desde la cola del panel—. `HiloMensajes` lo pinta con su botón
+// de entrada. Aquí solo se informa del estado del caso.
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { WaitingRoomError, WaitingRoomState } from '../lib/waitingRoom'
@@ -15,15 +23,13 @@ function fmtCita(iso: string): string {
 export default function SalaEsperaEnVivo({
   state,
   error,
-  onEnter,
   ocultarAgendada = false
 }: {
   state: WaitingRoomState | null
   error: WaitingRoomError
-  onEnter: () => void
   // En `/mi-caso` la tarjeta ya pinta la cita agendada (fecha + "Agregar a calendario"), así que
   // la nota de la fase `scheduled` sobra. El stream sigue vivo: al iniciar el médico la cita, la
-  // fase pasa a `ready` y el botón de entrar aparece sin recargar.
+  // fase pasa a `ready` y el aviso de que el caso está en marcha aparece sin recargar.
   ocultarAgendada?: boolean
 }) {
   let fase = state?.phase ?? 'cargando'
@@ -52,17 +58,13 @@ export default function SalaEsperaEnVivo({
       </p>
     )
   } else if (state.phase === 'ready') {
+    // Lo que se dice aquí es solo lo que es verdad: el caso está tomado y el chat está abierto.
+    // Ni una palabra sobre que el médico esté esperando en la sala, porque puede no estarlo.
     content = (
-      <>
-        <div className="notice notice-success" role="status">
-          ✅ <strong>{state.doctor_name || 'Tu médico'} tomó tu caso</strong> y te está esperando en
-          la videoconsulta.
-        </div>
-        <button className="btn btn-primary btn-full" onClick={onEnter}>
-          Entrar a la videoconsulta
-        </button>
-        <p className="hint">Funciona mejor desde el navegador: no necesitas descargar la app.</p>
-      </>
+      <div className="notice notice-success" role="status">
+        ✅ <strong>{state.doctor_name || 'Tu médico'} tomó tu caso</strong>. Puedes escribirle por
+        el chat de aquí abajo; cuando inicie la videoconsulta te avisaremos en este mismo hilo.
+      </div>
     )
   } else if (state.phase === 'scheduled') {
     if (ocultarAgendada) return null
@@ -116,8 +118,8 @@ export default function SalaEsperaEnVivo({
           correo con el enlace para entrar a la videoconsulta. Revisa también la carpeta de spam.
         </div>
         <p className="hint">
-          Si dejas esta página abierta, el botón para entrar aparecerá aquí solo, apenas un médico
-          tome tu caso.
+          Si dejas esta página abierta, el estado de tu caso se actualiza aquí solo, sin recargar:
+          verás en cuanto un médico lo tome.
         </p>
       </>
     )
