@@ -135,13 +135,30 @@ async function readStream(
   }
 }
 
+// Espera `ms`, o menos si se aborta. Mismo patrón que `waitMs` en `lib/messages.ts`, y por lo
+// mismo: esta función se llama en CADA vuelta del bucle sobre el MISMO `AbortSignal` —cada 1,5 s
+// al reconectar y cada 15 s en modo respaldo—, así que un oyente de `abort` sin retirar se
+// acumulaba uno por vuelta y al abortar se disparaban todos juntos. El oyente se retira en los dos
+// caminos. El cortocircuito de arriba es el que importa para el paciente: con un `signal` ya
+// abortado `addEventListener` no dispara nunca, y la sala se quedaba congelada los 15 s enteros
+// esperando el temporizador en vez de salir en el acto.
 function wait(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    const timer = window.setTimeout(resolve, ms)
-    signal.addEventListener('abort', () => {
+    if (signal.aborted) {
+      resolve()
+      return
+    }
+    let timer = 0
+    const onAbort = () => {
       window.clearTimeout(timer)
       resolve()
-    })
+    }
+    timer = window.setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    // `once`: si gana el abort, el oyente se retira solo; si gana el temporizador, lo retira él.
+    signal.addEventListener('abort', onAbort, { once: true })
   })
 }
 

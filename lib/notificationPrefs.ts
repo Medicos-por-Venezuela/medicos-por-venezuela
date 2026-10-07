@@ -39,6 +39,10 @@ export const EVENT_LABELS: Record<string, { label: string; desc: string }> = {
   interconsultation_request_taken: {
     label: 'Tomaron tu caso',
     desc: 'Cuando un especialista toma la interconsulta que pediste.'
+  },
+  message_received: {
+    label: 'Nuevo mensaje en la consulta',
+    desc: 'Aviso por correo cuando recibes un nuevo mensaje en el chat.'
   }
 }
 

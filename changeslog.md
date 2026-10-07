@@ -5,6 +5,390 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-10-06
+
+- **feat(donaciones): `/donaciones`, la plantilla de la campaña integrada sin que su CSS toque al
+  resto del sitio** — porte de `mxv-donativos/index.html` (513 líneas con maquetación, estilos y
+  comportamiento en un solo archivo) a una página de Pages Router más 23 archivos en
+  `components/donaciones/`. La plantilla trae su **propia cabecera y su propio pie y se quedan**:
+  el cliente pidió fidelidad del 100 % y usar el layout del sitio los habría sustituido. Sin
+  enlace en la navegación: solo se llega por la URL.
+  - **Aislamiento por CSS Module, no por `styled-jsx`.** La plantilla estiliza `:root`, `*`,
+    `html`, `body`, `img`, `section`, `h2` y `footer`, y además usa `.btn` y `.hero`, **dos clases
+    que `globals.css` ya define**. `styled-jsx` acota el ámbito pero **no renombra**, así que esas
+    reglas globales habrían seguido entrando en cascada y tocaría parchearlas cada vez que alguien
+    tocara `globals.css`. Un módulo hashea el nombre y el conflicto desaparece por construcción.
+    Verificado en el CSS compilado: todas las reglas llevan el prefijo del contenedor, sin
+    `:global` ni selectores de elemento sueltos, y los `@keyframes` también hasheados.
+  - **Sentido contrario, neutralizado dentro del ámbito** y sin tocar `globals.css`: el
+    `text-decoration: none` de los enlaces (en la plantilla el pie y «Más detalles» van
+    subrayados) y el `color`/`transition` que el sitio aplica a todo `input`.
+  - **Fotos del equipo alojadas aquí.** Venían enlazadas desde Google Drive y el propio material
+    avisaba de que si cambiaban los permisos «dejarían de verse» y saldrían las iniciales — mala
+    señal en una página donde se pide dinero. Además la CSP del sitio (`img-src 'self'`) **las
+    habría bloqueado**. Las 9 están en `public/donaciones/`.
+  - **Comportamiento portado a React**, no pegado en un efecto: alternador ES/EN que recuerda la
+    elección (`useSyncExternalStore` con `getServerSnapshot`, que es la API hecha para leer
+    `localStorage` sin romper la hidratación), reproductor de la nota de voz con subtítulos
+    sincronizados, contadores que animan al entrar en pantalla, carruseles y botones de compartir.
+  - **Hidratación sin errores**: el HTML del servidor es siempre el mismo (castellano, cifras ya
+    en su valor final), el DOM lleva los dos idiomas y el CSS esconde uno, y los millares se
+    formatean a mano porque el ICU de Node y el del navegador no tienen por qué coincidir.
+  - **Tipografía propia** (`nunito-sans-donaciones.woff2`, subconjunto latino): la plantilla usa
+    `font-stretch: 120%` en los titulares y la fuente de marca del repo tiene ese eje fijado en
+    100, así que con ella los titulares saldrían más estrechos. Familia con nombre propio para no
+    competir con el `@font-face` de `globals.css`.
+  - **Accesibilidad corregida sin cambiar el aspecto**: las etiquetas del reproductor y de las
+    flechas no seguían al idioma activo, y **los carruseles no eran enfocables** — por debajo de
+    920 px las flechas desaparecen, así que no había forma de recorrerlos sin ratón ni dedo.
+  - **Fidelidad medida, no estimada**: sobre el build de producción las capturas de página
+    completa son **idénticas byte a byte** al original a 1440 y a 360 px (mismo md5), con las
+    mismas alturas (4730 px y 6041 px) y sin desborde horizontal.
+  - **La onda de la nota de voz encendía 33 de sus 34 barras al terminar**, una menos que el
+    original. La causa no era el evento que no se dispara, sino una **carrera contra la
+    hidratación**: el `<audio preload="metadata">` viaja en el HTML del servidor, así que el
+    navegador lee los metadatos a los ~360 ms mientras React no engancha `onLoadedMetadata` hasta
+    los ~600 ms, y el evento ya había pasado. La duración se quedaba en el valor por omisión
+    (57,1 s frente a los 57,03 reales) y el divisor del progreso era el equivocado. Se toma ahora
+    también desde la `ref` del `<audio>` en el commit —el primer instante del cliente en que se le
+    puede _preguntar_ en vez de esperar a que lo anuncie—, con `onLoadedMetadata` y
+    `onDurationChange` cubriendo la carrera contraria. Sin redondeos que tapen el síntoma: el
+    divisor es la duración real, así que progreso, `aria-valuenow` y cronómetro se corrigen
+    juntos. Con el audio en caché nunca falló, de ahí que solo se viera en carga en frío.
+  - 5 escenarios E2E en `e2e/donaciones.spec.ts`, **verificados por mutación**: con el alternador
+    de idioma congelado, una aserción con `textContent` pasa en verde —la página lleva los dos
+    idiomas en el DOM— mientras la de `innerText` falla. De ahí el `useInnerText: true`.
+
+- **fix(mensajeria): vuelve el candado por presencia, con excepción para las citas agendadas, y
+  el paciente tampoco entra en un caso cerrado (CA16.2 tercera redacción + CA16.2c)** — el cliente
+  corrigió su propia decisión anterior probando el producto, y encontró de paso un hueco que nadie
+  había cubierto.
+  - **Vuelve el candado por presencia.** El razonamiento que lo trae de vuelta: **llamar a quien no
+    está delante abre una sala vacía**. En la ronda anterior se había quitado del todo porque, al
+    retirar el «Unirse a videoconsulta» de la cabecera (que no gateaba por presencia e iniciaba las
+    citas agendadas), el candado dejaba esos casos sin cubrir. La tensión se resuelve ahora con una
+    **excepción explícita, no abriendo el candado entero**.
+  - **Excepción: consulta en `scheduled`.** Ahí el botón se habilita aunque el paciente no esté en
+    línea, porque es el inicio de la cita lo que dispara el correo «tu médico ya está en la sala»:
+    exigir que ya esté conectado dejaría las citas agendadas sin forma de empezar. Vuelve el motivo
+    «El paciente no está conectado» en `title` y `aria-label`.
+  - **Prop nueva `isScheduled`** en `HiloMensajes`, booleano **derivado por la página**
+    (`consultation.status === 'scheduled'`), con el mismo estilo que `isCaseClosed`: la lista de
+    estados vive en el detalle de la consulta y el hilo no conoce los nombres de los estados.
+  - **El botón de entrada del PACIENTE no tenía guarda de caso finalizado** (hallazgo del cliente,
+    mirando la pantalla). Solo se deshabilitaba mientras la petición volaba, así que con el caso
+    cerrado un aviso viejo seguía siendo una puerta a la sala — incoherente con el lado del médico,
+    que sí la tiene. Ahora se deshabilita con el caso finalizado y con la ventana de mensajes
+    cerrada, con el motivo en el nombre accesible **y visible debajo del botón**: un botón gris sin
+    explicación deja al paciente sin saber qué pasa, y este es el momento en que menos conviene.
+    La guarda se repite dentro de `entrarALaSala`, para que no dependa de que el atributo esté bien
+    puesto. El estado deshabilitado se pinta con `--bg`/`--muted`/`--border` a opacidad plena,
+    porque el `.btn:disabled` global (55 %) deja el `btn-primary` por debajo de AA.
+  - **Segundo sitio con el mismo hueco, cerrado**: `/sala-espera` montaba el hilo **sin**
+    `isCaseClosed`, así que ahí la guarda nueva no habría hecho nada. Se le pasa
+    `state?.phase === 'finished'`, que es exactamente «caso finalizado» según `phase_of` de la API.
+    `/mi-caso` ya lo pasaba.
+  - **Orden de los motivos**, de lo más permanente a lo más circunstancial: caso finalizado →
+    ventana cerrada (409) → paciente desconectado. Así al médico se le dice el motivo que de verdad
+    le impide llamar, y no el primero que se cumpla.
+  - **E2E dados la vuelta**, porque los de la ronda anterior afirmaban lo contrario:
+    - `e2e/mensajes-videollamada.spec.ts`: paciente desconectado y caso en atención →
+      **deshabilitado** con «El paciente no está conectado» (y sin disparar la petición);
+      **cita agendada** nacida por `schedule-follow-up` → **habilitado** con el paciente
+      desconectado, que es el escenario que protege a las citas; y caso finalizado → el botón de
+      entrada del paciente **deshabilitado**, con su motivo legible y sin pedir la sala (la fase de
+      la sala de espera se simula: llevar una consulta a `finished` de verdad pide claim, nota,
+      firma y cierre, cuatro pasos de otro módulo para comprobar un `disabled`). La ruta feliz
+      vuelve a conectar al paciente, que ahora hace falta.
+    - `e2e/consulta-cerrada.spec.ts`: compara los dos motivos en la misma consulta — abierta, el
+      botón está deshabilitado por **presencia**; cerrada, pasa a estarlo por el **cierre**.
+    - `e2e/panel-atender-video.spec.ts`: al llegar al detalle el botón del chat está deshabilitado
+      por presencia, y se habilita **en vivo** cuando el paciente abre su sala de espera; desde ahí
+      sigue el camino de reentrada (modal `medico-llamada` + un solo `POST /video-call` + aviso en
+      el hilo).
+      Ficheros: `components/mensajes/HiloMensajes.tsx`, `pages/panel-medico/consulta/[id].tsx`,
+      `pages/sala-espera.tsx`, `e2e/mensajes-videollamada.spec.ts`, `e2e/consulta-cerrada.spec.ts`,
+      `e2e/panel-atender-video.spec.ts`.
+
+- **feat(mensajeria)!: el botón del chat es el único camino a la videoconsulta (CA16.2b)** — el
+  cliente, usando el producto, pidió retirar «Unirse a videoconsulta» de la cabecera del detalle:
+  hacía lo mismo que el botón de cámara del hilo y obligaba a mantener dos caminos a la sala.
+  - **Fuera el CTA de la cabecera** de `pages/panel-medico/consulta/[id].tsx`, y con él lo que solo
+    él usaba: `joinVideo()`, el estado `avisoVideo`, su instancia de `AntesDeEntrarModal` y los
+    imports que quedaron huérfanos (`startConsultation`, `ensureVideoRoom`, `browserRoomUrl`,
+    `AntesDeEntrarModal`). Comprobado uno a uno que nadie más los usaba en esa página.
+  - **La presencia deja de bloquear (CA16.2 revisada).** El indicador sigue justo al lado del botón
+    diciendo si el paciente está conectado, pero como información para decidir, no como candado.
+    El CTA que se fue tampoco gateaba por presencia, así que mantener el candado habría dejado al
+    médico sin poder entrar con el paciente desconectado, que es un caso normal: el aviso queda
+    igual en el hilo y lo verá al volver. Fuera el texto «El paciente no está conectado».
+  - **Se conserva la guarda de caso finalizado.** El CTA retirado vivía dentro de un
+    `{!isCaseClosed && …}`; sin esa guarda, quitarlo habría **concedido** una capacidad que antes no
+    existía —arrancar una videollamada sobre un caso cerrado—, porque el backend admite mensajes (y
+    por tanto la llamada) durante las 72 h de seguimiento. El botón del hilo queda deshabilitado en
+    un caso finalizado, con «El caso está finalizado» en `title` y `aria-label`. El hilo cerrado
+    sigue sirviendo para escribir; para llamar, no.
+  - **El hilo avisa del cambio de estado**: prop nueva `onCallStarted` en `HiloMensajes`, que el
+    detalle conecta a `loadConsultation`. El endpoint puede cambiar el estado de la consulta al
+    llamar (una cita `scheduled` pasa a `in_progress`, que es lo que hacía `joinVideo` con su
+    `setConsultation` a mano); sin esto el caso seguiría pintado como «agendado» y el médico no
+    sabría que ya empezó. No depende del canal de Realtime del detalle, que también sincroniza
+    `status`.
+  - **E2E ajustados al camino nuevo, no borrados:**
+    - `e2e/consulta-cerrada.spec.ts`: donde afirmaba que el CTA estaba arriba, ahora afirma que el
+      botón del hilo está **habilitado con el paciente desconectado** y que el CTA no existe; y
+      donde afirmaba que el CTA desaparecía al cerrar, ahora afirma que el botón del hilo queda
+      **deshabilitado** con su motivo. Es la misma regla, vigilada en el botón que la hereda.
+    - `e2e/panel-atender-video.spec.ts`: la primera mitad (claim + sala + pestaña nueva) no cambia.
+      La segunda, que reentraba por el CTA, reentra ahora por el botón del hilo: comprueba que el
+      CTA no está, que el del chat sí y habilitado, que pasa por el modal `medico-llamada` (que no
+      promete correo ni dice que no llegó) y que confirmarlo hace **un solo** `POST /video-call` y
+      deja el aviso en el hilo. El destino de la ventana no se asierta ahí: lo cubre
+      `mensajes-videollamada.spec.ts` espiando `window.open`, sin depender de que Jitsi responda.
+    - `e2e/mensajes-videollamada.spec.ts`: el escenario de «deshabilitado con el paciente
+      desconectado» pasa a ser **«se habilita igual, y es el único del detalle»** (afirma además
+      que el texto viejo ya no se anuncia en ninguna parte); el de paciente en línea comprueba que
+      la presencia sigue mostrándose **al lado** del botón habilitado («En línea», `data-online`);
+      y la ruta feliz ya no necesita al paciente conectado.
+      Ficheros: `pages/panel-medico/consulta/[id].tsx`, `components/mensajes/HiloMensajes.tsx`,
+      `e2e/consulta-cerrada.spec.ts`, `e2e/panel-atender-video.spec.ts`,
+      `e2e/mensajes-videollamada.spec.ts`.
+
+- **feat(mensajeria): el médico inicia la videoconsulta desde el hilo (R16)** — en la cabecera del
+  hilo, junto al indicador de presencia, aparece un botón con icono de cámara que asegura la sala
+  (`POST /api/v1/consultations/{id}/video-call`), la abre en una ventana aparte y deja en el hilo
+  un aviso de sistema para el paciente. Ese aviso **no lleva enlace ni token**: solo el texto, y el
+  botón de entrada lo construye la interfaz con el contexto del hilo (ver más abajo). Solo el botón
+  y la asimetría de R16: nada de `call_sessions`, timbre, banner de llamada entrante,
+  aceptar/rechazar ni WebSocket.
+  - **Asimetría de render, no de CSS (CA16.1)**: el botón lo pinta el componente solo para el
+    médico tratante (`isDoctor && !readOnly`), igual que `IndicadorPresenciaPaciente`. En
+    `/mi-caso` y `/sala-espera` **no existe en el DOM**; a un médico ajeno o a un admin en
+    auditoría tampoco se le pinta (el backend les responde 404).
+  - **Habilitado solo con el paciente en línea (CA16.2)**, con el motivo en palabras y no solo en
+    color: `title` y `aria-label` dicen «El paciente no está conectado». El estado deshabilitado se
+    pinta con `--muted`/`--border` a opacidad plena porque el `.btn:disabled` global (55 %) dejaba
+    el azul de marca por debajo de AA. Durante la petición el botón queda deshabilitado y hay
+    además un candado por `ref`: dos clics en el mismo tic dejarían dos avisos en el hilo.
+  - **`window.open` dentro del gesto del clic (CA16.8)**: aquí el POST va siempre delante, así que
+    el `await` consume la activación del usuario y el navegador bloquearía el pop-up. Se abre
+    `about:blank` de forma síncrona en el `onConfirm` de `AntesDeEntrarModal` (`para="medico"`, el
+    mismo modal del detalle de la consulta) y se le asigna `location` al volver la respuesta. Sin
+    `noreferrer` porque con esa opción `window.open` devuelve `null` y no habría ventana que
+    navegar: se desvincula a mano con `opener = null`. La URL pasa SIEMPRE por `browserRoomUrl`.
+  - **Aviso de sistema en el hilo**: `direction: "system"` se pinta centrado y neutral, sin burbuja
+    de emisor, sin etiqueta de remitente y sin marcas de entrega. El de llamada (`kind: "call"`)
+    lleva además el icono de cámara en un círculo de `--brand-light`, la hora relativa del aviso y
+    un **botón** de marca «Entrar a la videoconsulta».
+  - **La interfaz NO imprime el cuerpo de un aviso de llamada.** Es el arreglo de fondo de la fuga:
+    el backend quitó la URL y el token del cuerpo, pero los avisos creados ANTES siguen guardados
+    (y cifrados) con ellos dentro, así que seguían saliendo en pantalla. Limpiar la base no arregla
+    la clase de problema. Un aviso de sistema lo genera el servidor y su contenido es predecible,
+    así que para `kind: "call"` la interfaz **enuncia su propio texto** («El médico inició la
+    videoconsulta.», literal lo que guarda el backend, para que historial y pantalla no se
+    contradigan) más la hora y el botón, y `msg.body` no se lee. Con eso queda cubierto el aviso
+    viejo, un cambio futuro de redacción y cualquier cosa que acabe en ese campo. Cualquier OTRO
+    aviso de sistema sí pinta su cuerpo —la interfaz no sabe qué dice— como texto y sin
+    interpretarlo (nada de `dangerouslySetInnerHTML`).
+  - **Misma fuga tapada en el aviso nativo**: `notify()` tomaba el texto del ÚLTIMO mensaje nuevo,
+    y ese puede ser el de sistema (el médico escribe y acto seguido llama), así que un aviso viejo
+    podía mandar la URL con el token a una notificación del sistema operativo. Ahora el texto sale
+    del último mensaje que **no** es de sistema.
+  - **El destino del botón NO sale del cuerpo del mensaje (CA16.6, arreglo de seguridad).** La
+    primera versión extraía la URL del cuerpo y la validaba contra el origen del frontend; la
+    validación hacía su trabajo —en local el cuerpo traía la URL de producción y no se enlazaba—
+    pero el respaldo era peor que el problema: dejaba **el token de acceso a la consulta, válido 24
+    h, escrito en el historial clínico y a la vista en pantalla y en cualquier captura**. El
+    backend quitó la URL y el token del cuerpo (ahora es solo «El médico inició la
+    videoconsulta.»), y la interfaz construye el acceso con lo que el hilo ya tiene:
+    `consultationId` más la credencial con la que el lector está ahí (sesión en `/mi-caso`,
+    `X-Consultation-Token` en `/sala-espera`). Reutiliza la vía de entrada que ya existía en
+    `pages/sala-espera.tsx`, `pages/mi-caso.tsx` y `pages/entrar-videoconsulta.tsx`:
+    `ensureVideoRoom` (idempotente) para pedir la sala, `browserRoomUrl` para abrirla y
+    `markEnteredCall` para que el médico vea que entró. No se compone ninguna URL a mano y el
+    token no vuelve a pasar por la barra de direcciones. Fuera, por tanto, el parseo del cuerpo y
+    la validación de origen (`trozosDelAviso`, `origenDelSitio`, `etiquetaDelEnlace`): sin URL en
+    el cuerpo no hay nada que validar, y no quedaban otros usuarios.
+  - **El botón de entrada es del paciente y solo del aviso vigente**: el médico tiene el suyo en la
+    cabecera, con su modal, así que no se le duplica la acción ni se le deja saltarse el aviso
+    clínico-operativo. Y solo lo lleva el aviso de llamada MÁS RECIENTE del hilo: uno de hace tres
+    días invitando a entrar a una sala vacía es ruido. Los anteriores se quedan como constancia,
+    con su hora. Mismo recurso del pop-up que en la cabecera (`about:blank` síncrono) y mismo
+    candado por `ref` contra el doble clic.
+  - **Variante `para="medico-llamada"` de `AntesDeEntrarModal`**: la rama `medico` le promete al
+    médico «El paciente recibe un correo avisándole que ya estás en la sala», y `start_video_call`
+    **no** dispara `video_ready_email` a propósito (el botón solo se habilita con el paciente en
+    línea, así que el correo sería redundante); la otra rama, `pacienteSinCorreo`, también miente
+    aquí porque dice «quizá no sepa que ya estás en la sala» cuando sí lo sabe. La variante nueva
+    dice lo que de verdad ocurre: «Al paciente le aparece el aviso **en el chat de la consulta**,
+    con un botón para unirse. No se le envía ningún correo.» Las variantes `paciente`, `medico` y
+    el caso `pacienteSinCorreo` quedan **palabra por palabra como estaban** (las usan la sala de
+    espera, `/mi-caso`, el panel y el detalle de la consulta, donde el correo sí sale), igual que
+    el marco, el subtítulo, los otros dos avisos del médico y las instrucciones de Jitsi.
+  - **Error del 409 visible** con el mensaje que da la API, en el mismo patrón de aviso que el
+    compositor (`error-videollamada`), y el compositor se cierra con ese motivo como ya hacía al
+    enviar. Al volver la respuesta se refresca el hilo para no esperar la vuelta del sondeo de 8 s.
+  - **`last_direction` ya puede venir `"system"`**: el tipo lo admitía pero nadie lo pintaba. El
+    buzón ahora dice quién escribió lo último cubriendo los **tres** casos
+    (`etiquetaUltimaDireccion`), así que un hilo cuyo único mensaje sea el aviso de llamada no se
+    lee como si lo hubiera escrito el paciente (y sigue sin contar como no leído).
+  - Cliente nuevo `startVideoCall` en `lib/messages.ts`, por `apiClient` como el resto.
+  - Sin aviso instantáneo a propósito: el hilo del paciente ya sondea cada 8 s
+    (`HiloMensajes.tsx`), así que ve el aviso en 8 segundos o menos sin tocar nada. No se añade SSE
+    ni WebSocket para esto.
+  - E2E nuevo `e2e/mensajes-videollamada.spec.ts` (7 escenarios): el botón **no existe** en
+    `/sala-espera` ni en `/mi-caso` (las dos mitades anclan en que el hilo esté montado, para que
+    la negación no pueda pasar en vacío); con el paciente desconectado está deshabilitado, lo dice
+    en su nombre accesible y no dispara la petición; con el paciente en línea (por Realtime
+    Presence, como `paciente-en-linea.spec.ts`) se habilita y su modal **no promete correo** —dice
+    el aviso del chat— y abrirlo no inicia nada; la **ruta feliz** completa de CA16.8 contra el
+    backend real —confirmar el modal hace **un solo** `POST /video-call`, la ventana se abrió con
+    `about:blank` dentro del clic y se navega después al destino ya pasado por `browserRoomUrl`
+    (lleva `config.disableDeepLinking`, no apunta a `meet.jit.si`), y el aviso queda en el hilo sin
+    botón de entrada para el médico—, con `window.open` espiado por `addInitScript` para no abrir
+    una ventana real a Jitsi en medio de la suite; el aviso de sistema sale centrado, sin
+    burbuja ni estado de entrega, con su botón de entrada y con su hora; **un aviso VIEJO cuyo
+    cuerpo trae la URL de producción y un token con pinta de JWT no imprime nada de eso** (ni
+    `http`, ni `://`, ni `eyj`, ni `t=`, ni la ruta de entrada, ni el dominio) y el botón sigue
+    estando —prueba la defensa, no la ausencia del ataque—; y un aviso de sistema que **no** es de
+    llamada sí muestra su cuerpo, sin botón de entrada. Los dos últimos simulan `GET /messages` con `page.route`: el cuerpo
+    real viaja cifrado y el aviso solo lo crea el médico tratante al llamar, así que simular el
+    hilo es la forma de fijar exactamente lo que se pinta.
+    Ficheros: `components/mensajes/HiloMensajes.tsx`, `components/AntesDeEntrarModal.tsx`,
+    `lib/messages.ts`, `pages/panel-medico/mensajes.tsx`, `e2e/mensajes-videollamada.spec.ts`.
+
+## 2026-10-05
+
+- **fix(sala-espera): la misma fuga de oyentes de `waitMs`, ahora en `lib/waitingRoom.ts`** —
+  `wait()` registraba un oyente anónimo de `abort` por llamada, sin `{ once: true }` y sin
+  retirarlo por el camino del temporizador. Se llama en cada vuelta del bucle del stream sobre el
+  MISMO `AbortSignal` (reconexión a 1,5 s y respaldo a 15 s), así que en modo degradado acumulaba
+  un oyente cada 15 s y al abortar se disparaban todos juntos. Y, lo que de verdad veía el
+  paciente: **con un `signal` ya abortado `addEventListener` no dispara nunca**, así que la promesa
+  solo se resolvía al cumplirse los `ms` y la sala se quedaba congelada los 15 s enteros tras el
+  abort en vez de salir en el acto. Se aplica el patrón ya cerrado en `lib/messages.ts`:
+  cortocircuito si el `signal` viene abortado, `{ once: true }`, y `removeEventListener` cuando
+  gana el temporizador. El comportamiento del stream de la sala no se toca en nada más.
+  Ficheros: `lib/waitingRoom.ts`.
+
+- **test(mensajeria): E2E del buzón del médico, del badge de la cabecera y del 409** — QA señaló
+  que `pages/panel-medico/mensajes.tsx` no tenía ni un spec, y es donde cayó la mitad del segundo
+  lote (SSE del buzón, filtro en dos efectos, `last_message_at`, badge). El 409 también nació sin
+  prueba. Se cubre con dos ficheros nuevos, con el patrón de los tres specs que ya existían (misma
+  siembra por los endpoints públicos, mismas sesiones de `e2e/.auth/*`, mismos `data-testid`):
+  - `e2e/mensajes-buzon.spec.ts` (7 escenarios): la lista trae los hilos del médico con sus no
+    leídos y su última actividad; el filtro «Solo no leídos» filtra **y no vuelve a pedir
+    `GET /auth/me`** (se cuenta la petición, esperando antes los 5 s de coalescencia de
+    `fetchMyProfile` para que la prueba no pase por la caché); un hilo sin `last_message_at` dice
+    «Sin actividad registrada» y no «hace 0 min»; el badge suma los no leídos y se anuncia como
+    «Mensajes, 3 sin leer» con el número una sola vez (el badge va `aria-hidden`); un evento
+    `inbox` del stream refresca el buzón por REST; con el stream bloqueado el modo respaldo sigue
+    refrescando; y el stream **no se abre** en `/sala-espera` ni en `/mi-caso` (el test falla si
+    alguien lo pide desde ahí: el endpoint exige `messages.read`).
+  - `e2e/mensajes-ventana-cerrada.spec.ts`: un 409 al enviar muestra `aviso-ventana-cerrada` con el
+    motivo de la API, deja deshabilitados el compositor y el botón de adjuntar, no ofrece
+    reintento y **no reintenta** (un solo POST tras varias vueltas del sondeo).
+  - Los escenarios que el backend local no puede producir se simulan con `page.route`: un hilo con
+    `last_message_at` nulo (la API lo arma con un JOIN sobre `messages`, así que nunca lo devuelve
+    nulo), un total de no leídos fijo para el badge (doc1 acumula hilos en una corrida serial que
+    comparte base), el stream SSE y el 409 (`urgent_in_person` no lo escribe ningún endpoint y el
+    reloj del cierre no se puede mover desde fuera). La lista y el filtro sí van contra datos
+    reales.
+  - Añadidos `data-testid="filtro-todos"` y `data-testid="filtro-no-leidos"` a los dos botones de
+    filtro del buzón, que eran los únicos controles de la pantalla sin uno.
+    Ficheros: `e2e/mensajes-buzon.spec.ts`, `e2e/mensajes-ventana-cerrada.spec.ts`,
+    `pages/panel-medico/mensajes.tsx`.
+
+- **fix(mensajeria): correcciones de la verificación de la Fase 1 UI y nuevo contrato del hilo** —
+  la verificación contra `tasks/mensajeria-medico-paciente/spec.md` encontró funcionalidad no pedida,
+  una regresión en una función compartida y deudas de accesibilidad y responsive. Se corrige sin
+  rediseñar el módulo, y se adapta la UI a los cambios que la API cerró en paralelo.
+  - **Fuera «Reabrir consulta»** del detalle del caso (`btn-reabrir-consulta`): no estaba en ninguna
+    spec y permitía a un **admin** devolver un caso cerrado a "En atención", es decir, cambiar el
+    estado clínico de un caso. El aviso de caso finalizado vuelve a ser el de antes.
+  - **Revertido el efecto colateral en `lib/nativeNotifications.ts`**: el sonido de `notify()` vuelve a
+    ser **opt-in** (`{ sound: true }`) y se restaura la salida temprana sin permiso de notificaciones.
+    El llamante preexistente (aviso de cita confirmada) ya no emite un pitido que nadie pidió; los de
+    mensajería lo piden explícitamente y dejan de reproducirlo dos veces.
+  - **Fuera el botón «Probar sonido»**, que además era visible al paciente en `/mi-caso` y
+    `/sala-espera`.
+  - **Accesibilidad**: la lista de mensajes es `role="log"` + `aria-live="polite"` +
+    `aria-relevant="additions"`; el compositor tiene etiqueta (`aria-label`); nombre accesible en
+    adjuntar, enviar, quitar y estados de entrega; el visor de imagen devuelve el foco al cerrarse.
+  - **Fecha relativa** en el hilo (`tiempoTranscurrido`, CA1.1) con la absoluta en el `title`; el
+    import estaba sin usar.
+  - **Un 409 deshabilita el compositor** (CA1.8) con el motivo de la API, en vez de dejar al usuario
+    reintentando en bucle.
+  - **Sondeos**: el buzón ya no reejecutaba sesión + perfil + inbox al llegar el token, y `/mi-caso`
+    ya no monta un hilo (con su intervalo de 8 s) por cada consulta del listado, sino solo el que el
+    paciente está viendo.
+  - **Responsive y marca**: cabecera del hilo con `flexWrap`, altura `clamp(300px, 60vh, 520px)` (ya
+    no 520 px fijos) y sin desborde horizontal a 360 px; los hex sueltos (`#0d9488`, `#10b981`…) se
+    sustituyen por las variables de `styles/globals.css` y por las clases `btn`/`notice`/`badge`.
+    Contrastes comprobados (blanco sobre `--brand` 4,85:1; `--muted` sobre `--bg` 4,55:1).
+  - **Nuevo contrato de `GET /consultations/{id}/messages`**: ya no es un array, sino
+    `{ clinical_access, consultation_id, unread_count, items }`. `unread_count` se lee del **cuerpo**
+    y no de la cabecera `X-Unread-Count`, y `clinical_access` pasa a decidir el aviso de auditoría y
+    el candado «Contenido no disponible» — que antes se adivinaban por el rol, por lo que un mensaje
+    con solo un adjunto (`body: null` legítimo) se mostraba como confidencial a su propio autor.
+    Con `unread_count` en el cuerpo, `POST …/messages/read` deja de salir cada 8 s sin nada que marcar.
+  - **SSE del buzón conectado** (CA2.3/CA8.3): `GET /inbox/stream` sustituye los sondeos del buzón
+    (12 s) y de la cabecera (30 s). Una sola conexión compartida por recuento de suscriptores (la
+    cabecera vive en todas las rutas de `/panel-medico`, así que navegar al detalle no abre otra), con
+    `fetch` y no `EventSource` para no poner el JWT en la URL, reconexión al corte de la API y
+    **respaldo a sondeo** si el stream no pasa. El evento es solo señal: la lista se refresca por REST.
+    No se monta en ninguna ruta de paciente (el endpoint exige `messages.read`).
+  - `InboxThread.last_message_at` pasa a `string | null`: con nulo decía «hace 0 min».
+  - **Cierre de la revisión de QA** (seis puntos de interfaz):
+    - El **visor de imagen arrancaba el foco cada 8 s**: el effect que lo mueve dependía de
+      `onClose`, que los llamantes pasan en línea, así que cada render del hilo —el sondeo y cada
+      tecla del compositor— lo limpiaba y lo volvía a ejecutar, saltando el foco al botón de
+      cerrar sin que el usuario hiciera nada. Arreglado en la causa: el callback va en una ref y
+      el effect depende solo de `isOpen` (más un `onClose` estable en `AdjuntoMensaje`). El
+      retorno de foco al cerrar se conserva.
+    - **Fuga de oyentes en `waitMs`**: añadía un `addEventListener('abort', …)` por vuelta sobre el
+      mismo `AbortSignal` y no lo retiraba nunca (uno cada 12 s en modo respaldo). Ahora se retira
+      por los dos caminos.
+    - **El bucle del stream ya no termina solo**: sin sesión o con 401/403 dejaba a los
+      suscriptores sin stream _y_ sin tics de respaldo (badge congelado hasta recargar). Ahora
+      reintenta con espera que se duplica (30 s → 5 min) y se recupera en cuanto la sesión vuelve.
+      El `getSession()` de cada vuelta va dentro de un `try`: era el único camino que quedaba para
+      salir del bucle por excepción con suscriptores vivos.
+    - **Badge de no leídos AA**: `#ef4444` con texto blanco daba 3,76:1 y a 11 px en negrita no
+      entra en la excepción de texto grande; pasa a `--red` (6,47:1). Los tres hex en línea de
+      `PanelHeader` se sustituyen por tokens, y el enlace gana nombre accesible
+      («Mensajes, 3 sin leer») en vez de anunciar un número suelto. Además, un filete de 1 px en
+      blanco: sobre el fondo del enlace (`rgba(255,255,255,0.12)` compuesto sobre el navy) la
+      píldora roja quedaba en 1,75:1 y casi no se distinguía como forma. No es un incumplimiento
+      —1.4.11 exime al texto y el número cumple 1.4.3—, pero un badge vale por verse de reojo.
+    - **Una descarga de PDF que fallaba no avisaba**: la rama de documento escribía el error y no
+      lo pintaba; ahora se ve, y un reintento correcto lo borra.
+    - Dos comentarios corregidos en `lib/messages.ts` (`unread_count` es requerido sin default, y
+      el lector ignora `retry:` en vez de interpretarlo).
+      Ficheros: `components/mensajes/*`, `lib/messages.ts`, `lib/nativeNotifications.ts`,
+      `components/PanelHeader.tsx`, `pages/panel-medico/mensajes.tsx`, `pages/mi-caso.tsx`,
+      `pages/panel-medico/consulta/[id].tsx`.
+
+- **feat(mensajeria): Fase 1 UI — buzón web, visor de adjuntos clínicos y chat asimétrico** —
+  se implementa el módulo de mensajería médico ↔ paciente en el frontend con soporte para adjuntos
+  clínicos (PDF e imágenes JPG/PNG/WEBP) y regla de asimetría estricta de presencia (solo el médico ve
+  si el paciente está en línea; el paciente nunca ve el estado del médico para proteger su privacidad
+  y disponibilidad).
+  - Bloqueo estricto de GIF en cliente: los archivos `.gif` e `image/gif` son rechazados inmediatamente
+    en drop, paste o selección manual con alerta descriptiva y sin emitir peticiones HTTP.
+  - Subida desacoplada en dos pasos y visualización protegida de adjuntos clínicos vía
+    `fetchAttachmentBlob` con `URL.createObjectURL(blob)` y liberación obligatoria de memoria
+    (`revokeObjectURL`) al desmontar.
+  - Nueva ruta `/panel-medico/mensajes` (buzón unificado de conversaciones con filtros y badges de no leídos),
+    acceso directo en `PanelHeader` y tarjeta de KPI en `/panel-medico`.
+  - Integración en las vistas del paciente `/mi-caso` (sesión autenticada) y `/sala-espera`
+    (`X-Consultation-Token`), con omisión total en el DOM de cualquier indicador de presencia médica.
+  - Suites E2E Playwright: `e2e/mensajes-medico.spec.ts`, `e2e/mensajes-paciente.spec.ts`,
+    `e2e/mensajes-admin.spec.ts` (verificación de privacidad clínica fail-closed para administradores).
+    Ficheros: `lib/messages.ts`, `lib/apiClient.ts`, `lib/notificationPrefs.ts`, `components/mensajes/*`,
+    `pages/panel-medico/consulta/[id].tsx`, `pages/panel-medico/mensajes.tsx`, `pages/panel-medico.tsx`,
+    `components/PanelHeader.tsx`, `pages/mi-caso.tsx`, `pages/sala-espera.tsx`, `e2e/mensajes-*.spec.ts`.
+
 ## 2026-09-30
 
 - **feat(registro): verificación de correo por código de 6 dígitos (pacientes y médicos)** —

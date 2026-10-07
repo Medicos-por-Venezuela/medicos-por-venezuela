@@ -9,6 +9,7 @@ import { markEnteredCall } from '../lib/patients'
 import { trackPatientInRoom } from '../lib/patientPresence'
 import { supabase } from '../lib/supabase'
 import { useWaitingRoom, type WaitingRoomAccess } from '../lib/waitingRoom'
+import HiloMensajes from '../components/mensajes/HiloMensajes'
 
 // El token de sala se guarda en sessionStorage (por pestaña) y se BORRA de la URL: una credencial
 // en la barra de direcciones acaba en el historial, en el `Referer` y en cualquier captura que el
@@ -112,7 +113,27 @@ export default function SalaEspera() {
             <h1>Gracias, {nombre}</h1>
 
             {cid ? (
-              <SalaEsperaEnVivo state={state} error={error} onEnter={() => setShowWarning(true)} />
+              <>
+                <SalaEsperaEnVivo
+                  state={state}
+                  error={error}
+                  onEnter={() => setShowWarning(true)}
+                />
+                {/* Hilo de mensajes con el médico (U4 - Paciente por token) */}
+                <div style={{ marginTop: 20 }}>
+                  <HiloMensajes
+                    consultationId={vigenteId}
+                    currentUserRole="patient"
+                    auth={{ consultationToken: vigenteToken }}
+                    // CA16.2c: el botón «Entrar a la videoconsulta» del aviso del hilo no debe
+                    // dejar entrar a la sala de un caso finalizado. `phase === 'finished'` es
+                    // exactamente eso (lo calcula `phase_of` en la API: cualquier estado que no
+                    // sea de atención). Sin esta prop el hilo lo daba por abierto y el botón
+                    // quedaba habilitado en un caso cerrado.
+                    isCaseClosed={state?.phase === 'finished'}
+                  />
+                </div>
+              </>
             ) : (
               <div className="notice notice-warning">
                 No encontramos los datos de tu sala. <Link href="/login">Inicia sesión</Link> y

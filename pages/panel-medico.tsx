@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { getAccessToken, type ClinicalAccess } from '../lib/admin'
+import { getInboxSummary } from '../lib/messages'
 import {
   ApiError,
   claimConsultation,
@@ -133,6 +134,7 @@ export default function PanelMedico() {
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [myClosed, setMyClosed] = useState(0)
+  const [unreadMessages, setUnreadMessages] = useState(0)
   // Interconsultas donde YO soy el médico invitado (segunda opinión en vivo; datos limitados).
   const [myInterconsultations, setMyInterconsultations] = useState<InterconsultationForInvitee[]>(
     []
@@ -292,9 +294,10 @@ export default function PanelMedico() {
     // Realtime y en cada `focus`, no solo al entrar). allSettled y no Promise.all para que
     // cada una conserve su propio manejo de error — y para que un rechazo no quede sin
     // handler mientras se espera a la otra.
-    const [panelRes, interconsultationsRes] = await Promise.allSettled([
+    const [panelRes, interconsultationsRes, inboxRes] = await Promise.allSettled([
       fetchPanel(token),
-      fetchMyInterconsultations(token)
+      fetchMyInterconsultations(token),
+      getInboxSummary({ onlyUnread: true }, { token })
     ])
     if (panelRes.status === 'fulfilled') {
       const panel = panelRes.value
@@ -315,6 +318,10 @@ export default function PanelMedico() {
     } else {
       console.error(interconsultationsRes.reason)
       setMessage('No se pudieron cargar tus interconsultas.')
+    }
+    if (inboxRes.status === 'fulfilled') {
+      const count = inboxRes.value.reduce((acc, t) => acc + (t.unread_count || 0), 0)
+      setUnreadMessages(count)
     }
   }
 
@@ -349,7 +356,8 @@ export default function PanelMedico() {
   // backend a su especialidad) y cuántas consultas cerró.
   const kpis = [
     { value: waiting.length, label: 'En espera por atender' },
-    { value: myClosed, label: 'Consultas cerradas por mí' }
+    { value: myClosed, label: 'Consultas cerradas por mí' },
+    { value: unreadMessages, label: 'Mensajes sin leer' }
   ]
 
   // Cada cola trae los `specialty_ids` de los casos que le tocan (los suyos más sus accesos
@@ -553,6 +561,17 @@ export default function PanelMedico() {
                 onClick={() => router.push('/panel-medico/agenda')}
               >
                 Mi agenda
+              </button>
+              <button
+                className="btn btn-outline"
+                onClick={() => router.push('/panel-medico/mensajes')}
+              >
+                Mensajes{' '}
+                {unreadMessages > 0 && (
+                  <span className="badge badge-red" style={{ marginLeft: 4 }}>
+                    {unreadMessages}
+                  </span>
+                )}
               </button>
               {/* Interconsulta ASÍNCRONA (pacientes de consultorio). Distinta de la interconsulta
                   en vivo que se asigna desde el Pool durante una consulta de la cola. */}
