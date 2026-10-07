@@ -1,13 +1,19 @@
 // "Atender paciente" con un caso SIN sala: el mismo claim del backend crea la sala, el panel la
-// abre en una pestaña nueva y el detalle muestra "Unirse a videoconsulta". La atención es siempre
-// por video: el botón de WhatsApp ya no existe. Reproduce el reporte "no me abre el link y
-// desaparece el botón de unirse".
+// abre en una pestaña nueva. La atención es siempre por video: el botón de WhatsApp ya no existe.
+// Reproduce el reporte "no me abre el link y desaparece el botón de unirse".
+//
+// La segunda mitad cambió en CA16.2b: el detalle ya no tiene el CTA "Unirse a videoconsulta" de la
+// cabecera, así que volver a entrar se hace desde el botón de cámara del hilo. Se prueba ese
+// camino —el que sustituye al que se fue—: el CTA no está; el botón del chat empieza DESHABILITADO
+// porque el paciente no se ha conectado (CA16.2) y se habilita en vivo cuando abre su sala de
+// espera; pasa por su propio modal (variante `medico-llamada`, que no promete correo); y
+// confirmarlo llama de verdad y deja el aviso en el hilo.
 import { test, expect, request } from '@playwright/test'
 import { idEspecialidadGeneral } from './helpers'
 
 const API = 'http://localhost:8000/api/v1'
 
-test('atender paciente crea la sala en el claim y el detalle muestra Unirse', async ({
+test('atender paciente crea la sala en el claim y se reentra desde el botón del hilo', async ({
   browser
 }) => {
   // Consulta SIN sala (la API pública no la crea sola).
@@ -67,18 +73,51 @@ test('atender paciente crea la sala en el claim y el detalle muestra Unirse', as
   expect(popup.url()).toContain('/vamed-')
   await popup.close()
 
-  // Y el detalle muestra el CTA "Unirse a videoconsulta" (la consulta ya tiene sala).
+  // El detalle ya NO tiene el CTA de la cabecera: salió en CA16.2b por duplicar el camino.
   await expect(page).toHaveURL(new RegExp(`/panel-medico/consulta/${cid}`))
-  const unirse = page.getByRole('button', { name: 'Unirse a videoconsulta' })
-  await expect(unirse).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Unirse a videoconsulta' })).toHaveCount(0)
 
-  // Volver a entrar desde el detalle también pasa por el aviso. Este paciente se creó sin
-  // correo, así que el aviso no puede prometer que le llegó uno.
-  await unirse.click()
-  await expect(aviso.getByText(/no recibió el aviso por correo/)).toBeVisible()
-  const popupDetalle = page.waitForEvent('popup')
-  await aviso.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
-  expect((await popupDetalle).url()).toContain('/vamed-')
+  // Volver a entrar se hace desde el botón de cámara del hilo. Con el paciente sin conectar está
+  // DESHABILITADO (CA16.2, tercera redacción: llamar a quien no está delante abre una sala vacía)
+  // y lo dice con palabras.
+  const camara = page.locator('[data-testid="btn-iniciar-videollamada"]')
+  await expect(camara).toBeVisible()
+  await expect(camara).toBeDisabled()
+  await expect(camara).toHaveAccessibleName(/El paciente no está conectado/)
+
+  // El paciente abre su sala de espera y se anuncia por Realtime Presence: el botón se habilita en
+  // vivo, sin recargar.
+  const ctxPaciente = await browser.newContext()
+  const paciente = await ctxPaciente.newPage()
+  await paciente.goto(`/sala-espera?cid=${cid}&nombre=Test&room=r&code=ABC`)
+  await expect(paciente.getByRole('heading', { name: /Gracias/ })).toBeVisible()
+  await expect(camara).toBeEnabled({ timeout: 20_000 })
+
+  let llamadas = 0
+  page.on('request', (req) => {
+    if (req.method() === 'POST' && req.url().includes('/video-call')) llamadas += 1
+  })
+
+  await camara.click()
+  const avisoChat = page.getByRole('dialog')
+  // Variante `medico-llamada`: aquí al paciente le llega el aviso del chat, no un correo, así que
+  // el modal no puede decir ni que lo recibió ni que no lo recibió.
+  await expect(avisoChat.getByText(/en el chat de la consulta/)).toBeVisible()
+  await expect(avisoChat.getByText(/no recibió el aviso por correo/)).toHaveCount(0)
+  await expect(avisoChat.getByText(/recibe un correo/)).toHaveCount(0)
+
+  const popupChat = page.waitForEvent('popup')
+  await avisoChat.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
+
+  // La llamada sale de verdad (una sola vez) y deja su aviso en el hilo. El destino de la ventana
+  // no se asierta aquí: lo cubre `mensajes-videollamada.spec.ts`, que espía `window.open` y
+  // comprueba que pasa por `browserRoomUrl` sin depender de que Jitsi responda.
+  await expect.poll(() => llamadas, { timeout: 15_000 }).toBe(1)
+  await expect(
+    page.locator('[data-testid="mensaje-sistema"][data-kind="call"]').first()
+  ).toBeVisible({ timeout: 15_000 })
+  await (await popupChat).close()
+  await ctxPaciente.close()
 
   await ctx.close()
 })

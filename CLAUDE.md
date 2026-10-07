@@ -79,6 +79,17 @@ promete cambios que el diff ya no contiene es un bug de documentación (lección
   specs existentes cubren flujos felices; un gating sin spec se rompe en silencio en el
   siguiente refactor.
 
+## Skills locales y módulo de mensajería (2026-09-29)
+
+Skills de trabajo en `.claude/skills/`: `nueva-funcionalidad` (spec → plan → todo → código →
+verificación → changeslog), `corregir-bug` (reproducir → E2E que falla → fix mínimo) y
+`mensajeria` (contexto del buzón médico ↔ paciente). El encargo de mensajería vive en
+`tasks/mensajeria-medico-paciente/` (UI) y, como spec canónica, en
+`../api-medicos-por-venezuela/tasks/mensajeria-medico-paciente/`; el contexto del cliente en
+`.knowledge/mensajeria.md`. Correcciones detectadas y aún no autorizadas:
+`tasks/backlog-correcciones.md` (incluye el drift de esta documentación: el stack real es
+Next 16 / React 19 / TypeScript 6 sobre AWS Amplify, y todo dato va por la API).
+
 ## SDD (Spec-Driven Development) setup
 
 This project is initialized for SDD-based work via the `sdd-init` skill:
@@ -258,7 +269,8 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
   everything else they can see, computed by elimination. Cards offer "Atender paciente" (always
   video) and "Derivar a especialista". Doctors with "Otra" or no specialty get a notice pointing
   to their profile
-- `/panel-medico/consulta/[id]` — case detail page (patient details, video, note, close/no-show)
+- `/panel-medico/consulta/[id]` — case detail page (patient details, video, note, close/no-show, chat block with attachments)
+- `/panel-medico/mensajes` — doctor unified inbox (active message threads with patient presence indicators, unread counters, and filtering)
 - `/panel-medico/perfil` — doctor self-service profile (view/edit; FastAPI `GET`/`PATCH /doctors/me`).
   **Especialidades** is a checkbox list (several allowed, first one is the primary → `specialty_ids`)
   plus a separate "Otra: mi especialidad no está en la lista" with a free-text field;

@@ -90,6 +90,17 @@ the final step. Add a short entry at the top (newest first) — one or two lines
 why, plus the key files/areas touched — grouping same-day work under a single `## YYYY-MM-DD`
 heading. This is the running history of the project; keep entries concise and factual.
 
+## Skills locales y módulo de mensajería (2026-09-29)
+
+Skills de trabajo en `.claude/skills/`: `nueva-funcionalidad` (spec → plan → todo → código →
+verificación → changeslog), `corregir-bug` (reproducir → E2E que falla → fix mínimo) y
+`mensajeria` (contexto del buzón médico ↔ paciente). El encargo de mensajería vive en
+`tasks/mensajeria-medico-paciente/` (UI) y, como spec canónica, en
+`../api-medicos-por-venezuela/tasks/mensajeria-medico-paciente/`; el contexto del cliente en
+`.knowledge/mensajeria.md`. Correcciones detectadas y aún no autorizadas:
+`tasks/backlog-correcciones.md` (incluye el drift de esta documentación: el stack real es
+Next 16 / React 19 / TypeScript 6 sobre AWS Amplify, y todo dato va por la API).
+
 ## SDD (Spec-Driven Development) setup
 
 This project has been initialized for SDD-based work:

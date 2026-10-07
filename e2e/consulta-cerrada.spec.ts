@@ -2,7 +2,17 @@
 //  - "Paciente no estaba en la sala" pide confirmación y cancelar no finaliza el caso.
 //  - Cerrar exige nota guardada (el error sale en rojo bajo el botón).
 //  - Un caso finalizado queda solo-lectura: aviso visible, sin select de estado, sin botones
-//    de cierre y sin el CTA "Unirse a videoconsulta" de arriba.
+//    de cierre y sin poder arrancar la videollamada.
+//
+// El CTA "Unirse a videoconsulta" de la cabecera salió del detalle en CA16.2b (duplicaba el botón
+// de cámara del hilo). Lo que este spec vigila ahora es la MISMA regla en el botón que lo
+// sustituye: finalizado, deshabilitado y diciendo por qué. Si no, al retirar aquel CTA —que vivía
+// dentro de un `{!isCaseClosed && …}`— se habría concedido sin querer una capacidad nueva: llamar
+// sobre un caso cerrado, porque el backend admite mensajes durante las 72 h de seguimiento.
+//
+// De paso compara los dos motivos: con el caso abierto el botón está deshabilitado por PRESENCIA
+// (este paciente no tiene pestaña abierta) y al cerrarlo pasa a estarlo por el CIERRE. El orden
+// importa: al médico se le dice el motivo que de verdad le impide llamar.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { test, expect, request } from '@playwright/test'
@@ -62,8 +72,14 @@ test('caso finalizado: no-show confirma, cerrar exige nota y la UI queda solo-le
 
   await page.goto(`/panel-medico/consulta/${cid}`)
   await expect(page.getByRole('heading', { name: 'Detalle de consulta' })).toBeVisible()
-  // Caso abierto con sala: el CTA de video está arriba.
-  await expect(page.getByRole('button', { name: 'Unirse a videoconsulta' })).toBeVisible()
+  // Caso abierto: el botón de llamar vive en el hilo (el CTA que estaba arriba salió en CA16.2b).
+  // Aquí está deshabilitado porque el paciente no tiene ninguna pestaña abierta (CA16.2), no
+  // porque el caso esté cerrado — que es lo que este spec compara más abajo.
+  const camara = page.locator('[data-testid="btn-iniciar-videollamada"]')
+  await expect(camara).toBeVisible()
+  await expect(camara).toHaveAccessibleName(/El paciente no está conectado/)
+  // El CTA que vivía arriba ya no existe en ninguna parte del detalle.
+  await expect(page.getByRole('button', { name: 'Unirse a videoconsulta' })).toHaveCount(0)
 
   // 1. No-show pide confirmación; cancelar no finaliza el caso.
   const noShow = page.getByRole('button', { name: 'Paciente no estaba en la sala de espera' })
@@ -110,7 +126,12 @@ test('caso finalizado: no-show confirma, cerrar exige nota y la UI queda solo-le
   await expect(page.getByText('Este caso ya está finalizado')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Cerrar consulta' })).toHaveCount(0)
   await expect(noShow).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Unirse a videoconsulta' })).toHaveCount(0)
+  // Y no se puede arrancar la videollamada: el botón del hilo sigue ahí (el hilo cerrado admite
+  // seguimiento escrito 72 h) pero deshabilitado, y ahora el motivo es EL CIERRE y no la presencia
+  // —el caso finalizado manda sobre los demás motivos, que es el que de verdad lo impide—.
+  await expect(camara).toBeDisabled()
+  await expect(camara).toHaveAccessibleName(/El caso está finalizado/)
+  await expect(camara).not.toHaveAccessibleName(/El paciente no está conectado/)
 
   await ctx.close()
 })

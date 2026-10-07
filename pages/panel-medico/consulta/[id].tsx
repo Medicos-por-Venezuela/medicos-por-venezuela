@@ -16,13 +16,11 @@ import {
   fetchMyProfile,
   referToQueue,
   scheduleFollowUp,
-  startConsultation,
   updateConsultation,
   type ConsultationDetail,
   type ConsultationEventItem,
   type DerivationTarget
 } from '../../../lib/consultations'
-import { ensureVideoRoom } from '../../../lib/patients'
 import {
   createInterconsultation,
   fetchInterconsultationForConsultation,
@@ -38,7 +36,6 @@ import {
   tiempoTranscurrido,
   statusBadgeClass
 } from '../../../lib/utils'
-import { browserRoomUrl } from '../../../lib/jitsi'
 import { notify, requestNotifyPermission } from '../../../lib/nativeNotifications'
 import {
   fetchNotificationPrefs,
@@ -47,8 +44,8 @@ import {
 } from '../../../lib/notificationPrefs'
 import { usePatientsInRoom } from '../../../lib/patientPresence'
 import EstadoPacienteBadge from '../../../components/EstadoPacienteBadge'
-import AntesDeEntrarModal from '../../../components/AntesDeEntrarModal'
 import { clinicalValue } from '../../../components/ConfidentialText'
+import HiloMensajes from '../../../components/mensajes/HiloMensajes'
 
 type Patient = {
   id: string
@@ -160,7 +157,6 @@ export default function ConsultaDetalle() {
   // Pool de médicos: verlos y pedir una interconsulta (segunda opinión en vivo).
   const [poolOpen, setPoolOpen] = useState(false)
   // El aviso de "antes de entrar" a la sala está arriba.
-  const [avisoVideo, setAvisoVideo] = useState(false)
   // "Derivar con especialista": primero se elige la especialidad (modal), luego motivo y firma.
   // Interconsulta activa de esta consulta (segunda opinión en vivo). null si aún no tiene.
   const [interconsultation, setInterconsultation] = useState<Interconsultation | null>(null)
@@ -176,6 +172,7 @@ export default function ConsultaDetalle() {
   // Preferencias de notificación (para respetar el aviso push de confirmación). null = opt-out.
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs | null>(null)
   const [loading, setLoading] = useState(true)
+  const [token, setToken] = useState('')
   // in-flight guard compartido por las acciones de escritura (evita dobles submits).
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -265,6 +262,7 @@ export default function ConsultaDetalle() {
       router.push('/login')
       return
     }
+    setToken(sessionData.session.access_token)
 
     // Perfil propio vía GET /auth/me (backend), ya no la vista `profiles`. Trae id/full_name/role/
     // specialty/active, justo lo que necesita el guard y el "médico asignado = yo".
@@ -566,39 +564,6 @@ export default function ConsultaDetalle() {
     }
   }
 
-  // "Unirse a videoconsulta": la atención es siempre por video. Una cita AGENDADA se inicia aquí
-  // (`scheduled` → `in_progress` + sala): es el clic que además dispara el correo "tu médico ya
-  // está en la sala" al paciente, igual que el claim de la cola. Si el caso no tiene sala (tomado
-  // antes por WhatsApp), se crea ahora. La ventana se abre dentro del clic de "Entendido".
-  async function joinVideo() {
-    if (!consultation) return
-    let room = consultation.video_room_url
-    if (consultation.status === 'scheduled') {
-      try {
-        const started = await startConsultation(consultation.id, await getAccessToken())
-        room = started.video_room_url
-        setConsultation((prev) =>
-          prev ? { ...prev, status: started.status, video_room_url: room } : prev
-        )
-      } catch (e) {
-        setMessage(e instanceof Error ? e.message : 'No se pudo iniciar la cita agendada.')
-        return
-      }
-    } else if (!room) {
-      try {
-        const { data } = await supabase.auth.getSession()
-        room =
-          (await ensureVideoRoom(consultation.id, undefined, data.session?.access_token))
-            .video_room_url || null
-        setConsultation((prev) => (prev ? { ...prev, video_room_url: room } : prev))
-      } catch (e) {
-        setMessage(e instanceof Error ? e.message : 'No se pudo abrir la sala de video.')
-        return
-      }
-    }
-    if (room) window.open(browserRoomUrl(room), '_blank', 'noreferrer')
-  }
-
   // El canvas de firma resuelve → dispara el cierre / el agendado / la referencia según el modo.
   function onSign(dataUrl: string) {
     const mode = signMode
@@ -675,18 +640,10 @@ export default function ConsultaDetalle() {
             </span>
           </div>
 
-          {/* Unirse a la videoconsulta: acción principal, arriba de todo (antes del paciente).
-              La atención es siempre por video: aparece en todo caso abierto, y si no tiene sala
-              (tomado antes por WhatsApp) se crea al entrar. No en casos finalizados. */}
-          {!isCaseClosed && (
-            <button
-              className="btn btn-primary btn-full"
-              onClick={() => setAvisoVideo(true)}
-              style={{ marginBottom: 16 }}
-            >
-              Unirse a videoconsulta
-            </button>
-          )}
+          {/* Aquí vivía «Unirse a videoconsulta». Fuera desde CA16.2b: hacía lo mismo que el
+              botón de cámara del hilo y obligaba a mantener dos caminos a la sala. El del chat es
+              ahora el único, y absorbe lo que este hacía (iniciar una cita agendada y reentrar sin
+              duplicar el aviso). */}
 
           {/* Acciones de referencia/agenda, en una fila debajo del encabezado. */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -850,6 +807,41 @@ export default function ConsultaDetalle() {
               )}
             </section>
 
+            {/* Mensajería médico ↔ paciente (U1) */}
+            <section
+              className="card detail-full-span"
+              style={{ padding: 0, overflow: 'hidden' }}
+              aria-label="Mensajería del caso"
+            >
+              <HiloMensajes
+                consultationId={consultation.id}
+                currentUserRole={
+                  consultation.assigned_doctor_id === profile?.id
+                    ? 'doctor'
+                    : profile?.role || 'doctor'
+                }
+                auth={{ token }}
+                patientOnline={patientsInRoom.has(consultation.id)}
+                patientLastSeenAt={consultation.patient_last_seen_at}
+                isCaseClosed={isCaseClosed}
+                // CA16.2: una cita AGENDADA es la excepción al candado por presencia del botón de
+                // videollamada. El paciente todavía no puede estar conectado —es el inicio de la
+                // cita lo que dispara el correo que le avisa—, así que exigir presencia dejaría
+                // las citas sin forma de empezar. El estado se deriva aquí, como `isCaseClosed`.
+                isScheduled={consultation.status === 'scheduled'}
+                // CA16.2b: la llamada sale del hilo y puede cambiar el estado de la consulta (una
+                // cita `scheduled` pasa a `in_progress`). Se recarga para que el badge y las
+                // acciones de la cabecera no se queden en el estado viejo. El canal de Realtime de
+                // arriba también sincroniza `status`, pero esto no depende de que pase.
+                onCallStarted={() => loadConsultation(consultation.id)}
+                readOnly={
+                  (Boolean(consultation.assigned_doctor_id) &&
+                    consultation.assigned_doctor_id !== profile?.id) ||
+                  (isAdminRole(profile?.role) && consultation.assigned_doctor_id !== profile?.id)
+                }
+              />
+            </section>
+
             <section className="card detail-full-span">
               <h2 style={{ marginTop: 0 }}>Referencia y trazabilidad</h2>
               <div className="detail-timeline">
@@ -987,20 +979,6 @@ export default function ConsultaDetalle() {
               </div>
             </section>
           </div>
-
-          <AntesDeEntrarModal
-            para="medico"
-            open={avisoVideo}
-            // El correo "tu médico te está esperando" solo sale al tomar el caso POR VIDEO y si
-            // el paciente dejó correo (ver video_ready_mail_args en el backend).
-            pacienteSinCorreo={!consultation.patients?.email || consultation.attended_via_whatsapp}
-            onCancel={() => setAvisoVideo(false)}
-            onConfirm={() => {
-              setAvisoVideo(false)
-              // Dentro del clic de "Entendido": fuera de un gesto el navegador bloquea el pop-up.
-              joinVideo()
-            }}
-          />
 
           <DoctorPoolModal
             open={poolOpen}
