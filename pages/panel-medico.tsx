@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { getAccessToken, type ClinicalAccess } from '../lib/admin'
-import { getInboxSummary } from '../lib/messages'
+import { getInboxSummary, startVideoCall } from '../lib/messages'
 import {
   ApiError,
   claimConsultation,
@@ -413,12 +413,71 @@ export default function PanelMedico() {
     }
   }
 
+  // Tomar un caso de la cola y entrar a su sala. Hace DOS cosas, y la segunda es la que arregla
+  // el bug que motivó este cambio:
+  //
+  //  1. El claim (atómico, arriba), que asigna el caso y crea la sala. El backend le manda al
+  //     paciente el correo "tu médico te está esperando".
+  //  2. `POST /consultations/{id}/video-call`, que deja el aviso de sistema en el HILO. Ese aviso
+  //     es lo que le da al paciente su botón de entrada.
+  //
+  // El paso 2 no estaba, y por eso el paciente no puede quedarse sin vía ahora que la sala de
+  // espera ya no trae botón: esta es la ÚNICA forma de tomar un caso de la cola, así que sin él la
+  // única notificación habría sido el correo (asíncrono, best-effort, y a veces en spam) y el
+  // médico se quedaba esperando en una sala vacía a un paciente que está mirando la pantalla. Es
+  // el bug que se arregla, del revés.
+  //
+  // `video-call` es idempotente (reutiliza el aviso reciente en vez de añadir otro) y NO manda
+  // correo salvo en una cita agendada, así que no duplica el del claim.
   async function openConsultation(c: Consultation) {
     if (!profile) return
+
+    // La ventana PRIMERO y de forma SÍNCRONA. Entre el clic y la sala hay ahora dos peticiones, y
+    // en cuanto media un `await` el navegador deja de ver un gesto del usuario y bloquea el
+    // pop-up. Mismo recurso que el botón de cámara del hilo: `about:blank` ya, y `location`
+    // cuando vuelve la respuesta. Sin `noreferrer` a propósito: con esa opción `window.open`
+    // devuelve `null` y no quedaría ventana que navegar; se desvincula a mano.
+    const ventana = window.open('about:blank', '_blank')
+    if (ventana) {
+      try {
+        ventana.opener = null
+      } catch {
+        // Si el navegador lo niega, la sala sigue siendo lo importante.
+      }
+    }
+    const cerrarVentana = () => {
+      if (ventana && !ventana.closed) ventana.close()
+    }
+
     const claimed = await claimCase(c)
-    if (!claimed) return
-    const room = claimed.video_room_url || c.video_room_url
-    if (room) window.open(browserRoomUrl(room), '_blank')
+    if (!claimed) {
+      // Otro médico lo tomó primero (409) o no es de su especialidad (403): no hay sala a la que
+      // llevar la ventana que acabamos de abrir.
+      cerrarVentana()
+      return
+    }
+
+    let room = claimed.video_room_url || c.video_room_url
+    try {
+      const { room_url } = await startVideoCall(c.id, { token: await getAccessToken() })
+      // La sala que devuelve es la misma (`ensure_video_room` es idempotente); se prefiere por si
+      // el claim no la traía.
+      room = room_url || room
+    } catch (e) {
+      // El caso YA es suyo: el claim ocurrió y no se deshace. Que no se haya podido dejar el
+      // aviso en el hilo no puede dejar al médico fuera de su propia sala, así que se entra igual
+      // y el paciente conserva el correo del claim como vía. Se registra para poder verlo.
+      console.error('No se pudo dejar el aviso de videollamada en el hilo:', e)
+    }
+
+    if (room) {
+      const destino = browserRoomUrl(room)
+      if (ventana && !ventana.closed) ventana.location.replace(destino)
+      // Si el bloqueador se comió la ventana vacía, último intento directo.
+      else window.open(destino, '_blank', 'noreferrer')
+    } else {
+      cerrarVentana()
+    }
     await router.push(`/panel-medico/consulta/${c.id}`)
   }
 

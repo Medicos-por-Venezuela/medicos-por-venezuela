@@ -60,9 +60,14 @@ test('el caso sale en la cola de entrada del especialista y solo un médico lo t
   await expect(page2.getByRole('button', confirmar)).toBeVisible()
 
   // doc1 confirma → gana el claim atómico → se abre la sala y navega a la consulta.
+  //
+  // La URL del popup no se asierta: la ventana se abre como `about:blank` dentro del clic y se la
+  // navega a la sala al volver la respuesta (si no, el navegador la bloquea como pop-up, y ahora
+  // hay dos peticiones por delante: el claim y el aviso del hilo). Lo que importa en ESTE spec es
+  // quién gana la carrera, y eso lo dicen el popup del ganador y su navegación al detalle.
   const popup = page1.waitForEvent('popup')
   await page1.getByRole('button', confirmar).click()
-  expect((await popup).url()).toContain('/vamed-')
+  await (await popup).close()
   await expect(page1).toHaveURL(new RegExp(`/panel-medico/consulta/${cid}`))
 
   // El otro confirma el MISMO caso → 409 → mensaje, sin sala, y sigue en el panel.
