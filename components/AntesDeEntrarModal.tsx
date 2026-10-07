@@ -1,11 +1,19 @@
-// Lo que hay que decir ANTES de abrir la sala de Jitsi, al paciente y al médico.
-//
-// Del lado del paciente lo abren DOS páginas: la sala de espera a la que cae al registrarse, y
-// `/mi-caso`, por donde vuelve el que cerró aquella pestaña. Del lado del médico, el panel (al
-// tomar un caso por video) y el detalle de la consulta (al volver a entrar). Es contenido
+// Lo que hay que decir ANTES de abrir la sala de Jitsi, al paciente y al médico. Es contenido
 // clínico-operativo —"espera a tu médico", "si no llega, escríbele por WhatsApp"— y con una copia
 // por página la siguiente corrección se aplicaría en una sola. Es además la regla del proyecto:
 // nada de diálogos inline copiados (ver CLAUDE.md).
+//
+// Quién lo monta HOY: el panel al tomar un caso de la cola (`para="medico"`) y el botón de cámara
+// del hilo (`para="medico-llamada"`). Los dos son del lado del médico.
+//
+// ⚠️ La variante del PACIENTE (`para="paciente"`, la de por defecto) se quedó SIN montar. La
+// abrían `/sala-espera` y `/mi-caso` desde su botón "Entrar a la videoconsulta", y ese botón se
+// retiró: tomar un caso no es estar en la sala, así que la entrada del paciente vive ahora en el
+// aviso del hilo (R16) — que abre la sala directamente, sin pasar por aquí. Con eso el paciente
+// dejó de leer las instrucciones de Jitsi que salieron de reportes reales (escribir el nombre
+// completo, "Continuar en el navegador"). No se borra la variante porque es justo lo que habría
+// que enganchar al botón del aviso; engancharla es una decisión aparte, no de este cambio.
+// `/sala-espera` sigue dando esos consejos en su propio bloque de la página; `/mi-caso`, no.
 //
 // Los dos avisos grandes y el marco (bandera, cabecera con el logo) son el diseño de
 // "Información importante". Debajo, solo para el paciente, siguen las instrucciones de Jitsi que
@@ -129,9 +137,14 @@ export default function AntesDeEntrarModal({
                     que ya estás en la sala.
                   </p>
                 ) : (
+                  // `para="medico"` lo monta solo el panel, al tomar un caso de la cola. Decía
+                  // únicamente "recibe un correo", y era quedarse corto: desde que ese claim deja
+                  // también el aviso en el hilo (ver `openConsultation`), al paciente le llega por
+                  // las dos vías. Se nombra primero la del chat porque es la inmediata y la que el
+                  // paciente ve si está delante de la pantalla.
                   <p>
-                    El paciente recibe un correo avisándole que ya estás en la sala, esperando para
-                    atenderlo.
+                    Al paciente le aparece el aviso <mark>en el chat de la consulta</mark>, con un
+                    botón para unirse, y además le llega un correo si dejó su dirección.
                   </p>
                 )}
               </div>

@@ -4,23 +4,25 @@ import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchMyConsultations, fetchMyProfile, MyConsultation } from '../lib/consultations'
-import { fetchMyPatients, markEnteredCall } from '../lib/patients'
+import { fetchMyPatients } from '../lib/patients'
 import { resolvePostLoginRoute } from '../lib/postLogin'
 import { STATUS_LABELS } from '../lib/utils'
 import { requestNotifyPermission, scheduleLocalReminders } from '../lib/nativeNotifications'
 import CalendarSync from '../components/CalendarSync'
-import AntesDeEntrarModal from '../components/AntesDeEntrarModal'
 import SalaEsperaEnVivo from '../components/SalaEsperaEnVivo'
 import { downloadIcs } from '../lib/calendar'
-import { browserRoomUrl } from '../lib/jitsi'
 import { trackPatientInRoom } from '../lib/patientPresence'
-import { useWaitingRoom, type WaitingRoomState } from '../lib/waitingRoom'
+import { useWaitingRoom } from '../lib/waitingRoom'
 import HiloMensajes from '../components/mensajes/HiloMensajes'
 
 // Casos en los que el paciente sigue la sala en vivo: en cola, en atención o CITA AGENDADA (el
-// médico la inicia al entrar a la videollamada y la sala pasa a `ready` sin recargar). El botón de
-// entrar lo decide la sala (`phase === 'ready'`), no que la consulta tenga `video_room_url` — la
-// tenían desde el registro y el paciente entraba a una videollamada vacía.
+// médico la inicia al entrar a la videollamada y la sala pasa a `ready` sin recargar).
+//
+// Esta pantalla NO da acceso a la videoconsulta. Tuvo un botón de entrada que aparecía con
+// `phase === 'ready'`, o sea en cuanto un médico TOMABA el caso, y tomar un caso no es estar en la
+// sala: el médico puede tomarlo para responder por escrito. El acceso vive en el aviso del hilo
+// (R16), que solo existe cuando el médico inicia la videoconsulta de verdad. Ver
+// `components/SalaEsperaEnVivo.tsx`.
 const CASO_ABIERTO = new Set(['waiting', 'in_progress', 'contacted_whatsapp', 'scheduled'])
 
 export default function MiCaso() {
@@ -31,12 +33,6 @@ export default function MiCaso() {
   const [consultations, setConsultations] = useState<MyConsultation[]>([])
   const [conSesion, setConSesion] = useState(false)
   const [token, setToken] = useState('')
-  // La sala que pidió abrir (mientras el modal de instrucciones está arriba).
-  const [salaPendiente, setSalaPendiente] = useState<WaitingRoomState | null>(null)
-  // La consulta cuya sala ya abrió. Mientras esta página siga abierta, se anuncia al médico que
-  // el paciente está en sala (mismo criterio que `/sala-espera`, que anuncia mientras ELLA está
-  // abierta y no mientras lo está la pestaña de Jitsi — que no hay forma de vigilar).
-  const [enSala, setEnSala] = useState('')
   // El hilo de mensajes que el paciente tiene abierto (ver `hiloVisible` más abajo).
   const [hiloAbierto, setHiloAbierto] = useState<string | null>(null)
 
@@ -45,41 +41,21 @@ export default function MiCaso() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Presencia en vivo por Realtime (sin BD ni polling): es lo que pinta el badge "● En sala" en
-  // el panel del médico. Sin esto, un paciente que entra desde aquí en vez de desde la sala de
-  // espera le aparecería al médico como "○ Sin conexión" estando dentro de la sala.
+  // El caso abierto que esta página sigue en vivo (normalmente hay uno solo).
+  const casoAbiertoVigente = consultations.find((c) => CASO_ABIERTO.has(c.status))?.id || ''
+
+  // Presencia en vivo por Realtime (sin BD ni polling): es lo que habilita el botón de cámara del
+  // médico, que está gateado por "el paciente no está conectado" para no llamar a una sala vacía.
+  //
+  // Antes la disparaba el botón de entrada de esta página: solo se anunciaba el paciente que YA
+  // había abierto la sala. Al retirar ese botón, nadie la disparaba, y un paciente que sigue su
+  // caso desde aquí le aparecía al médico como "Aún no ha entrado" para siempre — es decir, el
+  // médico no podía llamarlo desde el chat, que es justo la vía que ahora sustituye al botón. Se
+  // anuncia mientras ESTA página está abierta, el mismo criterio que `/sala-espera`.
   useEffect(() => {
-    if (!enSala) return
-    return trackPatientInRoom(enSala)
-  }, [enSala])
-
-  // Abre la sala. Va DENTRO del clic de "Entendido" del modal para que `window.open` siga siendo
-  // parte de un gesto del usuario; fuera de él, el navegador lo bloquea como pop-up.
-  function abrirSala() {
-    const consulta = salaPendiente
-    setSalaPendiente(null)
-    if (!consulta?.video_room_url) return
-    setEnSala(consulta.consultation_id)
-    // La ventana se abre PRIMERO y sin esperar a nada: en cuanto haya un `await` de por medio,
-    // el navegador deja de considerar esto un gesto del usuario y bloquea el pop-up.
-    window.open(browserRoomUrl(consulta.video_room_url), '_blank', 'noopener,noreferrer')
-    // Y después se registra que entró. Es lo que el médico ve en su panel ("entró a la
-    // videollamada"): la presencia por Realtime se cae en cuanto esta pestaña pasa a segundo
-    // plano, que es exactamente lo que ocurre al abrir la sala desde un móvil. Fire-and-forget:
-    // que no se registre no puede impedir que el paciente entre a su consulta.
-    marcarEntrada(consulta.consultation_id)
-  }
-
-  async function marcarEntrada(consultationId: string) {
-    try {
-      const { data } = await supabase.auth.getSession()
-      // Sin token de sala: aquí el paciente llega con su sesión, y el backend la acepta como
-      // credencial para SU propia consulta (require_consultation_token).
-      await markEnteredCall(consultationId, undefined, data.session?.access_token)
-    } catch (e) {
-      console.error('No se pudo registrar la entrada a la videollamada:', e)
-    }
-  }
+    if (!casoAbiertoVigente) return
+    return trackPatientInRoom(casoAbiertoVigente)
+  }, [casoAbiertoVigente])
 
   // Recordatorio nativo ~30 min antes de las citas agendadas del paciente (solo con la pestaña
   // abierta; el email del backend es el canal confiable). Re-programa al cambiar sus consultas.
@@ -184,8 +160,7 @@ export default function MiCaso() {
   // Qué hilo de mensajes está montado. `null` = el paciente no ha tocado nada todavía, así que se
   // abre el de su consulta vigente (la primera abierta, o la primera de la lista); `''` = lo cerró
   // a mano. Es un valor derivado a propósito: nada de `setState` en un effect.
-  const consultaVigente =
-    consultations.find((c) => CASO_ABIERTO.has(c.status))?.id || consultations[0]?.id || ''
+  const consultaVigente = casoAbiertoVigente || consultations[0]?.id || ''
   const hiloVisible = hiloAbierto === null ? consultaVigente : hiloAbierto
 
   return (
@@ -279,7 +254,6 @@ export default function MiCaso() {
                   {CASO_ABIERTO.has(c.status) && conSesion && (
                     <SalaDeLaConsulta
                       consultationId={c.id}
-                      onEnter={setSalaPendiente}
                       ocultarAgendada={c.status === 'scheduled'}
                     />
                   )}
@@ -331,12 +305,6 @@ export default function MiCaso() {
           </div>
         </div>
       </main>
-
-      <AntesDeEntrarModal
-        open={salaPendiente !== null}
-        onCancel={() => setSalaPendiente(null)}
-        onConfirm={abrirSala}
-      />
     </>
   )
 }
@@ -346,22 +314,15 @@ const CON_SESION = { useSession: true }
 
 function SalaDeLaConsulta({
   consultationId,
-  onEnter,
   ocultarAgendada
 }: {
   consultationId: string
-  onEnter: (state: WaitingRoomState) => void
   ocultarAgendada?: boolean
 }) {
   const { state, error } = useWaitingRoom(consultationId, CON_SESION)
   return (
     <div style={{ marginTop: 8 }}>
-      <SalaEsperaEnVivo
-        state={state}
-        error={error}
-        onEnter={() => state && onEnter(state)}
-        ocultarAgendada={ocultarAgendada}
-      />
+      <SalaEsperaEnVivo state={state} error={error} ocultarAgendada={ocultarAgendada} />
     </div>
   )
 }

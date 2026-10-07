@@ -1,13 +1,9 @@
 import Seo from '../components/Seo'
-import AntesDeEntrarModal from '../components/AntesDeEntrarModal'
 import SalaEsperaEnVivo from '../components/SalaEsperaEnVivo'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { useEffect, useState } from 'react'
-import { browserRoomUrl } from '../lib/jitsi'
-import { markEnteredCall } from '../lib/patients'
 import { trackPatientInRoom } from '../lib/patientPresence'
-import { supabase } from '../lib/supabase'
 import { useWaitingRoom, type WaitingRoomAccess } from '../lib/waitingRoom'
 import HiloMensajes from '../components/mensajes/HiloMensajes'
 
@@ -36,7 +32,6 @@ export default function SalaEspera() {
   const router = useRouter()
   const nombreUrl = typeof router.query.nombre === 'string' ? router.query.nombre : ''
   const cid = typeof router.query.cid === 'string' ? router.query.cid : ''
-  const [showWarning, setShowWarning] = useState(false)
   const [access, setAccess] = useState<WaitingRoomAccess | null>(null)
 
   // Credencial: el token del enlace (registro o correo) o, si no hay, la sesión del paciente con
@@ -65,26 +60,10 @@ export default function SalaEspera() {
     }
   }, [state?.access_token, state?.consultation_id, cid])
 
-  // Abre la sala desde el "Entendido" del aviso: `window.open` necesita el gesto del usuario.
-  const openRoom = () => {
-    setShowWarning(false)
-    if (!state?.video_room_url) return
-    // La ventana PRIMERO: tras un `await` el navegador ya no lo considera un gesto del usuario.
-    window.open(browserRoomUrl(state.video_room_url), '_blank', 'noopener,noreferrer')
-    // Después se registra que entró (el médico lo ve en su panel), sin bloquear nada.
-    marcarEntrada()
-  }
-
-  async function marcarEntrada() {
-    try {
-      const sessionToken = vigenteToken
-        ? undefined
-        : (await supabase.auth.getSession()).data.session?.access_token
-      await markEnteredCall(vigenteId, vigenteToken, sessionToken)
-    } catch (e) {
-      console.error('Error marcando entrada a la videollamada:', e)
-    }
-  }
+  // Esta página YA NO abre la sala de Jitsi. Lo hacía desde un botón que aparecía en cuanto un
+  // médico tomaba el caso, y tomar un caso no es estar en la sala (ver `SalaEsperaEnVivo`). La
+  // entrada —con su `markEnteredCall` y su `browserRoomUrl`— vive ahora en el aviso del hilo, que
+  // solo existe cuando el médico inicia la videoconsulta de verdad.
 
   // Mientras esta página está abierta, el paciente se anuncia "en sala" por Realtime Presence: el
   // médico lo ve en vivo. Con el caso VIGENTE, para que al especialista también le aparezca.
@@ -114,11 +93,7 @@ export default function SalaEspera() {
 
             {cid ? (
               <>
-                <SalaEsperaEnVivo
-                  state={state}
-                  error={error}
-                  onEnter={() => setShowWarning(true)}
-                />
+                <SalaEsperaEnVivo state={state} error={error} />
                 {/* Hilo de mensajes con el médico (U4 - Paciente por token) */}
                 <div style={{ marginTop: 20 }}>
                   <HiloMensajes
@@ -179,12 +154,6 @@ export default function SalaEspera() {
           </div>
         </div>
       </main>
-
-      <AntesDeEntrarModal
-        open={showWarning}
-        onCancel={() => setShowWarning(false)}
-        onConfirm={openRoom}
-      />
     </>
   )
 }
