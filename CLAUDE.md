@@ -79,6 +79,17 @@ promete cambios que el diff ya no contiene es un bug de documentación (lección
   specs existentes cubren flujos felices; un gating sin spec se rompe en silencio en el
   siguiente refactor.
 
+## Skills locales y módulo de mensajería (2026-09-29)
+
+Skills de trabajo en `.claude/skills/`: `nueva-funcionalidad` (spec → plan → todo → código →
+verificación → changeslog), `corregir-bug` (reproducir → E2E que falla → fix mínimo) y
+`mensajeria` (contexto del buzón médico ↔ paciente). El encargo de mensajería vive en
+`tasks/mensajeria-medico-paciente/` (UI) y, como spec canónica, en
+`../api-medicos-por-venezuela/tasks/mensajeria-medico-paciente/`; el contexto del cliente en
+`.knowledge/mensajeria.md`. Correcciones detectadas y aún no autorizadas:
+`tasks/backlog-correcciones.md` (incluye el drift de esta documentación: el stack real es
+Next 16 / React 19 / TypeScript 6 sobre AWS Amplify, y todo dato va por la API).
+
 ## SDD (Spec-Driven Development) setup
 
 This project is initialized for SDD-based work via the `sdd-init` skill:
