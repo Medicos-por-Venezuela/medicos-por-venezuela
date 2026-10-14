@@ -5,6 +5,35 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-10-14
+
+- **fix(panel): "Atender paciente" toma el caso y abre su ficha; ya no entra a la videollamada** —
+  es la otra mitad del arreglo del 7 de octubre. Allí se quitó el botón que mandaba al PACIENTE a
+  una sala que podía estar vacía; aquí quedaba el que mandaba al MÉDICO a esperar a alguien que no
+  estaba. En la cola de "otras especialidades" son casos de días o semanas (233 el día del
+  reporte): el paciente casi nunca sigue delante, y el médico acababa solo en Jitsi 15 minutos.
+  - **Fuera el `window.open` y el `AntesDeEntrarModal` del panel.** `openConsultation` pasa a
+    llamarse `takeCase` y hace lo que dice: claim y `router.push` a `/panel-medico/consulta/{id}`.
+    Desde la ficha el médico puede leer el caso y escribirle por el hilo, que es la vía que de
+    verdad le llega al paciente.
+  - **Fuera también el `startVideoCall` que se añadió el 7 de octubre**, y no es una marcha atrás:
+    aquel aviso dice "el médico inició la videoconsulta", y desde hoy tomar un caso ya no la
+    inicia. Mantenerlo sería volver a prometer una llamada que nadie ha empezado — el mismo bug,
+    una vuelta más. El aviso lo sigue creando el botón de cámara del hilo, cuando la llamada
+    ocurre de verdad.
+  - **Coherencia con CA16.2:** el botón del hilo está deshabilitado mientras el paciente no se haya
+    conectado ("llamar a quien no está delante abre una sala vacía"). Entrar desde la cola se
+    saltaba esa comprobación por la puerta de atrás; ahora el hilo es el único camino a la sala.
+  - **E2E:** `panel-atender-video` afirma ahora lo contrario de antes (ni diálogo, ni ventana, ni
+    `POST /video-call`); `sala-espera` y `mi-caso-videoconsulta` añaden el paso que faltaba —el
+    médico inicia la llamada desde el hilo— porque el aviso de entrada del paciente ya no lo deja
+    el claim; `presence`, `pool-modal` y `derivar-especialista` pierden el paso del modal;
+    `panel-race` se reescribe: sin modal que los detenga, los dos médicos pulsan a la vez
+    (`Promise.all`) y se afirma la propiedad que importa —gana exactamente uno—, no quién gana.
+  - **Pendiente de verificar:** la suite E2E necesita Docker + Supabase local + el backend, y no se
+    pudo ejecutar en este entorno. `tsc`, `eslint` y `prettier`, limpios.
+  - Archivos: `pages/panel-medico.tsx`, `e2e/{panel-atender-video,sala-espera,mi-caso-videoconsulta,presence,pool-modal,derivar-especialista,panel-race}.spec.ts`, `CLAUDE.md`.
+
 ## 2026-10-07
 
 - **fix(sala-espera): la sala de espera ya no invita a entrar a una sala que puede estar vacía, y

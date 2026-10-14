@@ -35,19 +35,13 @@ test('al tomar el caso el paciente puede escribir, pero no entrar; la entrada ll
   // La marca: la barra superior con el logo.
   await expect(paciente.getByRole('img', { name: 'Médicos por Venezuela' })).toBeVisible()
 
-  // Un médico toma el caso desde su panel. "Atender paciente" hace las dos cosas: el claim y el
-  // aviso en el hilo (ver `openConsultation`), que es lo que le da al paciente su entrada.
+  // Un médico toma el caso desde su panel. Desde 2026-10-14 "Atender paciente" SOLO hace el claim
+  // y lleva a la ficha: no entra a la sala ni anuncia una llamada que nadie ha empezado.
   const ctxMedico = await browser.newContext({ storageState: 'e2e/.auth/doc1.json' })
   const medico = await ctxMedico.newPage()
   await medico.goto('/panel-medico')
   const card = medico.locator('.card-flat').filter({ hasText: MARCADOR })
   await card.getByRole('button', { name: 'Atender paciente' }).click()
-  // El modal del médico dice ahora las DOS vías por las que se avisa al paciente.
-  const avisoMedico = medico.getByRole('dialog')
-  await expect(avisoMedico.getByText(/en el chat de la consulta/)).toBeVisible()
-  const popupMedico = medico.waitForEvent('popup')
-  await medico.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
-  await (await popupMedico).close()
   await expect(medico).toHaveURL(new RegExp(`/panel-medico/consulta/${cid}`))
 
   // Sin recargar: la sala del paciente cambia sola y dice que su caso está tomado…
@@ -61,8 +55,22 @@ test('al tomar el caso el paciente puede escribir, pero no entrar; la entrada ll
   // este spec existe para impedir — ni ahora ni cuando alguien "restaure" el botón.
   await expect(paciente.getByRole('button', { name: 'Entrar a la videoconsulta' })).toHaveCount(0)
 
-  // La entrada del paciente está donde sí refleja una llamada real: el aviso del hilo que acaba de
-  // dejar el claim. Abre la MISMA sala que abrió el médico y registra la entrada.
+  // Y mientras el médico no llame, el paciente TAMPOCO tiene aviso de llamada en el hilo: tomar
+  // el caso no es iniciarla.
+  await expect(paciente.locator('[data-testid="mensaje-sistema"][data-kind="call"]')).toHaveCount(0)
+
+  // Ahora sí: el médico inicia la videoconsulta desde el botón de cámara del hilo, que es el único
+  // camino a la sala y el que comprueba que el paciente esté delante (CA16.2). Lo está —tiene la
+  // sala de espera abierta—, así que el botón se habilita.
+  const camaraMedico = medico.locator('[data-testid="btn-iniciar-videollamada"]')
+  await expect(camaraMedico).toBeEnabled({ timeout: 20_000 })
+  const popupMedico = medico.waitForEvent('popup')
+  await camaraMedico.click()
+  await medico.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
+  await (await popupMedico).close()
+
+  // La entrada del paciente aparece donde sí refleja una llamada real: el aviso del hilo que acaba
+  // de dejar esa llamada. Abre la MISMA sala que abrió el médico y registra la entrada.
   const avisoLlamada = paciente.locator('[data-testid="mensaje-sistema"][data-kind="call"]').last()
   await expect(avisoLlamada).toBeVisible({ timeout: 20_000 })
   const entrar = avisoLlamada.locator('[data-testid="btn-entrar-videoconsulta"]')

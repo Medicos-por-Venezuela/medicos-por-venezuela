@@ -1,7 +1,7 @@
 // La cola del panel: un caso de Medicina general aparece en vivo al médico general y, en su cola
 // de ENTRADA (aparte de la suya), al especialista; si dos lo intentan tomar a la vez solo uno gana
 // (claim atómico).
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { crearConsultaEnEspera } from './helpers'
 
 const MARCADOR = 'E2E Paciente Carrera'
@@ -51,29 +51,40 @@ test('el caso sale en la cola de entrada del especialista y solo un médico lo t
     .click()
   await expect(cardIn(cardiologo)).toHaveCount(0)
 
-  // Ambos abren el aviso ANTES de que ninguno confirme: así la carrera es determinista (si doc1
-  // confirmara primero, Realtime le quitaría la card al otro y no podría intentar tomarla).
-  const confirmar = { name: 'Entendido, continuar a la videollamada' }
-  await cardIn(page1).getByRole('button', { name: 'Atender paciente' }).click()
-  await cardIn(page2).getByRole('button', { name: 'Atender paciente' }).click()
-  await expect(page1.getByRole('button', confirmar)).toBeVisible()
-  await expect(page2.getByRole('button', confirmar)).toBeVisible()
-
-  // doc1 confirma → gana el claim atómico → se abre la sala y navega a la consulta.
+  // Los dos pulsan a la vez. Antes el spec los dejaba parados en el aviso de "antes de entrar" y
+  // los hacía confirmar en orden, para que el ganador fuese siempre doc1; desde que ese aviso ya
+  // no existe (2026-10-14: tomar un caso lleva a la ficha, no a la sala) el clic ES el claim, así
+  // que la carrera se corre de verdad: los dos salen a la vez y gana quien gane.
   //
-  // La URL del popup no se asierta: la ventana se abre como `about:blank` dentro del clic y se la
-  // navega a la sala al volver la respuesta (si no, el navegador la bloquea como pop-up, y ahora
-  // hay dos peticiones por delante: el claim y el aviso del hilo). Lo que importa en ESTE spec es
-  // quién gana la carrera, y eso lo dicen el popup del ganador y su navegación al detalle.
-  const popup = page1.waitForEvent('popup')
-  await page1.getByRole('button', confirmar).click()
-  await (await popup).close()
-  await expect(page1).toHaveURL(new RegExp(`/panel-medico/consulta/${cid}`))
+  // Lo que se afirma no es QUIÉN gana —eso es cosa del azar y de la red—, sino la propiedad que
+  // este spec existe para proteger: que gane EXACTAMENTE UNO. El claim es un UPDATE condicional en
+  // la base, así que el perdedor recibe 409 sí o sí.
+  await Promise.all([
+    cardIn(page1).getByRole('button', { name: 'Atender paciente' }).click(),
+    cardIn(page2).getByRole('button', { name: 'Atender paciente' }).click()
+  ])
 
-  // El otro confirma el MISMO caso → 409 → mensaje, sin sala, y sigue en el panel.
-  await page2.getByRole('button', confirmar).click()
-  await expect(page2.getByText(/ya fue tomado por otro médico/i)).toBeVisible()
-  await expect(page2).toHaveURL(/\/panel-medico$/)
+  const enDetalle = new RegExp(`/panel-medico/consulta/${cid}`)
+  const yaTomado = /ya fue tomado por otro médico/i
+
+  // Un intento está resuelto cuando la página navegó a la ficha (ganó) o muestra el aviso del 409
+  // (perdió). Se espera a que los DOS lo estén antes de contar, o se contaría una carrera a medias.
+  const resuelta = async (p: Page) =>
+    enDetalle.test(p.url()) || (await p.getByText(yaTomado).count()) > 0
+
+  await Promise.all([
+    expect.poll(() => resuelta(page1), { timeout: 15_000 }).toBe(true),
+    expect.poll(() => resuelta(page2), { timeout: 15_000 }).toBe(true)
+  ])
+
+  const ganadores = [page1, page2].filter((p) => enDetalle.test(p.url()))
+  expect(ganadores).toHaveLength(1)
+
+  // El perdedor se queda en el panel, con el mensaje y sin sala.
+  const perdedor = [page1, page2].find((p) => !enDetalle.test(p.url()))
+  expect(perdedor).toBeDefined()
+  await expect(perdedor!.getByText(yaTomado)).toBeVisible()
+  await expect(perdedor!).toHaveURL(/\/panel-medico$/)
 
   await ctx1.close()
   await ctx2.close()
