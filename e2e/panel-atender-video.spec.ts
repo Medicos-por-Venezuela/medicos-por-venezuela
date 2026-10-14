@@ -1,6 +1,6 @@
-// "Atender paciente" con un caso SIN sala: el mismo claim del backend crea la sala, el panel la
-// abre en una pestaña nueva. La atención es siempre por video: el botón de WhatsApp ya no existe.
-// Reproduce el reporte "no me abre el link y desaparece el botón de unirse".
+// "Atender paciente" con un caso SIN sala: el claim del backend crea la sala, pero el panel YA NO
+// entra en ella — lleva a la ficha del caso. La llamada se inicia después, desde el botón de
+// cámara del hilo, que es el único que comprueba si el paciente está delante.
 //
 // La segunda mitad cambió en CA16.2b: el detalle ya no tiene el CTA "Unirse a videoconsulta" de la
 // cabecera, así que volver a entrar se hace desde el botón de cámara del hilo. Se prueba ese
@@ -51,40 +51,31 @@ test('atender paciente crea la sala en el claim y se reentra desde el botón del
   await expect(card.getByRole('button', { name: /WhatsApp/i })).toHaveCount(0)
   await expect(card.getByRole('button', { name: 'Derivar a especialista' })).toBeVisible()
 
-  // Antes de tomar el caso sale el aviso para el médico. Cerrarlo NO puede tomar el caso: el
-  // claim es lo que saca al paciente de la cola, y un clic de más dejaría a alguien asignado a
-  // un médico que decidió no atenderlo.
-  const atender = card.getByRole('button', { name: 'Atender paciente' })
-  await atender.click()
-  const aviso = page.getByRole('dialog')
-  await expect(aviso.getByRole('heading', { name: 'Información importante' })).toBeVisible()
-  await expect(aviso.getByText(/espera de 15 a 20 minutos/)).toBeVisible()
-  await expect(aviso.getByText(/contactarlo por WhatsApp/)).toBeVisible()
-  await aviso.getByRole('button', { name: 'Cerrar' }).click()
-  await expect(aviso).toHaveCount(0)
-  await expect(page).toHaveURL(/\/panel-medico$/)
-  await expect(card).toBeVisible()
-
-  // Confirmar el aviso hace DOS cosas, y la segunda es nueva: el claim (crea la sala) y
-  // `POST /video-call`, que deja el aviso en el hilo para que el PACIENTE tenga su botón de
-  // entrada. Es la pieza que sustituye al botón que la sala de espera dejó de tener: esta es la
-  // única forma de tomar un caso de la cola, así que sin ella el paciente se quedaba con el correo
-  // como única vía y el médico esperando en una sala vacía.
+  // "Atender paciente" TOMA el caso y abre su ficha. No hay aviso previo, no se abre ninguna
+  // ventana y no se pide la videollamada: desde 2026-10-14 tomar un caso ya no es entrar a la
+  // sala. Es la otra mitad del arreglo de la sala de espera — allí se quitó el botón que mandaba
+  // al paciente a una sala vacía; aquí, el que mandaba al médico a esperar a quien no está.
   let avisosEnHilo = 0
   page.on('request', (req) => {
     if (req.method() === 'POST' && req.url().includes('/video-call')) avisosEnHilo += 1
   })
+  let ventanasAbiertas = 0
+  page.on('popup', () => {
+    ventanasAbiertas += 1
+  })
 
+  const atender = card.getByRole('button', { name: 'Atender paciente' })
   await atender.click()
-  const popupPromise = page.waitForEvent('popup')
-  await aviso.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
-  const popup = await popupPromise
-  // La URL del popup no se asierta aquí: ahora se abre como `about:blank` dentro del clic y se la
-  // navega a la sala al volver la respuesta (lo que evita que el navegador la bloquee), así que
-  // justo después del evento todavía es `about:blank`. El destino —pasado por `browserRoomUrl`—
-  // lo cubre `mensajes-videollamada.spec.ts` con su espía de `window.open`.
-  await popup.close()
-  await expect.poll(() => avisosEnHilo, { timeout: 15_000 }).toBe(1)
+
+  // Va directo a la ficha, sin pasar por ningún diálogo.
+  await expect(page).toHaveURL(new RegExp(`/panel-medico/consulta/${cid}`))
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  // Y no anunció una llamada que nadie ha iniciado. Se comprueba DESPUÉS de que la ficha cargó:
+  // asertar un contador a cero nada más pulsar pasaría aunque la petición saliera un instante
+  // después.
+  expect(avisosEnHilo).toBe(0)
+  expect(ventanasAbiertas).toBe(0)
 
   // El detalle ya NO tiene el CTA de la cabecera: salió en CA16.2b por duplicar el camino.
   await expect(page).toHaveURL(new RegExp(`/panel-medico/consulta/${cid}`))

@@ -67,9 +67,7 @@ test('desde el detalle: motivo y firma, sin fecha, y el especialista ve por qué
     .filter({ hasText: marcador })
     .getByRole('button', { name: 'Atender paciente' })
     .click()
-  const popup = general.waitForEvent('popup')
-  await general.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
-  await (await popup).close()
+  // Sin aviso previo ni ventana: tomar el caso lleva a su ficha (2026-10-14).
   await expect(general).toHaveURL(/\/panel-medico\/consulta\//)
 
   // "Agendar con especialista" pasó a llamarse "Derivar con especialista".
@@ -108,9 +106,6 @@ test('desde el detalle: motivo y firma, sin fecha, y el especialista ve por qué
   const suya = cardio.locator('.card-flat').filter({ hasText: marcador })
   await expect(suya.getByText('Derivado desde Medicina general')).toBeVisible()
   await suya.getByRole('button', { name: 'Atender paciente' }).click()
-  const popupCardio = cardio.waitForEvent('popup')
-  await cardio.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
-  await (await popupCardio).close()
   await expect(cardio).toHaveURL(/\/panel-medico\/consulta\//)
   // El bloque de derivación de arriba: quién derivó y por qué. (El motivo sale también en el
   // historial de eventos, de ahí el `.first()`.)

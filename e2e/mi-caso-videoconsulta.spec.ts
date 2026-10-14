@@ -56,16 +56,14 @@ test('desde /mi-caso: nunca ofrece entrar; la entrada llega por el hilo y el mé
   await expect(page.getByText('Estás en la sala de espera')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Entrar a la videoconsulta' })).toHaveCount(0)
 
-  // Un médico toma el caso. "Atender paciente" hace el claim Y deja el aviso en el hilo (ver
-  // `openConsultation` del panel): es lo que le da al paciente su entrada.
+  // Un médico toma el caso. Desde 2026-10-14 "Atender paciente" SOLO hace el claim y lleva a la
+  // ficha: no entra a la sala ni deja aviso de llamada.
   const ctxMedico = await browser.newContext({ storageState: 'e2e/.auth/doc1.json' })
   const panel = await ctxMedico.newPage()
   await panel.goto('/panel-medico')
   const card = panel.locator('.card-flat').filter({ hasText: MOTIVO })
   await card.getByRole('button', { name: 'Atender paciente' }).click()
-  const popupMedico = panel.waitForEvent('popup')
-  await panel.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
-  await (await popupMedico).close()
+  await expect(panel).toHaveURL(/\/panel-medico\/consulta\//)
 
   // /mi-caso se entera sola de que el caso está tomado…
   await expect(page.getByText(/tomó tu caso/)).toBeVisible({ timeout: 20_000 })
@@ -73,7 +71,21 @@ test('desde /mi-caso: nunca ofrece entrar; la entrada llega por el hilo y el mé
   // es una puerta a la sala, porque tomar un caso no es estar dentro.
   await expect(page.getByRole('button', { name: 'Entrar a la videoconsulta' })).toHaveCount(0)
 
-  // La entrada vive en el aviso del hilo. En /mi-caso el hilo de la consulta vigente viene abierto.
+  // Y todavía no hay aviso de llamada: el médico tomó el caso, no lo llamó.
+  await expect(page.locator('[data-testid="mensaje-sistema"][data-kind="call"]')).toHaveCount(0)
+
+  // El médico inicia la videoconsulta desde el botón de cámara del hilo —el único camino a la
+  // sala, y el que comprueba que el paciente esté delante (CA16.2). Lo está: tiene /mi-caso
+  // abierto.
+  const camaraMedico = panel.locator('[data-testid="btn-iniciar-videollamada"]')
+  await expect(camaraMedico).toBeEnabled({ timeout: 20_000 })
+  const popupMedico = panel.waitForEvent('popup')
+  await camaraMedico.click()
+  await panel.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
+  await (await popupMedico).close()
+
+  // Ahora sí, la entrada vive en el aviso del hilo. En /mi-caso el hilo de la consulta vigente
+  // viene abierto.
   const avisoLlamada = page.locator('[data-testid="mensaje-sistema"][data-kind="call"]').last()
   await expect(avisoLlamada).toBeVisible({ timeout: 20_000 })
   const entrar = avisoLlamada.locator('[data-testid="btn-entrar-videoconsulta"]')
