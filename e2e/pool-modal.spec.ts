@@ -38,9 +38,7 @@ test('pool de médicos: tabs, buscador y ojo de WhatsApp (auditado)', async ({ b
   const card = page.locator('.card-flat').filter({ hasText: 'E2E Paciente Pool' }).first()
   await expect(card).toBeVisible()
   await card.getByRole('button', { name: 'Atender paciente' }).click()
-  const popup = page.waitForEvent('popup')
-  await page.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
-  await (await popup).close()
+  // Sin aviso previo ni ventana: tomar el caso lleva a su ficha (2026-10-14).
   await expect(page).toHaveURL(/\/panel-medico\/consulta\//)
 
   // Abre el pool: el botón dice para qué sirve (pedir una interconsulta).

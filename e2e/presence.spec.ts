@@ -49,9 +49,7 @@ test('el médico sigue online tras pasar del panel a la consulta (Realtime Prese
     .first()
     .getByRole('button', { name: 'Atender paciente' })
     .click()
-  const popup = doctorPage.waitForEvent('popup')
-  await doctorPage.getByRole('button', { name: 'Entendido, continuar a la videollamada' }).click()
-  await (await popup).close()
+  // Sin aviso previo ni ventana: tomar el caso lleva a su ficha (2026-10-14).
   await expect(doctorPage).toHaveURL(/\/panel-medico\/consulta\//)
 
   // El admin lo ve ONLINE aunque el médico esté en la consulta, no en el panel (antes se caía).

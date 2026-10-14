@@ -266,8 +266,9 @@ The Next.js app lives at the **repo root** (so Vercel builds with default settin
   before the list — the panel just renders `queues[]` from the API. With a single queue (a general
   practitioner, Psicología, an admin who doesn't practise) there are no cards. An admin who _does_
   practise gets their own queues plus a last `is_rest` card ("otras especialidades") holding
-  everything else they can see, computed by elimination. Cards offer "Atender paciente" (always
-  video) and "Derivar a especialista". Doctors with "Otra" or no specialty get a notice pointing
+  everything else they can see, computed by elimination. Cards offer "Atender paciente" (claims the
+  case and opens its detail page — it does **not** enter the video room) and "Derivar a
+  especialista". Doctors with "Otra" or no specialty get a notice pointing
   to their profile
 - `/panel-medico/consulta/[id]` — case detail page (patient details, video, note, close/no-show, chat block with attachments)
 - `/panel-medico/mensajes` — doctor unified inbox (active message threads with patient presence indicators, unread counters, and filtering)
@@ -419,16 +420,24 @@ Psicología, Medicina interna → Medicina general) and the triage queue (`is_ge
 Medicina general) for anyone who treats physical health;
 admins see everything unless their specialty is mental-health-only; "Otra"/no specialty sees nothing.
 Doctors take a case with **"Atender paciente"** on its card in
-[panel-medico.tsx](pages/panel-medico.tsx) and can **derive** it to another specialty from the
+[panel-medico.tsx](pages/panel-medico.tsx) — which claims it and opens its detail page, without
+entering the room — and can **derive** it to another specialty from the
 queue (same case, keeps its place) or, once attended, from the detail page with reason + signature
 (a child consultation enters the target queue, no appointment date).
+
+**Taking a case is not entering the room (2026-10-14).** "Atender paciente" in the queue only
+claims the case and opens its detail page; it no longer opens Jitsi and no longer posts the
+"el médico inició la videoconsulta" notice. These queues hold cases days or weeks old whose patient
+is almost never still there, so entering the room from the queue meant the doctor waiting alone in
+it. The call is started afterwards from the **thread's camera button**, the single path into a room
+and the one that enforces CA16.2: it stays disabled until the patient is actually connected. The
+patient still learns the case was taken from the claim email, and can write in the thread.
 
 Every entry to a room goes through [AntesDeEntrarModal](components/AntesDeEntrarModal.tsx) first,
 the "Información importante" notice: wait 15–20 minutes, the patient gets the "tu médico te está
 esperando" email, and (doctor side) contact the patient by WhatsApp if they don't show. Patients see
-it from `/sala-espera` and `/mi-caso`, with the Jitsi tips below. Doctors see it from the panel,
-where the case is claimed only on confirm (closing the notice leaves it in the queue), and from
-the detail page's "Unirse a videoconsulta". The room is opened from the confirm click, which is
+it from `/sala-espera` and `/mi-caso`, with the Jitsi tips below. Doctors see it from the thread's
+camera button (variant `medico-llamada`). The room is opened from the confirm click, which is
 the user gesture that keeps `window.open` from being blocked as a pop-up.
 
 Admins/super_admins can also use `/panel-medico`: they keep a link back to `/admin/dashboard` and, in

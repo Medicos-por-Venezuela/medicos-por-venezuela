@@ -1,3 +1,10 @@
+# La app vive en la raíz del repositorio. Declararlo es obligatorio desde pnpm 10: sin este campo
+# `pnpm exec` aborta con "packages field missing or empty", y con él se caían los hooks de husky
+# (`pre-commit` y `commit-msg` empiezan los dos por `pnpm exec`). El archivo existía solo por los
+# overrides de abajo.
+packages:
+  - '.'
+
 # pnpm 10 lee las overrides SOLO desde aquí (ni el `overrides` de raíz de package.json ni el
 # campo `pnpm`). Fuerzan las versiones parcheadas de dos transitivas de `next`.
 overrides:
