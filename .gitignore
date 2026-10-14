@@ -40,6 +40,8 @@ Thumbs.db
 # en marcha). ESLint ya lo ignoraba; sin esta línea, seguir esa instrucción deja el build entero
 # listo para commitear.
 /.next-build/
+# Y el de `NEXT_DIST_DIR=.next-local`, que usan algunos flujos locales.
+/.next-local/
 
 # Material de origen del rediseño del home (agosto 2026): el prototipo de The Climb (10 MB), el
 # .docx del copy, la foto sin tocar (5 MB) y las fuentes en TTF. Es referencia para trabajar, no
