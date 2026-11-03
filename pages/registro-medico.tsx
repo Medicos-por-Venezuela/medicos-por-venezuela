@@ -112,6 +112,9 @@ export default function RegistroMedico() {
   const [verificando, setVerificando] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // Errores del envío del formulario (submit y alta), aparte de los de los catálogos y de la
+  // verificación de cédula: cada fuente borra solo el suyo.
+  const [errorEnvio, setErrorEnvio] = useState('')
   // Buscador rápido del correo: al salir del campo se pregunta al backend si ya está registrado.
   // `correoBuscado` es el correo al que corresponde `estadoCorreo`: si el usuario lo edita mientras
   // la respuesta viaja, esa respuesta ya no dice nada del correo que hay en el campo.
@@ -122,10 +125,12 @@ export default function RegistroMedico() {
   // Email verification modals.
   const [showConfirmEmail, setShowConfirmEmail] = useState(false)
   const [showVerifyCode, setShowVerifyCode] = useState(false)
-  const [verificationToken, setVerificationToken] = useState<string | null>(null)
   const [verifyingEmail, setVerifyingEmail] = useState('')
   const [verifyingPurpose, setVerifyingPurpose] = useState<VerificationPurpose>('doctor')
-  const [sesionAbierta, setSesionAbierta] = useState(false)
+  // Si el alta en curso es la de una cuenta que ya existía (registro a medias) y no una nueva. Pasa
+  // a true también cuando el signUp de ESTE intento ya creó la cuenta y la ficha falló (p. ej. un
+  // 403): el reintento con el código nuevo entra con la contraseña en vez de volver a crearla.
+  const altaDeCuentaExistente = useRef(false)
 
   useMountEffect(() => {
     fetchProfessionalTypes()
@@ -251,7 +256,7 @@ export default function RegistroMedico() {
   const camposBloqueados = verificado === true
 
   const submit = async () => {
-    setError('')
+    setErrorEnvio('')
 
     const result = registroMedicoSchema.safeParse({
       tipoProfesional,
@@ -266,18 +271,13 @@ export default function RegistroMedico() {
       terminos
     })
     if (!result.success) {
-      setError(result.error.issues[0]?.message || 'Revisa los campos del formulario.')
+      setErrorEnvio(result.error.issues[0]?.message || 'Revisa los campos del formulario.')
       return
     }
     if (!tipoProfesionalId) {
-      setError('Selecciona el tipo de profesional.')
+      setErrorEnvio('Selecciona el tipo de profesional.')
       return
     }
-
-    // Marca si ya hay una sesión abierta (cuenta recién creada, o la de un registro a medias en la
-    // que se acaba de entrar) antes de llamar a createDoctor(), para poder distinguir en el catch si
-    // hay que cerrarla (ver mitigación de cuentas huérfanas más abajo).
-    let sesionAbierta = false
 
     // Chequeo ANTES de tocar Supabase Auth. Sin él, un correo o una cédula ya registrados creaban
     // la cuenta y luego fallaban al guardar la ficha: la cuenta quedaba huérfana. Así nacieron en
@@ -296,7 +296,7 @@ export default function RegistroMedico() {
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 429) {
-        setError('Demasiados intentos. Intenta de nuevo más tarde.')
+        setErrorEnvio('Demasiados intentos. Intenta de nuevo más tarde.')
         return
       }
       // Chequeo caído: se sigue como antes. El backend vuelve a comprobar correo y cédula antes de
@@ -304,13 +304,9 @@ export default function RegistroMedico() {
       console.error(e)
     }
 
-    // Si es un registro incompleto (cuenta ya existe), saltamos la verificación de correo.
-    if (estadoCorreo === 'incomplete') {
-      await completarRegistroIncompleto()
-      return
-    }
-
-    // Para nuevos registros: mostrar modal de confirmación de correo.
+    // También el registro a medias (la cuenta ya existe) pasa por el código: el backend exige un
+    // pase de verificación para ese correo en el alta de la ficha, venga la cuenta de donde venga.
+    altaDeCuentaExistente.current = estadoCorreo === 'incomplete'
     setVerifyingEmail(correo.trim().toLowerCase())
     setVerifyingPurpose('doctor')
     setShowConfirmEmail(true)
@@ -326,21 +322,60 @@ export default function RegistroMedico() {
   }
 
   const handleVerifyCodeSuccess = async (token: string) => {
-    setVerificationToken(token)
     setShowVerifyCode(false)
-    await completarRegistroNuevo()
+    setErrorEnvio('') // el aviso del 403 ya cumplió: con el código nuevo se reintenta el alta
+    // Se pasa el token como argumento: el estado de arriba sigue viejo dentro de esta closure.
+    if (altaDeCuentaExistente.current) await completarRegistroIncompleto(token)
+    else await completarRegistroNuevo(token)
   }
 
   const handleVerifyCodeClose = () => {
     setShowVerifyCode(false)
-    setVerificationToken(null)
   }
 
-  const completarRegistroIncompleto = async () => {
+  // Fallo al guardar la ficha. Con sesión abierta se cierra (no se deja a nadie dentro con una
+  // cuenta sin ficha) y se explica qué pasó; la cuenta ya existe, así que reintentar con el mismo
+  // correo y contraseña la completa.
+  const manejarFalloAlta = async (e: unknown, sesionAbierta: boolean) => {
+    console.error(e)
+    if (sesionAbierta) await supabase.auth.signOut()
+    const status = e instanceof ApiError ? e.status : null
+    if (status === 403) {
+      // Pase de verificación caducado o inválido: se pide otro código sin tocar lo escrito.
+      setShowVerifyCode(true)
+      setErrorEnvio('La verificación de tu correo caducó o no es válida. Ingresa un código nuevo.')
+    } else if (status === 422) {
+      setErrorEnvio(
+        (e as ApiError).message || 'Revisa la cédula y el teléfono: tienen un formato inválido.'
+      )
+    } else if (status === 429) {
+      setErrorEnvio('Demasiados intentos. Intenta de nuevo más tarde.')
+    } else {
+      setErrorEnvio(
+        'Tu cuenta quedó creada, pero no pudimos guardar tus datos de registro. Puedes volver a intentarlo con el mismo correo y contraseña, o contactarnos desde la sección "Contacto" de la página principal.'
+      )
+    }
+  }
+
+  const datosDeAlta = (accountEmail: string, token: string | null) => ({
+    professional_type_id: tipoProfesionalId,
+    specialty_id: resolverSpecialtyId(),
+    cedula: `${cedulaPrefijo}-${cedulaNumero}`,
+    full_name: nombreCompleto,
+    license: licencia || null,
+    phone: `${PAISES.find((p) => p.iso === whatsappPais)?.dial ?? '+58'}${whatsappNumero}`,
+    email: accountEmail,
+    country_of_residence: paisReside || null,
+    website,
+    email_verification_token: token
+  })
+
+  const completarRegistroIncompleto = async (token: string) => {
     setLoading(true)
+    // Variable local: el estado de React sería el valor viejo de esta closure.
+    let sesionAbierta = false
     try {
       const accountEmail = correo.trim().toLowerCase()
-      const cedula = `${cedulaPrefijo}-${cedulaNumero}`
 
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: accountEmail,
@@ -350,50 +385,23 @@ export default function RegistroMedico() {
         setYaRegistrado('clave')
         return
       }
-      setSesionAbierta(true)
+      sesionAbierta = true
 
-      await createDoctor({
-        professional_type_id: tipoProfesionalId,
-        specialty_id: resolverSpecialtyId(),
-        cedula,
-        full_name: nombreCompleto,
-        license: licencia || null,
-        phone: `${PAISES.find((p) => p.iso === whatsappPais)?.dial ?? '+58'}${whatsappNumero}`,
-        email: accountEmail,
-        country_of_residence: paisReside || null,
-        website
-      })
+      await createDoctor(datosDeAlta(accountEmail, token))
       trackAltaDeMedico()
       await router.push('/panel-medico')
     } catch (e) {
-      if (sesionAbierta) {
-        await supabase.auth.signOut()
-        console.error(e)
-        setError(
-          'No pudimos guardar tus datos de registro. Inténtalo de nuevo en unos minutos con el mismo correo y contraseña, o contáctanos desde la sección "Contacto" de la página principal.'
-        )
-      } else if (e instanceof ApiError && e.status === 422) {
-        setError(e.message || 'Cédula o teléfono con formato inválido.')
-      } else if (e instanceof ApiError && e.status === 429) {
-        setError('Demasiados intentos. Intenta de nuevo más tarde.')
-      } else if (e instanceof ApiError) {
-        setError('No se pudo completar el registro. Intenta de nuevo.')
-      } else {
-        console.error(e)
-        setError(
-          'No se pudo crear la cuenta. Puede que el correo ya esté registrado, o haya un error de conexión.'
-        )
-      }
+      await manejarFalloAlta(e, sesionAbierta)
     } finally {
       setLoading(false)
     }
   }
 
-  const completarRegistroNuevo = async () => {
+  const completarRegistroNuevo = async (token: string) => {
     setLoading(true)
+    let sesionAbierta = false
     try {
       const accountEmail = correo.trim().toLowerCase()
-      const cedula = `${cedulaPrefijo}-${cedulaNumero}`
 
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: accountEmail,
@@ -411,51 +419,20 @@ export default function RegistroMedico() {
         throw signUpError
       }
       if (!signUpData.session) {
-        setError(
+        setErrorEnvio(
           'Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión en el panel médico.'
         )
         return
       }
-      setSesionAbierta(true)
+      sesionAbierta = true
+      // La cuenta ya existe: si la ficha falla y hay que reintentar, no se vuelve a hacer signUp.
+      altaDeCuentaExistente.current = true
 
-      await createDoctor({
-        professional_type_id: tipoProfesionalId,
-        specialty_id: resolverSpecialtyId(),
-        cedula,
-        full_name: nombreCompleto,
-        license: licencia || null,
-        phone: `${PAISES.find((p) => p.iso === whatsappPais)?.dial ?? '+58'}${whatsappNumero}`,
-        email: accountEmail,
-        country_of_residence: paisReside || null,
-        website,
-        email_verification_token: verificationToken
-      })
+      await createDoctor(datosDeAlta(accountEmail, token))
       trackAltaDeMedico()
       await router.push('/panel-medico')
     } catch (e) {
-      if (sesionAbierta) {
-        await supabase.auth.signOut()
-        console.error(e)
-        setError(
-          'No pudimos guardar tus datos de registro. Inténtalo de nuevo en unos minutos con el mismo correo y contraseña, o contáctanos desde la sección "Contacto" de la página principal.'
-        )
-      } else if (e instanceof ApiError && e.status === 403) {
-        // Token de verificación inválido/expirado: reabrir modal de código
-        setVerificationToken(null)
-        setShowVerifyCode(true)
-        setError(e.message || 'El código de verificación expiró o no es válido. Ingresa uno nuevo.')
-      } else if (e instanceof ApiError && e.status === 422) {
-        setError(e.message || 'Cédula o teléfono con formato inválido.')
-      } else if (e instanceof ApiError && e.status === 429) {
-        setError('Demasiados intentos. Intenta de nuevo más tarde.')
-      } else if (e instanceof ApiError) {
-        setError('No se pudo completar el registro. Intenta de nuevo.')
-      } else {
-        console.error(e)
-        setError(
-          'No se pudo crear la cuenta. Puede que el correo ya esté registrado, o haya un error de conexión.'
-        )
-      }
+      await manejarFalloAlta(e, sesionAbierta)
     } finally {
       setLoading(false)
     }
@@ -657,6 +634,7 @@ export default function RegistroMedico() {
 
               <AceptaTerminos checked={terminos} onChange={setTerminos} />
               {error && <div className="notice notice-danger">{error}</div>}
+              {errorEnvio && <div className="notice notice-danger">{errorEnvio}</div>}
               <button className="btn btn-primary btn-full" onClick={submit} disabled={loading}>
                 {loading ? 'Registrando...' : 'Registrarse'}
               </button>

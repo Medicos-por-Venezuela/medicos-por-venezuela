@@ -352,10 +352,12 @@ export default function RegistroPaciente() {
     // la sesión (ver mitigación de cuentas huérfanas más abajo). No aplica al flujo authedPatient:
     // ahí la cuenta ya existía antes de este submit, no se crea nada nuevo.
     let cuentaCreada = false
+    // Correo del alta (el de la sesión o el del formulario). Fuera del try para que el catch sepa a
+    // qué correo pedirle el código si el backend responde 403.
+    let contactEmail = ''
     setLoading(true)
     try {
       let userId: string | null = null
-      let contactEmail = ''
 
       if (authedPatient) {
         const { data: sessionData } = await supabase.auth.getSession()
@@ -370,15 +372,37 @@ export default function RegistroPaciente() {
           password: accountPassword,
           options: { data: { full_name: accountName, role: 'patient' } }
         })
-        if (signUpError) throw signUpError
+        const yaExiste =
+          signUpError?.code === 'user_already_exists' ||
+          /already registered/i.test(signUpError?.message ?? '')
+        if (signUpError && !yaExiste) throw signUpError
         contactEmail = accountEmail
-        if (!signUpData.session) {
+        let session = signUpData?.session ?? null
+        let user = signUpData?.user ?? null
+        if (yaExiste) {
+          // Reintento de un alta que falló después de crear la cuenta: la cuenta ya existe (y el
+          // correo se acaba de verificar con el código). Se entra con la misma contraseña en vez
+          // de dejar a la persona atrapada sin poder volver a registrarse.
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email: accountEmail,
+            password: accountPassword
+          })
+          if (signInError || !signInData.session) {
+            setError(
+              'Ese correo ya tiene una cuenta y la contraseña no coincide. Usa la contraseña con la que la creaste, o recupérala desde "Entrar".'
+            )
+            return
+          }
+          session = signInData.session
+          user = signInData.user
+        }
+        if (!session) {
           setError(
             'Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión en "Seguir mi caso".'
           )
           return
         }
-        userId = signUpData.user?.id ?? null
+        userId = user?.id ?? null
         cuentaCreada = true
       }
 
@@ -488,22 +512,32 @@ export default function RegistroPaciente() {
       router.push(`/sala-espera?${params.toString()}`)
     } catch (e) {
       console.error(e)
-      if (cuentaCreada) {
-        // El registro en el backend falló después de crear la cuenta de Supabase: cerramos la
-        // sesión para no dejar al usuario autenticado con un perfil a medio completar, y se lo
-        // decimos explícitamente. No revertimos la cuenta en sí (eso requeriría un endpoint
-        // admin con service-role, fuera del alcance de este fix — ver changeslog).
-        await supabase.auth.signOut()
-        setError(
-          'Tu cuenta se creó, pero no pudimos guardar tu solicitud. Contáctanos desde la sección "Contacto" de la página principal para completarla manualmente, o inténtalo de nuevo más tarde con el mismo correo.'
-        )
-      } else if (e instanceof ApiError && e.status === 403) {
-        // Token de verificación inválido/expirado: reabrir modal de código
+      // Con sesión abierta de una cuenta sin solicitud se cierra siempre (no se deja a nadie
+      // dentro con la cuenta a medias), y después se explica el fallo según su tipo.
+      if (cuentaCreada) await supabase.auth.signOut()
+      const status = e instanceof ApiError ? e.status : null
+      if (status === 403) {
+        // Token de verificación inválido/expirado (o, con sesión iniciada, nunca pedido): se
+        // reabre el modal de código para ese correo. Sin correo no hay a quién verificar.
         setVerificationToken(null)
-        setShowVerifyCode(true)
-        setError(e.message || 'El código de verificación expiró o no es válido. Ingresa uno nuevo.')
-      } else if (e instanceof ApiError && e.status === 422) {
-        setError(e.message || 'Revisa los datos ingresados.')
+        if (contactEmail) {
+          setVerifyingEmail(contactEmail)
+          setVerifyingPurpose('patient')
+          setShowVerifyCode(true)
+          setError('La verificación de tu correo caducó o no es válida. Ingresa un código nuevo.')
+        } else {
+          setError('No pudimos verificar tu correo. Cierra sesión y vuelve a intentarlo.')
+        }
+      } else if (status === 422) {
+        setError(e instanceof ApiError && e.message ? e.message : 'Revisa los datos ingresados.')
+      } else if (status === 429) {
+        setError('Demasiados intentos. Intenta de nuevo más tarde.')
+      } else if (cuentaCreada) {
+        // No revertimos la cuenta (requeriría un endpoint admin con service-role). Al reintentar
+        // con el mismo correo y contraseña, el alta entra en la cuenta existente.
+        setError(
+          'No pudimos terminar tu solicitud. Tu cuenta está lista: vuelve a intentarlo con el mismo correo y contraseña, o contáctanos desde la sección "Contacto" de la página principal.'
+        )
       } else {
         setError(
           'No se pudo registrar la solicitud. Puede que el email ya esté registrado, o haya un error de conexión.'
