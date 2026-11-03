@@ -5,6 +5,27 @@ finished** — see the protocol in [CLAUDE.md](CLAUDE.md) ("Change log protocol"
 
 Each entry: date, a short summary of what changed and why, and the key files/areas touched.
 
+## 2026-11-02
+
+- **fix(registro): quien fallaba a mitad del alta de médico quedaba atrapado** — la vía "cuenta
+  incompleta" se saltaba el código de correo y el backend respondía 403 en bucle; el catch leía
+  `sesionAbierta` del estado (valor viejo) y no cerraba la sesión; el token de `handleVerifyCodeSuccess`
+  tampoco llegaba (estado viejo). Ahora toda alta pasa por el código, el token va como argumento,
+  la sesión se cierra con variable local y hay mensajes por tipo de error (403/422/429/resto) en un
+  estado de error propio del envío. Paciente: un reintento sobre una cuenta ya creada entra con
+  la misma contraseña en vez de fallar con `user_already_exists`. Ficheros: `pages/registro-medico.tsx`,
+  `pages/registro-paciente.tsx`, `e2e/registro-medico-reintento.spec.ts`.
+  - **Correcciones tras QA:** médico nuevo con 403 tras el signUp: el reintento con el código nuevo
+    ya no vuelve a hacer signUp (`altaDeCuentaExistente` pasa a true al abrirse la sesión) y entra por
+    signIn; el aviso del 403 se limpia al verificar. Paciente con sesión iniciada: un 403 abre el
+    modal con el correo de la sesión (antes `verifyingEmail` quedaba vacío y se enviaba un código a
+    `''`) y sin correo no se abre; el modal tampoco se abre nunca con correo vacío. Texto de fallo del
+    paciente válido con cuenta nueva o existente. `VerificacionCodigoModal`: un 429 al enviar muestra
+    "Espera unos segundos…" y bloquea "Reenviar" con cuenta atrás (`resend_seconds` o 60 s).
+    E2E nuevos: `e2e/registro-paciente-reintento.spec.ts` (cuenta existente con misma/otra
+    contraseña, 403/422/429/otro, paciente con sesión) y el caso de médico nuevo con 403 en
+    `registro-medico-reintento.spec.ts`; helpers comunes en `e2e/red-interceptada.ts`.
+
 ## 2026-10-14
 
 - **fix(panel): "Atender paciente" toma el caso y abre su ficha; ya no entra a la videollamada** —

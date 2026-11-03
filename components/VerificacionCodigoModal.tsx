@@ -32,7 +32,7 @@ export default function VerificacionCodigoModal({
 
   // Enviar código al montar y cada vez que se abre el modal
   useEffect(() => {
-    if (!open) return
+    if (!open || !email) return
     setCode('')
     setError('')
     setInfo('')
@@ -67,7 +67,13 @@ export default function VerificacionCodigoModal({
     } catch (e) {
       if (e instanceof ApiError) {
         if (e.status === 429) {
-          setError(e.message || 'Demasiados envíos. Espera un momento antes de reenviar.')
+          // Cooldown del backend (o tope por hora): se explica y se bloquea "Reenviar" con cuenta
+          // atrás. No se toca `info`: un código ya enviado antes sigue siendo válido.
+          const d = e.detail as { resend_seconds?: unknown } | undefined
+          const espera =
+            typeof d?.resend_seconds === 'number' && d.resend_seconds > 0 ? d.resend_seconds : 60
+          setResendSeconds(espera)
+          setError('Espera unos segundos antes de pedir otro código.')
         } else if (e.status === 503) {
           setError('No se pudo enviar el correo. Intenta de nuevo más tarde.')
         } else {
@@ -111,7 +117,7 @@ export default function VerificacionCodigoModal({
     setCode('')
   }
 
-  if (!open) return null
+  if (!open || !email) return null
 
   return (
     <div
